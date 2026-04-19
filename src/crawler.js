@@ -1,130 +1,70 @@
-Crawler · JS
-Copy
-
 /**
- * crawler.js
- * Spiders a construction company website using Playwright.
- * Returns structured page data: text, images, links, screenshots.
+ * server.js
+ * Express API server — accepts a URL, runs the full audit pipeline,
+ * streams progress, returns JSON report.
  */
  
-const { chromium } = require('playwright');
-const { URL } = require('url');
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const { crawlWebsite } = require('./crawler');
+const { scoreWebsite } = require('./scorer');
  
-const MAX_PAGES = 20;
-const PAGE_TIMEOUT = 15000;
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '../public')));
  
-async function crawlWebsite(startUrl) {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (compatible; SiteAuditBot/1.0)',
-    viewport: { width: 1280, height: 800 },
-  });
+// ── Health check ─────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
  
-  const visited = new Set();
-  const queue = [normaliseUrl(startUrl)];
-  const origin = new URL(startUrl).origin;
-  const pages = [];
+// ── Main audit endpoint ───────────────────────────────────────────────────────
+app.post('/api/audit', async (req, res) => {
+  const { url } = req.body;
  
-  console.log(`\n🕷  Crawling: ${startUrl}`);
- 
-  while (queue.length > 0 && pages.length < MAX_PAGES) {
-    const url = queue.shift();
-    if (visited.has(url)) continue;
-    visited.add(url);
- 
-    try {
-      const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT });
-      await page.waitForTimeout(800); // let lazy-load images settle
- 
-      // ── Screenshot ──────────────────────────────────────────
-      const screenshot = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 75 });
-      const screenshotB64 = screenshot.toString('base64');
- 
-      // ── Text content ─────────────────────────────────────────
-      const textContent = await page.evaluate(() => {
-        const el = document.body.cloneNode(true);
-        // remove nav/footer noise for cleaner text
-        ['nav','footer','script','style','noscript'].forEach(tag => {
-          el.querySelectorAll(tag).forEach(n => n.remove());
-        });
-        return el.innerText.replace(/\s+/g, ' ').trim().slice(0, 8000);
-      });
- 
-      // ── Images ───────────────────────────────────────────────
-      const images = await page.evaluate((base) => {
-        return [...document.querySelectorAll('img')].map(img => ({
-          src: img.src || '',
-          alt: img.alt || '',
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-        })).filter(i => i.src.startsWith('http') && !i.src.includes('data:'));
-      }, origin);
- 
-      // ── Meta & trust signals ─────────────────────────────────
-      const meta = await page.evaluate(() => {
-        const get = sel => document.querySelector(sel)?.content || '';
-        const text = document.body.innerText;
-        return {
-          title: document.title,
-          description: get('meta[name="description"]'),
-          copyrightYear: (text.match(/©\s*(\d{4})/) || [])[1] || null,
-          hasPhone: /(\+44|0\d{10}|0\d{4}\s\d{6})/.test(text),
-          hasAddress: /(street|road|avenue|lane|close|drive|way|,\s*[A-Z]{1,2}\d)/i.test(text),
-          hasVAT: /VAT\s*(no|number|reg|registration)?\s*:?\s*\d+/i.test(text),
-          hasCompaniesHouse: /company\s*(no|number|reg)?\s*:?\s*\d+/i.test(text),
-          accreditations: detectAccreditations(text),
-          testimonialCount: countTestimonials(text),
-          hasGoogleMaps: !!document.querySelector('iframe[src*="google.com/maps"]'),
-        };
- 
-        function detectAccreditations(t) {
-          const badges = ['FMB','NHBC','CHAS','TrustMark','Gas Safe','NICEIC',
-                          'Checkatrade','Which? Trusted','Federation of Master Builders',
-                          'Build Assure','Premier Guarantee'];
-          return badges.filter(b => new RegExp(b,'i').test(t));
-        }
- 
-        function countTestimonials(t) {
-          // count quotation blocks over 40 chars
-          const quotes = t.match(/[""][^""]{40,}[""]/g) || [];
-          return quotes.length;
-        }
-      });
- 
-      // ── Internal links for queue ─────────────────────────────
-      const links = await page.evaluate((base) => {
-        return [...document.querySelectorAll('a[href]')]
-          .map(a => a.href)
-          .filter(h => h.startsWith(base));
-      }, origin);
- 
-      links.forEach(l => {
-        const clean = normaliseUrl(l);
-        if (!visited.has(clean) && !queue.includes(clean)) queue.push(clean);
-      });
- 
-      pages.push({ url, textContent, images, meta, screenshotB64 });
-      console.log(`  ✓ ${url} (${images.length} images)`);
- 
-      await page.close();
-    } catch (err) {
-      console.warn(`  ✗ Failed: ${url} — ${err.message}`);
-    }
+  if (!url || !url.startsWith('http')) {
+    return res.status(400).json({ error: 'Please provide a valid URL starting with http/https' });
   }
  
-  await browser.close();
-  console.log(`\n✅ Crawl complete. ${pages.length} pages, ${pages.reduce((s,p)=>s+p.images.length,0)} images\n`);
-  return pages;
-}
+  // Use SSE so the frontend can show live progress
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
  
-function normaliseUrl(raw) {
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+ 
   try {
-    const u = new URL(raw);
-    u.hash = '';
-    u.search = '';
-    return u.toString().replace(/\/$/, '');
-  } catch { return raw; }
-}
+    send('status', { message: '🕷  Crawling website...', step: 1, total: 3 });
+    const pages = await crawlWebsite(url);
  
-module.exports = { crawlWebsite };
+    if (pages.length === 0) {
+      send('error', { message: 'Could not reach the website. Check the URL and try again.' });
+      return res.end();
+    }
+ 
+    send('status', {
+      message: `✅ Crawled ${pages.length} pages and ${pages.reduce((s,p)=>s+p.images.length,0)} images. Running AI analysis...`,
+      step: 2,
+      total: 3,
+    });
+ 
+    const report = await scoreWebsite(pages, url);
+ 
+    send('status', { message: '📊 Building your report...', step: 3, total: 3 });
+    send('complete', { report, url, scannedAt: new Date().toISOString() });
+ 
+  } catch (err) {
+    console.error(err);
+    send('error', { message: err.message || 'Audit failed. Please try again.' });
+  }
+ 
+  res.end();
+});
+ 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`\n🚀 SiteAudit server running at http://localhost:${PORT}\n`);
+});
+ 

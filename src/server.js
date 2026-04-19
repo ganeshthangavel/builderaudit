@@ -14,14 +14,29 @@ const MAX_PAGES = 20;
 
 // ── Crawler ───────────────────────────────────────────────────────────────────
 async function crawlWebsite(startUrl) {
-  const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+    ],
+  });
+
+  const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 800 },
     extraHTTPHeaders: {
       'Accept-Language': 'en-GB,en;q=0.9',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     },
+  });
+
+  // Hide webdriver fingerprint that Cloudflare checks for
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    window.chrome = { runtime: {} };
   });
 
   const visited = new Set();
@@ -38,8 +53,20 @@ const context = await browser.newContext({
 
     try {
       const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await page.waitForTimeout(800);
+
+      // Random delay between pages to appear more human
+      await page.waitForTimeout(500 + Math.random() * 1000);
+
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+
+      // Skip blocked pages
+      if (response && (response.status() === 403 || response.status() === 429)) {
+        console.warn('Blocked:', url, response.status());
+        await page.close();
+        continue;
+      }
+
+      await page.waitForTimeout(1500);
 
       const screenshot = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 75 });
       const screenshotB64 = screenshot.toString('base64');
@@ -89,7 +116,7 @@ const context = await browser.newContext({
       });
 
       pages.push({ url, textContent, images, meta, screenshotB64 });
-      console.log('Crawled:', url, '—', images.length, 'images');
+      console.log('Crawled:', url, '--', images.length, 'images');
       await page.close();
     } catch (err) {
       console.warn('Failed:', url, err.message);
@@ -114,7 +141,7 @@ function normaliseUrl(raw) {
 async function scoreWebsite(pages, targetUrl) {
   console.log('Sending to Claude for analysis...');
 
-  const allText = pages.map(p => `[PAGE: ${p.url}]\n${p.textContent}`).join('\n\n---\n\n');
+  const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
   const screenshotsToAnalyse = pages.slice(0, 4);
@@ -138,44 +165,7 @@ async function scoreWebsite(pages, targetUrl) {
     imageSample: allImages.slice(0, 20).map(i => ({ src: i.src, alt: i.alt, width: i.width, height: i.height })),
   };
 
-  const prompt = `You are an expert auditor reviewing a UK construction company website for trustworthiness and customer conversion quality.
-
-Website: ${targetUrl}
-Signals: ${JSON.stringify(aggregatedSignals, null, 2)}
-Text (first 5000 chars): ${allText.slice(0, 5000)}
-
-Return ONLY valid JSON, no markdown, no explanation:
-
-{
-  "scores": {
-    "credibility": <0-100>,
-    "photoQuality": <0-100>,
-    "testimonials": <0-100>,
-    "accreditations": <0-100>,
-    "contactClarity": <0-100>,
-    "contentFreshness": <0-100>
-  },
-  "issues": [
-    {
-      "severity": "critical|warning|good",
-      "category": "credibility|photoQuality|testimonials|accreditations|contactClarity|contentFreshness",
-      "title": "<short title>",
-      "detail": "<1-2 sentences specific to what you saw>",
-      "fix": "<concrete action they can take this week>"
-    }
-  ],
-  "positives": ["<thing done well>"],
-  "summary": "<2 sentence plain English summary of main trust problems>",
-  "competitorGap": "<1 sentence comparing to a well-optimised UK builder site>"
-}
-
-Scoring guide:
-- credibility: Companies House/VAT visible, professional email, physical address, SSL
-- photoQuality: Real project photos not stock, high res, labelled with project/location
-- testimonials: Named reviews with location, linked to Google/Checkatrade, specific details
-- accreditations: FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC badges prominently shown
-- contactClarity: Phone on every page, email, contact form, service area clear
-- contentFreshness: Copyright year current, recent projects, no dead links`;
+  const prompt = 'You are an expert auditor reviewing a UK construction company website for trustworthiness and customer conversion quality.\n\nWebsite: ' + targetUrl + '\nSignals: ' + JSON.stringify(aggregatedSignals, null, 2) + '\nText (first 5000 chars): ' + allText.slice(0, 5000) + '\n\nReturn ONLY valid JSON, no markdown, no explanation:\n\n{\n  "scores": {\n    "credibility": <0-100>,\n    "photoQuality": <0-100>,\n    "testimonials": <0-100>,\n    "accreditations": <0-100>,\n    "contactClarity": <0-100>,\n    "contentFreshness": <0-100>\n  },\n  "issues": [\n    {\n      "severity": "critical|warning|good",\n      "category": "credibility|photoQuality|testimonials|accreditations|contactClarity|contentFreshness",\n      "title": "<short title>",\n      "detail": "<1-2 sentences specific to what you saw>",\n      "fix": "<concrete action they can take this week>"\n    }\n  ],\n  "positives": ["<thing done well>"],\n  "summary": "<2 sentence plain English summary of main trust problems>",\n  "competitorGap": "<1 sentence comparing to a well-optimised UK builder site>"\n}\n\nScoring guide:\n- credibility: Companies House/VAT visible, professional email, physical address, SSL\n- photoQuality: Real project photos not stock, high res, labelled with project/location\n- testimonials: Named reviews with location, linked to Google/Checkatrade, specific details\n- accreditations: FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC badges prominently shown\n- contactClarity: Phone on every page, email, contact form, service area clear\n- contentFreshness: Copyright year current, recent projects, no dead links';
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
@@ -212,19 +202,19 @@ app.post('/api/audit', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const send = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
 
   try {
     send('status', { message: 'Crawling website...', step: 1, total: 3 });
     const pages = await crawlWebsite(url);
 
     if (pages.length === 0) {
-      send('error', { message: 'Could not reach the website. Check the URL and try again.' });
+      send('error', { message: 'Could not reach the website. It may be blocking automated access. Try a different site.' });
       return res.end();
     }
 
     send('status', {
-      message: `Crawled ${pages.length} pages and ${pages.reduce((s, p) => s + p.images.length, 0)} images. Running AI analysis...`,
+      message: 'Crawled ' + pages.length + ' pages and ' + pages.reduce((s, p) => s + p.images.length, 0) + ' images. Running AI analysis...',
       step: 2,
       total: 3,
     });
@@ -243,4 +233,4 @@ app.post('/api/audit', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));

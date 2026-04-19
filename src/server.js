@@ -33,7 +33,6 @@ async function crawlWebsite(startUrl) {
     },
   });
 
-  // Hide webdriver fingerprint that Cloudflare checks for
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     window.chrome = { runtime: {} };
@@ -53,13 +52,10 @@ async function crawlWebsite(startUrl) {
 
     try {
       const page = await context.newPage();
-
-      // Random delay between pages to appear more human
       await page.waitForTimeout(500 + Math.random() * 1000);
 
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-      // Skip blocked pages
       if (response && (response.status() === 403 || response.status() === 429)) {
         console.warn('Blocked:', url, response.status());
         await page.close();
@@ -101,6 +97,8 @@ async function crawlWebsite(startUrl) {
           accreditations: badges.filter(b => new RegExp(b,'i').test(text)),
           testimonialCount: (text.match(/[\u201c\u201d][^\u201c\u201d]{40,}[\u201c\u201d]/g) || []).length,
           hasGoogleMaps: !!document.querySelector('iframe[src*="google.com/maps"]'),
+          hasExternalReviewLinks: /checkatrade|trustpilot|google.*review|houzz|rated\.people/i.test(text),
+          professionalEmail: !/gmail|hotmail|yahoo|outlook\.com/i.test(text),
         };
       });
 
@@ -162,29 +160,106 @@ async function scoreWebsite(pages, targetUrl) {
     hasGoogleMaps: allMeta.some(m => m.hasGoogleMaps),
     hasVAT: allMeta.some(m => m.hasVAT),
     hasCompaniesHouse: allMeta.some(m => m.hasCompaniesHouse),
+    hasExternalReviewLinks: allMeta.some(m => m.hasExternalReviewLinks),
+    professionalEmail: allMeta.some(m => m.professionalEmail),
     imageSample: allImages.slice(0, 20).map(i => ({ src: i.src, alt: i.alt, width: i.width, height: i.height })),
   };
 
-  const prompt = 'You are an expert auditor reviewing a UK construction company website for trustworthiness and customer conversion quality.\n\nWebsite: ' + targetUrl + '\nSignals: ' + JSON.stringify(aggregatedSignals, null, 2) + '\nText (first 5000 chars): ' + allText.slice(0, 5000) + '\n\nReturn ONLY valid JSON, no markdown, no explanation:\n\n{\n  "scores": {\n    "credibility": <0-100>,\n    "photoQuality": <0-100>,\n    "testimonials": <0-100>,\n    "accreditations": <0-100>,\n    "contactClarity": <0-100>,\n    "contentFreshness": <0-100>\n  },\n  "issues": [\n    {\n      "severity": "critical|warning|good",\n      "category": "credibility|photoQuality|testimonials|accreditations|contactClarity|contentFreshness",\n      "title": "<short title>",\n      "detail": "<1-2 sentences specific to what you saw>",\n      "fix": "<concrete action they can take this week>"\n    }\n  ],\n  "positives": ["<thing done well>"],\n  "summary": "<2 sentence plain English summary of main trust problems>",\n  "competitorGap": "<1 sentence comparing to a well-optimised UK builder site>"\n}\n\nScoring guide:\n- credibility: Companies House/VAT visible, professional email, physical address, SSL\n- photoQuality: Real project photos not stock, high res, labelled with project/location\n- testimonials: Named reviews with location, linked to Google/Checkatrade, specific details\n- accreditations: FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC badges prominently shown\n- contactClarity: Phone on every page, email, contact form, service area clear\n- contentFreshness: Copyright year current, recent projects, no dead links';
+  const systemPrompt = `You are a senior conversion and trust auditor specialising in UK construction, renovation, and home improvement companies.
+Your job is to analyse websites and identify factors that affect homeowner trust, lead conversion, and perceived business legitimacy.
+You are NOT an SEO auditor. You are NOT a design critic.
+You are a high-end commercial due diligence analyst for £10k-£500k construction projects.
+
+PRIMARY OBJECTIVE: Identify what would prevent a homeowner from enquiring or trusting this business enough to spend high-value (£5k-£250k+) on construction work.
+You must base all conclusions on provided evidence only. Do NOT assume facts not supported by the input data.
+
+CRITICAL THINKING RULE: Think like a homeowner deciding whether to trust this company with £30,000 of their home renovation budget.
+
+Return ONLY valid JSON, no markdown fences, no explanation outside the JSON.`;
+
+  const userPrompt = `Website being audited: ${targetUrl}
+
+EXTRACTED SIGNALS:
+${JSON.stringify(aggregatedSignals, null, 2)}
+
+FULL PAGE TEXT (${pages.length} pages crawled):
+${allText.slice(0, 6000)}
+
+I have also provided ${screenshotsToAnalyse.length} page screenshots above for visual analysis.
+
+Analyse everything and return this exact JSON structure:
+{
+  "overall_score": <0-100 integer>,
+  "category_scores": {
+    "credibility": <0-100>,
+    "photo_quality": <0-100>,
+    "testimonials": <0-100>,
+    "accreditations": <0-100>,
+    "contact_clarity": <0-100>,
+    "content_freshness": <0-100>
+  },
+  "executive_summary": "<2-3 sentences: the core trust problem a homeowner would feel>",
+  "critical_issues": [
+    {
+      "issue": "<short title>",
+      "evidence": "<specific evidence you found or did not find>",
+      "why_it_matters": "<why a homeowner spending £30k would care>",
+      "impact_on_leads": "low|medium|high|critical",
+      "recommended_fix": "<concrete actionable fix>"
+    }
+  ],
+  "visual_findings": [
+    {
+      "image_or_page": "<which page or image>",
+      "finding": "<what you observed>",
+      "confidence": "low|medium|high",
+      "why_it_matters": "<trust impact>"
+    }
+  ],
+  "trust_gaps": [
+    {
+      "gap": "<missing trust element>",
+      "severity": "low|medium|high|critical",
+      "explanation": "<why this gap hurts conversion>"
+    }
+  ],
+  "what_is_working": [
+    {
+      "strength": "<positive element>",
+      "evidence": "<what you saw>"
+    }
+  ],
+  "benchmark_comparison": "<1-2 sentences comparing to a well-optimised UK construction company site>",
+  "top_5_actions": [
+    "<action 1 - most impactful first>",
+    "<action 2>",
+    "<action 3>",
+    "<action 4>",
+    "<action 5>"
+  ]
+}
+
+Scoring guide:
+- credibility: Companies House/VAT visible, professional email domain, physical address, SSL, legal clarity
+- photo_quality: Real project photos vs stock, resolution, before/after, location-specific proof
+- testimonials: Named reviews, external links (Google/Checkatrade), recency, project specificity
+- accreditations: FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC - prominence and verifiability
+- contact_clarity: Phone on every page, email, CTA clarity, service area, response time
+- content_freshness: Copyright year, recent project dates, active blog, evidence of live business`;
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
-    max_tokens: 2000,
+    max_tokens: 3000,
+    system: systemPrompt,
     messages: [{
       role: 'user',
-      content: [...imageBlocks, { type: 'text', text: prompt }],
+      content: [...imageBlocks, { type: 'text', text: userPrompt }],
     }],
   });
 
   const rawText = response.content.map(b => b.text || '').join('');
   const clean = rawText.replace(/```json|```/g, '').trim();
   const result = JSON.parse(clean);
-
-  const weights = { credibility: 0.25, photoQuality: 0.20, testimonials: 0.20, accreditations: 0.15, contactClarity: 0.10, contentFreshness: 0.10 };
-  let overall = 0;
-  for (const [key, w] of Object.entries(weights)) overall += (result.scores[key] || 0) * w;
-  result.overallScore = Math.round(overall);
-
   return result;
 }
 

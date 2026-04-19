@@ -262,6 +262,130 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
   .bs-divider{text-align:center;margin:2rem 0 1.5rem;position:relative}
   .bs-divider::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--gray-200)}
   .bs-divider-text{position:relative;background:var(--snow);padding:0 16px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--slate-text);font-weight:600}
+
+  /* ═══════════════════════════════════════════════════════════════
+     MOTION & ANIMATION — cinematic but not gimmicky
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
+  }
+
+  /* Fade-up reveal — used by scroll observer */
+  .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s cubic-bezier(.2,.8,.2,1),transform .6s cubic-bezier(.2,.8,.2,1)}
+  .reveal.shown{opacity:1;transform:translateY(0)}
+
+  /* Staggered children */
+  .stagger>*{opacity:0;transform:translateY(12px);transition:opacity .5s cubic-bezier(.2,.8,.2,1),transform .5s cubic-bezier(.2,.8,.2,1)}
+  .stagger.shown>*{opacity:1;transform:translateY(0)}
+  .stagger.shown>*:nth-child(1){transition-delay:0ms}
+  .stagger.shown>*:nth-child(2){transition-delay:70ms}
+  .stagger.shown>*:nth-child(3){transition-delay:140ms}
+  .stagger.shown>*:nth-child(4){transition-delay:210ms}
+  .stagger.shown>*:nth-child(5){transition-delay:280ms}
+  .stagger.shown>*:nth-child(6){transition-delay:350ms}
+  .stagger.shown>*:nth-child(7){transition-delay:420ms}
+  .stagger.shown>*:nth-child(8){transition-delay:490ms}
+
+  /* Score ring animated draw */
+  .ring-wrap svg circle:nth-child(2){
+    transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* Counting number pulse */
+  @keyframes scoreNumPop{
+    0%{transform:scale(.85);opacity:0}
+    60%{transform:scale(1.08);opacity:1}
+    100%{transform:scale(1);opacity:1}
+  }
+  .ring-num{animation:scoreNumPop .7s cubic-bezier(.2,.8,.2,1) .9s both}
+
+  /* Trust question bar fill grow */
+  .tq-fill{transform-origin:left center;animation:barGrow 1s cubic-bezier(.2,.8,.2,1) forwards}
+  @keyframes barGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+  /* Card hover lift — subtle depth, no cheesy 3D */
+  .j-card,.bp-card,.tq-row,.bs-card,.iv-card,.score-card,.photo-col,.gap-card{
+    transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s cubic-bezier(.2,.8,.2,1),border-color .25s ease;
+  }
+  .j-card:hover,.bp-card:hover,.bs-card:hover,.iv-card:hover{
+    transform:translateY(-2px);
+    box-shadow:0 8px 24px -8px rgba(15,23,42,.12),0 2px 6px -2px rgba(15,23,42,.06);
+    border-color:var(--ice);
+  }
+
+  /* Button magnetic hover */
+  .input-row button{transition:transform .15s ease,opacity .2s,box-shadow .25s ease}
+  .input-row button:hover{transform:translateY(-1px);box-shadow:0 8px 20px -6px rgba(255,92,51,.45)}
+  .input-row button:active{transform:translateY(0)}
+
+  /* Tab click feedback */
+  .tab{transition:background .2s,color .2s,transform .15s}
+  .tab:active{transform:scale(.97)}
+
+  /* Score band — gentle glow pulse when active (critical scores) */
+  @keyframes scoreGlow{
+    0%,100%{box-shadow:0 0 0 0 rgba(255,46,46,0)}
+    50%{box-shadow:0 0 0 4px rgba(255,46,46,.08)}
+  }
+  .score-band.pulse-critical{animation:scoreGlow 3s ease-in-out infinite}
+
+  /* Live audit feed — items slide in sequentially */
+  .fi{opacity:0;transform:translateX(-10px);animation:feedIn .5s cubic-bezier(.2,.8,.2,1) forwards}
+  .fi:nth-child(1){animation-delay:50ms}
+  .fi:nth-child(2){animation-delay:130ms}
+  .fi:nth-child(3){animation-delay:210ms}
+  .fi:nth-child(4){animation-delay:290ms}
+  .fi:nth-child(5){animation-delay:370ms}
+  .fi:nth-child(6){animation-delay:450ms}
+  .fi:nth-child(7){animation-delay:530ms}
+  .fi:nth-child(8){animation-delay:610ms}
+  @keyframes feedIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+
+  /* ═══════════════════════════════════════════════════════════════
+     CINEMATIC LOADING PHASE — feels like scanning
+     ═══════════════════════════════════════════════════════════════ */
+  .scan-stage{display:none;padding:3rem 1.5rem 4rem;text-align:center}
+  .scan-stage.active{display:block}
+  .scan-core{position:relative;width:120px;height:120px;margin:0 auto 2rem}
+  .scan-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--ice)}
+  .scan-ring-1{animation:scanSpin 3s linear infinite}
+  .scan-ring-2{inset:12px;border-color:var(--frost);animation:scanSpin 2.2s linear infinite reverse}
+  .scan-ring-3{inset:24px;border-color:var(--ice);animation:scanSpin 1.5s linear infinite}
+  .scan-ring::before{content:"";position:absolute;top:-2px;left:50%;width:6px;height:6px;border-radius:50%;background:var(--sky);box-shadow:0 0 12px var(--sky);transform:translateX(-50%)}
+  @keyframes scanSpin{to{transform:rotate(360deg)}}
+  .scan-center{position:absolute;inset:36px;border-radius:50%;background:var(--azure-tint);display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--azure);font-weight:700}
+  .scan-phase{font-size:13px;color:var(--slate-text);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px}
+  .scan-message{font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.01em;margin-bottom:1.5rem;min-height:24px}
+  .scan-timeline{display:flex;max-width:440px;margin:0 auto;gap:2px}
+  .scan-tl-step{flex:1;height:3px;background:var(--ice);border-radius:99px;position:relative;overflow:hidden}
+  .scan-tl-step.done{background:var(--sky)}
+  .scan-tl-step.active::after{content:"";position:absolute;inset:0;background:var(--sky);animation:tlProgress 2s cubic-bezier(.4,0,.6,1) infinite}
+  @keyframes tlProgress{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  .scan-tl-labels{display:flex;max-width:440px;margin:8px auto 0;gap:2px}
+  .scan-tl-label{flex:1;font-size:10px;color:var(--slate-text);text-transform:uppercase;letter-spacing:.06em;text-align:center}
+  .scan-tl-label.active{color:var(--azure);font-weight:600}
+  .scan-tl-label.done{color:var(--sky)}
+
+  /* Hero entrance */
+  .hero h1{animation:heroIn .8s cubic-bezier(.2,.8,.2,1) both}
+  .hero p{animation:heroIn .8s cubic-bezier(.2,.8,.2,1) .15s both}
+  .hero .input-row{animation:heroIn .8s cubic-bezier(.2,.8,.2,1) .3s both}
+  @keyframes heroIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+  /* Depth layering — gentle shadows on key elements for 3D feel without WebGL */
+  .score-band{box-shadow:0 12px 40px -12px rgba(15,23,42,.35),0 4px 12px -4px rgba(15,23,42,.15)}
+  .actions-wrap{box-shadow:0 12px 40px -12px rgba(15,23,42,.3),0 4px 12px -4px rgba(15,23,42,.12)}
+  .bs-header{box-shadow:0 2px 8px -2px rgba(15,23,42,.04)}
+
+  /* Badge shimmer on hover for accreditation pills */
+  .bs-pill-accred{transition:transform .2s,box-shadow .25s}
+  .bs-pill-accred:hover{transform:translateY(-1px);box-shadow:0 4px 10px -3px rgba(5,150,105,.35)}
+
+  /* Tab bar subtle depth */
+  .tab-bar{box-shadow:inset 0 1px 2px rgba(15,23,42,.04)}
+  .tab.on{box-shadow:0 2px 6px -2px rgba(15,23,42,.15),0 0 0 0.5px var(--ice)}
 </style>
 </head>
 <body>
@@ -295,6 +419,30 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
     <h2>No audit run yet</h2>
     <p>Enter any UK builder website above. We'll crawl it, read it like a homeowner, and tell you exactly what's costing you leads.</p>
   </div>
+
+  <div class="scan-stage" id="scanStage">
+    <div class="scan-core">
+      <div class="scan-ring scan-ring-1"></div>
+      <div class="scan-ring scan-ring-2"></div>
+      <div class="scan-ring scan-ring-3"></div>
+      <div class="scan-center" id="scanIcon">&#9654;</div>
+    </div>
+    <div class="scan-phase" id="scanPhase">Phase 1 of 4</div>
+    <div class="scan-message" id="scanMessage">Starting audit...</div>
+    <div class="scan-timeline">
+      <div class="scan-tl-step" id="tl1"></div>
+      <div class="scan-tl-step" id="tl2"></div>
+      <div class="scan-tl-step" id="tl3"></div>
+      <div class="scan-tl-step" id="tl4"></div>
+    </div>
+    <div class="scan-tl-labels">
+      <div class="scan-tl-label" id="tll1">Crawl</div>
+      <div class="scan-tl-label" id="tll2">Verify images</div>
+      <div class="scan-tl-label" id="tll3">Analyse</div>
+      <div class="scan-tl-label" id="tll4">Report</div>
+    </div>
+  </div>
+
   <div id="report" style="display:none"></div>
 </main>
 
@@ -321,9 +469,9 @@ async function startAudit(){
   document.getElementById('auditBtn').disabled=true;
   document.getElementById('empty').style.display='none';
   document.getElementById('report').style.display='none';
-  document.getElementById('statusBar').classList.add('show');
-  document.getElementById('steps').classList.add('show');
-  setStatus('Connecting...',0);
+  document.getElementById('scanStage').classList.add('active');
+  setStatus('Connecting...',1);
+  document.getElementById('scanStage').scrollIntoView({behavior:'smooth',block:'center'});
   try{await runSSE(url);}catch(e){showError(e.message);}
 }
 
@@ -362,9 +510,23 @@ function handle(name,data){
 function setStatus(msg,step){
   document.getElementById('statusText').textContent=msg;
   for(var i=1;i<=4;i++)document.getElementById('step'+i).classList.toggle('done',i<=step);
+
+  /* Drive the cinematic scan stage */
+  document.getElementById('scanMessage').textContent=msg;
+  document.getElementById('scanPhase').textContent='Phase '+Math.max(1,step)+' of 4';
+  var icons=['','\u2315','\u25A3','\u2742','\u2713'];
+  document.getElementById('scanIcon').innerHTML=icons[step]||'\u2315';
+  for(var j=1;j<=4;j++){
+    var tl=document.getElementById('tl'+j);
+    var tll=document.getElementById('tll'+j);
+    tl.classList.remove('done','active');tll.classList.remove('done','active');
+    if(j<step){tl.classList.add('done');tll.classList.add('done');}
+    else if(j===step){tl.classList.add('active');tll.classList.add('active');}
+  }
 }
 
 function showError(msg){
+  document.getElementById('scanStage').classList.remove('active');
   document.getElementById('statusBar').classList.remove('show');
   document.getElementById('steps').classList.remove('show');
   document.getElementById('auditBtn').disabled=false;
@@ -629,9 +791,76 @@ function render(r,url,scannedAt){
   var rep=document.getElementById('report');
   rep.innerHTML=html;
   rep.style.display='block';
+  document.getElementById('scanStage').classList.remove('active');
   document.getElementById('empty').style.display='none';
   document.getElementById('auditBtn').disabled=false;
-  rep.scrollIntoView({behavior:'smooth'});
+
+  /* Animate score ring from 0 to value */
+  setTimeout(function(){
+    var ringCircle=rep.querySelector('.ring-wrap svg circle:nth-child(2)');
+    if(ringCircle){
+      var targetOffset=ringCircle.getAttribute('stroke-dashoffset');
+      ringCircle.setAttribute('stroke-dashoffset','213');
+      void ringCircle.getBoundingClientRect();
+      requestAnimationFrame(function(){ringCircle.setAttribute('stroke-dashoffset',targetOffset);});
+    }
+    /* Count score up */
+    var ringNum=rep.querySelector('.ring-num');
+    if(ringNum){
+      var target=parseInt(ringNum.textContent,10);
+      if(!isNaN(target))countUp(ringNum,0,target,1400);
+    }
+    /* Count trust question scores up */
+    rep.querySelectorAll('.tq-score').forEach(function(el){
+      var t=parseInt(el.textContent,10);
+      if(!isNaN(t))countUp(el,0,t,900);
+    });
+    /* Add pulse to critical scores */
+    if(!isNaN(target)&&target<45){
+      var band=rep.querySelector('.score-band');
+      if(band)band.classList.add('pulse-critical');
+    }
+  },150);
+
+  /* Scroll reveal observer */
+  setupReveal(rep);
+
+  rep.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function countUp(el,from,to,duration){
+  var start=performance.now();
+  function tick(now){
+    var t=Math.min(1,(now-start)/duration);
+    var eased=1-Math.pow(1-t,3);
+    el.textContent=Math.round(from+(to-from)*eased);
+    if(t<1)requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function setupReveal(root){
+  /* Mark content blocks as reveal-targets */
+  var selectors=['.bs-section','.score-band','.tab-bar','.journey-list','.bp-list','.tq-list','.feed-list','.photo-cols','.gap-card','.actions-wrap','.iv-summary','.iv-list','.iv-none','.bs-grid','.bs-header','.bs-gaps','.bs-divider'];
+  selectors.forEach(function(sel){
+    root.querySelectorAll(sel).forEach(function(el){
+      el.classList.add('reveal');
+      if(el.children.length>1&&(sel==='.journey-list'||sel==='.bp-list'||sel==='.tq-list'||sel==='.bs-grid'||sel==='.iv-list')){
+        el.classList.add('stagger');
+      }
+    });
+  });
+
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(entry.isIntersecting){
+        entry.target.classList.add('shown');
+        io.unobserve(entry.target);
+      }
+    });
+  },{threshold:.08,rootMargin:'0px 0px -40px 0px'});
+
+  root.querySelectorAll('.reveal').forEach(function(el){io.observe(el);});
 }
 
 function switchTab(id,el){

@@ -1,1 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuilderAudit — Know why your website is costing you jobs</title>
+<meta name="description" content="Forensic trust audit for UK construction companies. We simulate how a homeowner experiences your website and tell you exactly why they call your competitor instead.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  /* Homepage-only styles */
+  .home-hero { background: var(--ink); padding: 5rem 1.5rem 6rem; text-align: center; position: relative; overflow: hidden; }
+  .home-hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 50% -10%, rgba(255,92,51,.18) 0%, transparent 55%); pointer-events:none; }
+  .home-hero::after { content:''; position:absolute; bottom:-100px; left:50%; transform:translateX(-50%); width:600px; height:200px; background:radial-gradient(ellipse, rgba(76,201,240,.15) 0%, transparent 70%); pointer-events:none; }
+  .home-hero h1 { font-size: 56px; font-weight: 700; color: #fff; letter-spacing: -.035em; line-height: 1.05; margin-bottom: 1.25rem; max-width: 780px; margin-inline: auto; }
+  .home-hero h1 em { color: var(--coral); font-style: normal; }
+  .home-hero p { color: var(--slate); font-size: 18px; max-width: 580px; margin: 0 auto 2rem; line-height: 1.6; }
+  .hero-cta { display: inline-flex; gap: 10px; align-items: center; background: var(--coral); color: #fff; padding: 16px 28px; border-radius: 10px; font-size: 16px; font-weight: 600; text-decoration: none; transition: all .2s; box-shadow: 0 8px 24px -8px rgba(255,92,51,.5); }
+  .hero-cta:hover { transform: translateY(-2px); box-shadow: 0 12px 32px -8px rgba(255,92,51,.6); }
+  .hero-cta-secondary { display: inline-flex; align-items: center; gap: 6px; color: var(--slate); padding: 16px 20px; text-decoration: none; font-size: 15px; margin-left: 8px; transition: color .2s; }
+  .hero-cta-secondary:hover { color: #fff; }
 
+  .trust-bar { display: flex; justify-content: center; gap: 2.5rem; margin-top: 3rem; flex-wrap: wrap; position: relative; z-index: 1; }
+  .trust-stat { text-align: center; }
+  .trust-num { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -.02em; }
+  .trust-label { font-size: 11px; color: var(--slate-text); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+
+  .section { max-width: 1000px; margin: 0 auto; padding: 5rem 1.5rem; }
+  .section-head { text-align: center; margin-bottom: 3rem; }
+  .section-eyebrow { font-size: 12px; color: var(--azure); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; margin-bottom: 12px; }
+  .section-h2 { font-size: 38px; font-weight: 700; letter-spacing: -.025em; margin-bottom: 12px; line-height: 1.15; }
+  .section-sub { font-size: 17px; color: var(--slate-deep); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+
+  .problem-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 2rem; }
+  .problem-card { background: #fff; border: 1px solid var(--ice); border-radius: 16px; padding: 1.5rem; transition: transform .25s, box-shadow .25s; }
+  .problem-card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px -10px rgba(15,23,42,.15); }
+  .problem-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--red-tint); color: var(--red-signal); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; margin-bottom: 14px; }
+  .problem-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--ink); }
+  .problem-body { font-size: 14px; color: var(--slate-deep); line-height: 1.6; }
+
+  .how-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; position: relative; }
+  .how-step { background: #fff; border: 1px solid var(--ice); border-radius: 16px; padding: 1.75rem; position: relative; }
+  .how-num { position: absolute; top: -14px; left: 24px; width: 28px; height: 28px; border-radius: 50%; background: var(--azure); color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .how-title { font-size: 17px; font-weight: 600; margin-bottom: 8px; margin-top: 4px; }
+  .how-body { font-size: 14px; color: var(--slate-deep); line-height: 1.6; }
+  .how-detail { font-size: 12px; color: var(--azure); margin-top: 12px; font-weight: 500; }
+
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .feature { background: #fff; border: 1px solid var(--ice); border-radius: 14px; padding: 1.5rem 1.75rem; display: flex; gap: 16px; align-items: flex-start; }
+  .feature-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--azure-tint); color: var(--azure); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; }
+  .feature-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .feature-body { font-size: 13px; color: var(--slate-deep); line-height: 1.5; }
+
+  .cta-band { background: var(--ink); border-radius: 20px; padding: 3rem 2.5rem; text-align: center; margin: 5rem auto 4rem; max-width: 900px; position: relative; overflow: hidden; }
+  .cta-band::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 120%, rgba(255,122,24,.25) 0%, transparent 55%); }
+  .cta-band h2 { font-size: 32px; color: #fff; font-weight: 700; letter-spacing: -.02em; margin-bottom: 10px; position: relative; }
+  .cta-band p { color: var(--slate); font-size: 15px; margin-bottom: 1.75rem; position: relative; }
+
+  .footer { text-align: center; padding: 2rem 1.5rem 3rem; color: var(--slate-text); font-size: 12px; }
+
+  /* Animated preview mock */
+  .preview-mock { max-width: 640px; margin: 3rem auto 0; background: var(--ink); border-radius: 16px; padding: 1rem; box-shadow: 0 20px 60px -20px rgba(15,23,42,.4); position: relative; }
+  .preview-window { background: #fff; border-radius: 10px; overflow: hidden; }
+  .preview-top { background: var(--mist); padding: 10px 14px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--ice); }
+  .preview-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--slate); }
+  .preview-dot:nth-child(1) { background: #FF5F57; }
+  .preview-dot:nth-child(2) { background: #FFBD2E; }
+  .preview-dot:nth-child(3) { background: #28C840; }
+  .preview-url { flex:1; background: #fff; border-radius: 6px; padding: 3px 10px; font-size: 11px; color: var(--slate-text); margin-left: 8px; font-family: monospace; }
+  .preview-body { padding: 1.25rem; }
+  .preview-score { display: flex; align-items: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--mist); margin-bottom: 16px; }
+  .preview-ring { width: 60px; height: 60px; position: relative; flex-shrink: 0; }
+  .preview-ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--red-signal); }
+  .preview-headline { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+  .preview-sub { font-size: 11px; color: var(--slate-text); }
+  .preview-items { display: flex; flex-direction: column; gap: 6px; }
+  .preview-item { display: flex; gap: 10px; padding: 8px 10px; border-radius: 6px; align-items: center; }
+  .pi-bad { background: var(--red-tint); color: var(--red-ink); }
+  .pi-warn { background: var(--orange-tint); color: var(--orange-deep); }
+  .pi-ok { background: #D1FAE5; color: #065F46; }
+  .pi-icon { font-size: 11px; font-weight: 700; }
+  .pi-text { font-size: 11px; }
+
+  @media (max-width: 720px) {
+    .home-hero h1 { font-size: 38px; }
+    .home-hero p { font-size: 15px; }
+    .section-h2 { font-size: 28px; }
+    .section { padding: 3rem 1.25rem; }
+    .problem-grid, .how-steps, .features { grid-template-columns: 1fr; }
+    .trust-bar { gap: 1.5rem; }
+    .cta-band { padding: 2rem 1.5rem; }
+    .cta-band h2 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Builder<em>Audit</em></div>
+  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+</header>
+
+<section class="home-hero">
+  <h1>Find out why your website is <em>losing you jobs</em></h1>
+  <p>We simulate how a homeowner experiences your website — then tell you exactly where trust breaks down and why they call your competitor instead.</p>
+  <div>
+    <a href="/audit" class="hero-cta">Run a free forensic audit &rarr;</a>
+    <a href="#how-it-works" class="hero-cta-secondary">How it works</a>
+  </div>
+
+  <div class="preview-mock">
+    <div class="preview-window">
+      <div class="preview-top">
+        <div class="preview-dot"></div>
+        <div class="preview-dot"></div>
+        <div class="preview-dot"></div>
+        <div class="preview-url">builderaudit.co.uk/report/rpt_47x2Kp</div>
+      </div>
+      <div class="preview-body">
+        <div class="preview-score">
+          <div class="preview-ring">
+            <svg viewBox="0 0 60 60" width="60" height="60">
+              <circle cx="30" cy="30" r="25" fill="none" stroke="#F1F5F9" stroke-width="5"/>
+              <circle cx="30" cy="30" r="25" fill="none" stroke="#FF2E2E" stroke-width="5" stroke-dasharray="157" stroke-dashoffset="83" stroke-linecap="round" transform="rotate(-90 30 30)"/>
+            </svg>
+            <div class="preview-ring-num">47</div>
+          </div>
+          <div>
+            <div class="preview-headline">Your site is losing trust at 3 key moments</div>
+            <div class="preview-sub">14 issues found · sorted by homeowner impact</div>
+          </div>
+        </div>
+        <div class="preview-items">
+          <div class="preview-item pi-bad"><span class="pi-icon">&#10007;</span><span class="pi-text">No Companies House number — homeowners can't verify you're a real business</span></div>
+          <div class="preview-item pi-warn"><span class="pi-icon">&#9888;</span><span class="pi-text">6 of your project photos confirmed as stock images from Shutterstock</span></div>
+          <div class="preview-item pi-warn"><span class="pi-icon">&#9888;</span><span class="pi-text">Testimonials not linked to verifiable Google reviews</span></div>
+          <div class="preview-item pi-ok"><span class="pi-icon">&#10003;</span><span class="pi-text">Phone number clearly visible on every page</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="trust-bar">
+    <div class="trust-stat"><div class="trust-num">14</div><div class="trust-label">Trust signals checked</div></div>
+    <div class="trust-stat"><div class="trust-num">38</div><div class="trust-label">Images verified per site</div></div>
+    <div class="trust-stat"><div class="trust-num">3 min</div><div class="trust-label">Full audit time</div></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <div class="section-eyebrow">The problem</div>
+    <h2 class="section-h2">Most builder websites are <em style="color:var(--red-signal);font-style:normal">silently</em> losing jobs</h2>
+    <p class="section-sub">Your site gets visitors. They look around. Then they call a competitor. You never hear about it — so nothing gets fixed.</p>
+  </div>
+  <div class="problem-grid">
+    <div class="problem-card">
+      <div class="problem-icon">&#10007;</div>
+      <div class="problem-title">No verification of legitimacy</div>
+      <div class="problem-body">Homeowners google your Companies House number before calling. If they can't find it on your site, they don't bother.</div>
+    </div>
+    <div class="problem-card">
+      <div class="problem-icon">&#10007;</div>
+      <div class="problem-title">Stock photos destroy credibility</div>
+      <div class="problem-body">The moment a homeowner suspects your project photos aren't yours, trust is gone. We verify every image against Google Reverse Image Search.</div>
+    </div>
+    <div class="problem-card">
+      <div class="problem-icon">&#10007;</div>
+      <div class="problem-title">Testimonials with no proof</div>
+      <div class="problem-body">"Great service, John B." means nothing. Modern homeowners expect linked Google, Checkatrade, or Houzz reviews.</div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how-it-works" style="background:var(--snow);max-width:none">
+  <div style="max-width:1000px;margin:0 auto">
+    <div class="section-head">
+      <div class="section-eyebrow">How it works</div>
+      <h2 class="section-h2">A homeowner's eyes, at scale</h2>
+      <p class="section-sub">We crawl every page, verify every image, and simulate the exact moment a £30k customer decides to leave.</p>
+    </div>
+    <div class="how-steps">
+      <div class="how-step">
+        <div class="how-num">1</div>
+        <div class="how-title">We crawl your website</div>
+        <div class="how-body">Every page, every image, every testimonial. We look for what homeowners look for — Companies House, accreditations, proof of recent work.</div>
+        <div class="how-detail">Typically 14-20 pages · 30-60 images</div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">2</div>
+        <div class="how-title">We verify your photos</div>
+        <div class="how-body">Using reverse image search, we check whether your project photos are real — or whether they've been pulled from Shutterstock, Unsplash, or another builder's site.</div>
+        <div class="how-detail">Powered by Google Reverse Image Search</div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">3</div>
+        <div class="how-title">We simulate a homeowner</div>
+        <div class="how-body">Our AI reads your site through the eyes of someone about to spend £30k. It pinpoints the exact moments they lose trust — and what to do about it.</div>
+        <div class="how-detail">Powered by Claude — not a generic SEO tool</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <div class="section-eyebrow">What you get</div>
+    <h2 class="section-h2">Not a score. A forensic report.</h2>
+    <p class="section-sub">This isn't SEO. This isn't a PageSpeed score. This is what your actual customers think.</p>
+  </div>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">&#9678;</div>
+      <div>
+        <div class="feature-title">Business snapshot</div>
+        <div class="feature-body">What your site tells us about your company — before we pick it apart. Shows what homeowners see first.</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#9632;</div>
+      <div>
+        <div class="feature-title">Homeowner journey</div>
+        <div class="feature-body">First-person thoughts at every scroll. The exact moment they decide to call you — or call someone else.</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#9650;</div>
+      <div>
+        <div class="feature-title">Trust breakpoints</div>
+        <div class="feature-body">Every moment trust is lost, with evidence, homeowner reaction, and a specific fix you can do this week.</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#10008;</div>
+      <div>
+        <div class="feature-title">Image verification</div>
+        <div class="feature-body">Every project photo reverse-searched. Shows exactly which are stock or stolen — with sources.</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#10070;</div>
+      <div>
+        <div class="feature-title">Trust questions</div>
+        <div class="feature-body">Six questions every homeowner asks, scored 0-100. Know exactly what's weak.</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#9654;</div>
+      <div>
+        <div class="feature-title">Action plan</div>
+        <div class="feature-body">Top 5 specific, actionable fixes ranked by impact on your enquiry rate. Achievable this week.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <h2>Run your first audit in 3 minutes</h2>
+  <p>Free to try. No account needed. See exactly what's costing you jobs.</p>
+  <a href="/audit" class="hero-cta">Audit my website &rarr;</a>
+</section>
+
+<footer class="footer">
+  BuilderAudit &middot; Forensic trust analysis for UK construction companies
+</footer>
+
+</body>
+</html>

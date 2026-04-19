@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const https = require('https');
 const { chromium } = require('playwright');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -11,6 +12,146 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 const client = new Anthropic();
 const MAX_PAGES = 20;
+const SERPAPI_KEY = process.env.SERPAPI_KEY;
+
+// ── Stock photo domains — instant flag, no API call needed ────────────────────
+const STOCK_DOMAINS = [
+  'shutterstock.com','istockphoto.com','gettyimages.com','getty.com',
+  'dreamstime.com','depositphotos.com','alamy.com','123rf.com',
+  'adobe.com/stock','stock.adobe.com','unsplash.com','pexels.com',
+  'freepik.com','canva.com','pixabay.com','stocksy.com',
+];
+
+// ── Reverse image search via SerpAPI ─────────────────────────────────────────
+function reverseImageSearch(imageUrl) {
+  return new Promise((resolve) => {
+    if (!SERPAPI_KEY) return resolve({ verdict: 'unknown', reason: 'No SerpAPI key configured' });
+
+    const params = new URLSearchParams({
+      engine: 'google_reverse_image',
+      image_url: imageUrl,
+      api_key: SERPAPI_KEY,
+    });
+
+    const url = 'https://serpapi.com/search.json?' + params.toString();
+
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+
+          // Check inline_images and image_results for stock site matches
+          const allResults = [
+            ...(json.image_results || []),
+            ...(json.inline_images || []),
+            ...(json.reverse_image_search || []),
+          ];
+
+          const sources = allResults.map(r => (r.link || r.source || '')).filter(Boolean);
+
+          // Check for stock site matches
+          const stockMatch = sources.find(src =>
+            STOCK_DOMAINS.some(domain => src.toLowerCase().includes(domain))
+          );
+
+          if (stockMatch) {
+            const domain = STOCK_DOMAINS.find(d => stockMatch.toLowerCase().includes(d));
+            return resolve({
+              verdict: 'stock',
+              reason: 'Found on ' + domain,
+              source: stockMatch,
+              matchCount: sources.length,
+            });
+          }
+
+          // Check if image appears on many OTHER websites (stolen/shared)
+          const externalMatches = sources.filter(src => {
+            try {
+              return !src.includes(new URL(imageUrl).hostname);
+            } catch { return false; }
+          });
+
+          if (externalMatches.length >= 3) {
+            return resolve({
+              verdict: 'duplicated',
+              reason: 'Image found on ' + externalMatches.length + ' other websites',
+              sources: externalMatches.slice(0, 3),
+              matchCount: externalMatches.length,
+            });
+          }
+
+          resolve({ verdict: 'original', reason: 'No stock or duplicate matches found', matchCount: sources.length });
+
+        } catch (e) {
+          resolve({ verdict: 'error', reason: 'Parse error: ' + e.message });
+        }
+      });
+    }).on('error', (e) => {
+      resolve({ verdict: 'error', reason: 'Request failed: ' + e.message });
+    });
+  });
+}
+
+// ── Select best images to check (largest, most prominent) ────────────────────
+function selectImagesForVerification(allImages, max = 8) {
+  // Filter out tiny images (icons, logos) and prefer larger ones
+  const candidates = allImages
+    .filter(img => img.width > 300 && img.height > 200)
+    .filter(img => !img.src.includes('logo') && !img.src.includes('icon') && !img.src.includes('badge'))
+    .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+  // Deduplicate by URL
+  const seen = new Set();
+  const unique = [];
+  for (const img of candidates) {
+    if (!seen.has(img.src)) {
+      seen.add(img.src);
+      unique.push(img);
+    }
+    if (unique.length >= max) break;
+  }
+  return unique;
+}
+
+// ── Run image verification across selected images ─────────────────────────────
+async function verifyImages(allImages) {
+  const toCheck = selectImagesForVerification(allImages, 8);
+  console.log('Checking ' + toCheck.length + ' images for stock/duplication...');
+
+  const results = [];
+
+  for (const img of toCheck) {
+    console.log('  Checking:', img.src.slice(0, 80));
+    const result = await reverseImageSearch(img.src);
+    results.push({
+      src: img.src,
+      alt: img.alt,
+      width: img.width,
+      height: img.height,
+      ...result,
+    });
+    // Small delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  const stockImages = results.filter(r => r.verdict === 'stock');
+  const duplicatedImages = results.filter(r => r.verdict === 'duplicated');
+  const originalImages = results.filter(r => r.verdict === 'original');
+  const checkedCount = results.filter(r => r.verdict !== 'error' && r.verdict !== 'unknown').length;
+
+  console.log('Image check complete:', stockImages.length, 'stock,', duplicatedImages.length, 'duplicated,', originalImages.length, 'original');
+
+  return {
+    checked: checkedCount,
+    total: allImages.length,
+    stockImages,
+    duplicatedImages,
+    originalImages,
+    allResults: results,
+  };
+}
 
 // ── Crawler ───────────────────────────────────────────────────────────────────
 async function crawlWebsite(startUrl) {
@@ -136,7 +277,7 @@ function normaliseUrl(raw) {
 }
 
 // ── Scorer ────────────────────────────────────────────────────────────────────
-async function scoreWebsite(pages, targetUrl) {
+async function scoreWebsite(pages, targetUrl, imageVerification) {
   console.log('Sending to Claude for analysis...');
 
   const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
@@ -148,6 +289,23 @@ async function scoreWebsite(pages, targetUrl) {
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
   }));
+
+  // Build image verification summary for the prompt
+  const imgVerifySummary = imageVerification ? {
+    imagesChecked: imageVerification.checked,
+    totalImagesOnSite: imageVerification.total,
+    confirmedStockImages: imageVerification.stockImages.map(i => ({
+      url: i.src,
+      foundOn: i.reason,
+      source: i.source || null,
+    })),
+    duplicatedElsewhere: imageVerification.duplicatedImages.map(i => ({
+      url: i.src,
+      foundOn: i.reason,
+      matchCount: i.matchCount,
+    })),
+    confirmedOriginal: imageVerification.originalImages.length,
+  } : null;
 
   const aggregatedSignals = {
     totalPages: pages.length,
@@ -163,6 +321,7 @@ async function scoreWebsite(pages, targetUrl) {
     hasExternalReviewLinks: allMeta.some(m => m.hasExternalReviewLinks),
     professionalEmail: allMeta.some(m => m.professionalEmail),
     imageSample: allImages.slice(0, 20).map(i => ({ src: i.src, alt: i.alt, width: i.width, height: i.height })),
+    imageVerification: imgVerifySummary,
   };
 
   const systemPrompt = `You are a forensic conversion analyst for UK construction companies.
@@ -177,126 +336,16 @@ You must output structured JSON designed to power a highly engaging, narrative-d
 The tone should feel like a brutally honest consultant — commercially focused, emotionally persuasive, grounded in real homeowner psychology.
 Avoid generic or polite language. Be direct, specific, and evidence-based.
 
+IMPORTANT: You have been given VERIFIED image data from a reverse image search engine. If images are confirmed as stock photos or found on other websites, treat this as hard evidence — not suspicion. Call it out explicitly and specifically.
+
 CONTEXT: A homeowner is considering spending £10k-£250k on a project. They are cautious, risk-aware, and comparing multiple builders.
 
 Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
 
-  const userPrompt = `Website being audited: ${targetUrl}
-
-EXTRACTED SIGNALS:
-${JSON.stringify(aggregatedSignals, null, 2)}
-
-FULL PAGE TEXT (${pages.length} pages crawled):
-${allText.slice(0, 6000)}
-
-I have also provided ${screenshotsToAnalyse.length} page screenshots for visual analysis.
-
-Return this exact JSON structure. Follow every instruction carefully:
-
-{
-  "hero": {
-    "score": <0-100 integer — honest, not generous>,
-    "headline": "<confronting but fair — e.g. 'Your website is quietly losing you jobs'>",
-    "subtext": "<1 sentence expanding on the headline — specific to what you found>",
-    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner. Tone: honest advisor who has just reviewed their site. Reference specific things you found.>"
-  },
-  "homeowner_journey": [
-    {
-      "stage": "first_impression",
-      "thought": "<first person homeowner thought — realistic, slightly uncomfortable. What do they feel in the first 5 seconds?>"
-    },
-    {
-      "stage": "scrolling",
-      "thought": "<what doubt creeps in as they scroll? Reference something specific from the site>"
-    },
-    {
-      "stage": "decision_moment",
-      "thought": "<the exact moment they decide to enquire or leave — what tips it?>"
-    }
-  ],
-  "live_audit_feed": [
-    {
-      "status": "success",
-      "message": "<short punchy finding — something that IS present and working>"
-    },
-    {
-      "status": "warning",
-      "message": "<something present but weak or incomplete>"
-    },
-    {
-      "status": "critical",
-      "message": "<something missing that directly hurts trust>"
-    }
-  ],
-  "trust_breakpoints": [
-    {
-      "title": "<short title of the trust failure>",
-      "homeowner_reaction": "<exactly what goes through their head at this moment>",
-      "evidence": "<what you specifically found or did not find>",
-      "impact": "critical|high|medium|low",
-      "fix": "<specific fix achievable within days>"
-    }
-  ],
-  "photo_analysis": {
-    "strong_images": [
-      {
-        "description": "<describe what you see>",
-        "why_it_works": "<why this builds trust>"
-      }
-    ],
-    "weak_images": [
-      {
-        "description": "<describe what you see>",
-        "issue": "<what is wrong with it>",
-        "impact": "<how this hurts trust>"
-      }
-    ]
-  },
-  "trust_questions": [
-    {
-      "question": "Can I verify this is a legitimate registered business?",
-      "score": <0-100>,
-      "explanation": "<specific answer based on evidence>"
-    },
-    {
-      "question": "Do I believe these are real projects by this company?",
-      "score": <0-100>,
-      "explanation": "<specific answer based on evidence>"
-    },
-    {
-      "question": "Do other homeowners trust and recommend this company?",
-      "score": <0-100>,
-      "explanation": "<specific answer based on evidence>"
-    },
-    {
-      "question": "Do they have the credentials to handle my project safely?",
-      "score": <0-100>,
-      "explanation": "<specific answer based on evidence>"
-    },
-    {
-      "question": "Will it be easy to contact and communicate with them?",
-      "score": <0-100>,
-      "explanation": "<specific answer based on evidence>"
-    },
-    {
-      "question": "Is this business actively trading right now?",
-      "score": <0-100>,
-      "explanation": "<specific answer based on evidence>"
-    }
-  ],
-  "competitor_gap": {
-    "summary": "<1-2 sentences on how this compares to a well-optimised UK builder site>",
-    "they_have": ["<thing a top competitor would have that this site lacks>"],
-    "you_have": ["<genuine strengths this site does have>"]
-  },
-  "top_actions": [
-    "<action 1 — most impactful, specific, achievable this week>",
-    "<action 2>",
-    "<action 3>",
-    "<action 4>",
-    "<action 5>"
-  ]
-}`;
+  const userPrompt = 'Website being audited: ' + targetUrl + '\n\nEXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\nFULL PAGE TEXT (' + pages.length + ' pages crawled):\n' + allText.slice(0, 6000) + '\n\nI have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
+  (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?
+    'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n' : '') +
+  'Return this exact JSON structure:\n\n{\n  "hero": {\n    "score": <0-100 integer>,\n    "headline": "<confronting but fair>",\n    "subtext": "<1 sentence specific to what you found>",\n    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings including any confirmed stock photos>"\n  },\n  "homeowner_journey": [\n    {"stage": "first_impression", "thought": "<first person homeowner — realistic>"},\n    {"stage": "scrolling", "thought": "<doubt as they scroll>"},\n    {"stage": "decision_moment", "thought": "<the moment they decide to leave or enquire>"}\n  ],\n  "live_audit_feed": [\n    {"status": "success|warning|critical", "message": "<punchy finding>"}\n  ],\n  "trust_breakpoints": [\n    {\n      "title": "<trust failure title>",\n      "homeowner_reaction": "<inner monologue>",\n      "evidence": "<specific evidence — for confirmed stock images name the source>",\n      "impact": "critical|high|medium|low",\n      "fix": "<specific fix achievable within days>"\n    }\n  ],\n  "photo_analysis": {\n    "summary": "<overall verdict on the photo strategy>",\n    "strong_images": [{"description": "", "why_it_works": ""}],\n    "weak_images": [{"description": "", "issue": "<if confirmed stock, state where it was found>", "impact": "", "confirmed_stock": true|false, "stock_source": "<source URL if confirmed>"}]\n  },\n  "trust_questions": [\n    {"question": "Can I verify this is a legitimate registered business?", "score": <0-100>, "explanation": ""},\n    {"question": "Do I believe these are real projects by this company?", "score": <0-100>, "explanation": "<if stock images confirmed, state this clearly>"},\n    {"question": "Do other homeowners trust and recommend this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do they have credentials to handle my project safely?", "score": <0-100>, "explanation": ""},\n    {"question": "Will they be easy to contact and communicate with?", "score": <0-100>, "explanation": ""},\n    {"question": "Is this business actively trading right now?", "score": <0-100>, "explanation": ""}\n  ],\n  "competitor_gap": {\n    "summary": "<1-2 sentences>",\n    "they_have": ["<thing competitors have>"],\n    "you_have": ["<genuine strength>"]\n  },\n  "top_actions": [\n    "<action 1 — most impactful first>",\n    "<action 2>",\n    "<action 3>",\n    "<action 4>",\n    "<action 5>"\n  ]\n}';
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
@@ -310,11 +359,15 @@ Return this exact JSON structure. Follow every instruction carefully:
 
   const rawText = response.content.map(b => b.text || '').join('');
   const clean = rawText.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean);
+  const result = JSON.parse(clean);
+
+  // Attach the raw image verification data to the report
+  result.imageVerification = imageVerification;
+  return result;
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', serpapi: !!SERPAPI_KEY }));
 
 app.post('/api/audit', async (req, res) => {
   const { url } = req.body;
@@ -330,7 +383,7 @@ app.post('/api/audit', async (req, res) => {
   const send = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
 
   try {
-    send('status', { message: 'Crawling website...', step: 1, total: 3 });
+    send('status', { message: 'Crawling website...', step: 1, total: 4 });
     const pages = await crawlWebsite(url);
 
     if (pages.length === 0) {
@@ -338,15 +391,29 @@ app.post('/api/audit', async (req, res) => {
       return res.end();
     }
 
+    const allImages = pages.flatMap(p => p.images);
     send('status', {
-      message: 'Crawled ' + pages.length + ' pages and ' + pages.reduce((s, p) => s + p.images.length, 0) + ' images. Running AI analysis...',
+      message: 'Crawled ' + pages.length + ' pages, ' + allImages.length + ' images found. Verifying photos...',
       step: 2,
-      total: 3,
+      total: 4,
     });
 
-    const report = await scoreWebsite(pages, url);
+    const imageVerification = await verifyImages(allImages);
 
-    send('status', { message: 'Building your report...', step: 3, total: 3 });
+    const stockCount = imageVerification.stockImages.length;
+    const dupCount = imageVerification.duplicatedImages.length;
+    const flagged = stockCount + dupCount;
+    send('status', {
+      message: flagged > 0
+        ? flagged + ' suspicious image' + (flagged > 1 ? 's' : '') + ' found. Running AI analysis...'
+        : 'Images verified. Running AI analysis...',
+      step: 3,
+      total: 4,
+    });
+
+    const report = await scoreWebsite(pages, url, imageVerification);
+
+    send('status', { message: 'Building your report...', step: 4, total: 4 });
     send('complete', { report, url, scannedAt: new Date().toISOString() });
 
   } catch (err) {

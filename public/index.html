@@ -4,170 +4,178 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BuilderAudit — Forensic Trust Audit for UK Builders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
-  --orange: #d85a30; --orange-light: #faece7; --orange-mid: #f0997b;
-  --amber: #ba7517; --amber-light: #faeeda;
-  --green: #3b6d11; --green-light: #eaf3de;
-  --red: #a32d2d; --red-light: #fcebeb;
-  --gray-50: #f8f7f4; --gray-100: #efefeb; --gray-200: #d3d1c7;
-  --gray-400: #888780; --gray-600: #5f5e5a; --gray-900: #1a1a18;
-  --font: 'DM Sans', system-ui, sans-serif;
+  --orange:#D85A30; --orange-light:#FAECE7;
+  --amber:#BA7517; --amber-light:#FAEEDA;
+  --green:#3B6D11; --green-light:#EAF3DE;
+  --red:#A32D2D; --red-light:#FCEBEB;
+  --gray-50:#F8F7F4; --gray-100:#EFEFEB; --gray-200:#D3D1C7;
+  --gray-400:#888780; --gray-600:#5F5E5A; --gray-900:#1A1A18;
+  --font:'DM Sans',system-ui,sans-serif;
+  --radius:12px; --radius-sm:8px;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--font); background: var(--gray-50); color: var(--gray-900); min-height: 100vh; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--gray-50);color:var(--gray-900);min-height:100vh}
 
 /* ── Header ── */
-header { background: var(--gray-900); padding: 1rem 2rem; display: flex; align-items: center; }
-.logo { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
-.logo span { color: var(--orange); }
-.tagline { font-size: 12px; color: var(--gray-400); margin-left: auto; }
+header{background:var(--gray-900);padding:.9rem 2rem;display:flex;align-items:center}
+.logo{font-size:16px;font-weight:600;color:#fff;letter-spacing:-.02em}
+.logo em{color:var(--orange);font-style:normal}
+.tagline{font-size:12px;color:var(--gray-400);margin-left:auto}
 
-/* ── Hero ── */
-.hero { background: var(--gray-900); padding: 3.5rem 2rem 4.5rem; text-align: center; position: relative; overflow: hidden; }
-.hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 0%, rgba(216,90,48,0.12) 0%, transparent 65%); pointer-events: none; }
-.hero h1 { font-size: 38px; font-weight: 700; color: #fff; letter-spacing: -0.03em; margin-bottom: 0.75rem; line-height: 1.15; }
-.hero h1 span { color: var(--orange); }
-.hero p { color: var(--gray-400); font-size: 15px; max-width: 500px; margin: 0 auto 2rem; line-height: 1.6; }
-.input-row { display: flex; max-width: 620px; margin: 0 auto; gap: 10px; }
-.input-row input { flex: 1; padding: 15px 18px; border-radius: 10px; border: 1.5px solid #3a3a38; background: #242422; color: #fff; font-size: 15px; font-family: var(--font); outline: none; transition: border-color 0.2s; }
-.input-row input:focus { border-color: var(--orange); }
-.input-row input::placeholder { color: #555; }
-.input-row button { padding: 15px 26px; border-radius: 10px; background: var(--orange); color: #fff; font-size: 15px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap; font-family: var(--font); transition: opacity 0.2s; }
-.input-row button:hover { opacity: 0.88; }
-.input-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* ── Hero input ── */
+.hero{background:var(--gray-900);padding:3rem 1.5rem 4rem;text-align:center;position:relative}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -20%,rgba(216,90,48,.1) 0%,transparent 60%);pointer-events:none}
+.hero h1{font-size:34px;font-weight:700;color:#fff;letter-spacing:-.03em;line-height:1.15;margin-bottom:.75rem}
+.hero h1 em{color:var(--orange);font-style:normal}
+.hero p{color:var(--gray-400);font-size:15px;max-width:480px;margin:0 auto 2rem;line-height:1.6}
+.input-row{display:flex;max-width:600px;margin:0 auto;gap:8px}
+.input-row input{flex:1;padding:14px 18px;border-radius:var(--radius-sm);border:1.5px solid #3A3A38;background:#242422;color:#fff;font-size:15px;font-family:var(--font);outline:none;transition:border-color .2s}
+.input-row input:focus{border-color:var(--orange)}
+.input-row input::placeholder{color:#555}
+.input-row button{padding:14px 22px;border-radius:var(--radius-sm);background:var(--orange);color:#fff;font-size:14px;font-weight:600;border:none;cursor:pointer;white-space:nowrap;font-family:var(--font);transition:opacity .2s}
+.input-row button:hover{opacity:.88}
+.input-row button:disabled{opacity:.4;cursor:not-allowed}
 
 /* ── Progress ── */
-.status-bar { max-width: 620px; margin: 1.5rem auto 0; display: none; align-items: center; gap: 12px; }
-.status-bar.active { display: flex; }
-.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #3a3a38; border-top-color: var(--orange); animation: spin 0.8s linear infinite; flex-shrink: 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.status-text { color: var(--gray-400); font-size: 13px; }
-.steps { display: flex; gap: 5px; max-width: 620px; margin: 1rem auto 0; display: none; }
-.steps.active { display: flex; }
-.step { flex: 1; height: 2px; border-radius: 99px; background: #3a3a38; transition: background 0.4s; }
-.step.done { background: var(--orange); }
+.status-bar{max-width:600px;margin:1.5rem auto 0;display:none;align-items:center;gap:10px}
+.status-bar.show{display:flex}
+.spinner{width:15px;height:15px;border-radius:50%;border:2px solid #3A3A38;border-top-color:var(--orange);animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-text{color:var(--gray-400);font-size:13px}
+.steps{display:flex;gap:4px;max-width:600px;margin:.75rem auto 0;display:none}
+.steps.show{display:flex}
+.step{flex:1;height:2px;border-radius:99px;background:#3A3A38;transition:background .4s}
+.step.done{background:var(--orange)}
 
-/* ── Layout ── */
-main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
-.section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); font-weight: 700; margin-bottom: 10px; }
-.hidden { display: none !important; }
+/* ── Main ── */
+main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
 
-/* ── Score hero card ── */
-.score-hero { background: var(--gray-900); border-radius: 20px; padding: 2rem 2.5rem; margin-bottom: 1.5rem; display: grid; grid-template-columns: auto 1fr; gap: 2rem; align-items: center; }
-.score-big { font-size: 80px; font-weight: 700; line-height: 1; letter-spacing: -0.05em; }
-.score-headline { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -0.02em; margin-bottom: 6px; }
-.score-subtext { font-size: 14px; color: var(--gray-400); margin-bottom: 12px; line-height: 1.5; }
-.ai-voice { font-size: 14px; color: #c8c6be; line-height: 1.7; border-left: 2px solid var(--orange); padding-left: 14px; font-style: italic; }
-.score-bar { height: 6px; border-radius: 99px; background: #2a2a28; margin-top: 16px; }
-.score-bar-fill { height: 6px; border-radius: 99px; }
+/* ── Empty ── */
+#empty{text-align:center;padding:5rem 2rem;color:var(--gray-600)}
+#empty h2{font-size:19px;font-weight:600;color:var(--gray-900);margin-bottom:8px}
+#empty p{font-size:14px;line-height:1.6;max-width:380px;margin:0 auto}
+
+/* ── Score band ── */
+.score-band{background:var(--gray-900);border-radius:16px;padding:1.75rem 2rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:1.75rem}
+.ring-wrap{position:relative;width:88px;height:88px;flex-shrink:0}
+.ring-wrap svg{width:88px;height:88px}
+.ring-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff}
+.score-copy{flex:1;min-width:0}
+.score-hl{font-size:19px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-bottom:4px;line-height:1.2}
+.score-sub{font-size:13px;color:var(--gray-400);line-height:1.5;margin-bottom:10px}
+.ai-voice{font-size:13px;color:#C8C6BE;border-left:2px solid var(--orange);padding-left:12px;font-style:italic;line-height:1.6}
+.domain-meta{font-size:11px;color:var(--gray-400);margin-bottom:1.25rem;display:flex;align-items:center;gap:8px}
+.meta-dot{width:4px;height:4px;border-radius:50%;background:var(--gray-400)}
+
+/* ── Tabs ── */
+.tab-bar{display:flex;gap:3px;background:var(--gray-100);padding:4px;border-radius:var(--radius-sm);margin-bottom:1.25rem;border:1px solid var(--gray-200)}
+.tab{flex:1;padding:8px 4px;text-align:center;font-size:12px;font-weight:500;color:var(--gray-600);border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tab:hover{color:var(--gray-900)}
+.tab.on{background:#fff;color:var(--gray-900);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+
+/* ── Panels ── */
+.panel{display:none}
+.panel.on{display:block}
 
 /* ── Journey ── */
-.journey-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.5rem; }
-.journey-card { background: #fff; border: 1px solid var(--gray-100); border-radius: 14px; padding: 1.25rem; }
-.journey-stage { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-400); font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-.journey-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); }
-.journey-thought { font-size: 14px; color: var(--gray-900); line-height: 1.6; font-style: italic; }
-.journey-thought::before { content: '\201C'; }
-.journey-thought::after { content: '\201D'; }
-
-/* ── Audit feed ── */
-.feed-card { background: var(--gray-900); border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
-.feed-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--gray-400); font-weight: 700; margin-bottom: 12px; }
-.feed-item { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid #2a2a28; }
-.feed-item:last-child { border-bottom: none; }
-.feed-icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
-.feed-msg { font-size: 13px; color: #c8c6be; line-height: 1.4; }
-.feed-success .feed-msg { color: #9fd47a; }
-.feed-warning .feed-msg { color: #f5c842; }
-.feed-critical .feed-msg { color: #f09595; }
+.journey-list{display:flex;flex-direction:column;gap:8px}
+.j-card{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);padding:1.1rem 1.25rem;display:flex;gap:14px;align-items:flex-start}
+.j-num{width:26px;height:26px;border-radius:50%;background:var(--orange);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.j-stage{font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;font-weight:600}
+.j-thought{font-size:14px;color:var(--gray-900);line-height:1.6;font-style:italic}
+.j-thought::before{content:'\201C';color:var(--orange);margin-right:2px}
+.j-thought::after{content:'\201D';color:var(--orange);margin-left:2px}
 
 /* ── Trust breakpoints ── */
-.breakpoint-card { background: #fff; border: 1px solid var(--gray-100); border-radius: 14px; overflow: hidden; margin-bottom: 1.5rem; }
-.breakpoint-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--gray-100); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
-.bp-row { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--gray-100); }
-.bp-row:last-child { border-bottom: none; }
-.bp-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.bp-title { font-size: 15px; font-weight: 600; }
-.impact-pill { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; }
-.impact-critical { background: var(--red-light); color: var(--red); }
-.impact-high { background: var(--orange-light); color: #993c1d; }
-.impact-medium { background: var(--amber-light); color: #854f0b; }
-.impact-low { background: var(--green-light); color: #27500a; }
-.bp-reaction { font-size: 13px; color: var(--gray-600); font-style: italic; margin-bottom: 6px; line-height: 1.5; }
-.bp-reaction::before { content: '"'; color: var(--orange); font-weight: 700; font-style: normal; }
-.bp-reaction::after { content: '"'; color: var(--orange); font-weight: 700; font-style: normal; }
-.bp-evidence { font-size: 12px; color: var(--gray-400); margin-bottom: 8px; }
-.bp-evidence::before { content: 'Evidence: '; font-weight: 600; color: var(--gray-600); }
-.bp-fix { font-size: 12px; color: var(--green); font-weight: 500; }
-.bp-fix::before { content: '→ Fix: '; font-weight: 700; }
+.bp-list{display:flex;flex-direction:column;gap:8px}
+.bp-card{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);padding:1.1rem 1.25rem}
+.bp-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.bp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-critical{background:#E24B4A}.dot-high{background:var(--orange)}.dot-medium{background:var(--amber)}.dot-low{background:#639922}
+.bp-title{font-size:14px;font-weight:600;flex:1;color:var(--gray-900)}
+.bp-pill{font-size:10px;padding:2px 8px;border-radius:99px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.pill-critical{background:var(--red-light);color:var(--red)}
+.pill-high{background:var(--orange-light);color:#712B13}
+.pill-medium{background:var(--amber-light);color:#412402}
+.pill-low{background:var(--green-light);color:#27500A}
+.bp-reaction{font-size:13px;color:var(--gray-600);line-height:1.5;font-style:italic;padding:8px 12px;background:var(--gray-50);border-radius:var(--radius-sm);margin-bottom:8px;border-left:3px solid var(--gray-200)}
+.bp-evidence{font-size:12px;color:var(--gray-400);margin-bottom:6px}
+.bp-evidence b{color:var(--gray-600);font-weight:600}
+.bp-fix{font-size:12px;color:var(--green);font-weight:500}
+.bp-fix::before{content:'Fix \2192  ';font-weight:700}
 
 /* ── Trust questions ── */
-.tq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.5rem; }
-.tq-card { background: #fff; border: 1px solid var(--gray-100); border-radius: 12px; padding: 1rem 1.1rem; }
-.tq-question { font-size: 13px; font-weight: 600; color: var(--gray-900); margin-bottom: 8px; line-height: 1.4; }
-.tq-score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.tq-score { font-size: 24px; font-weight: 700; line-height: 1; }
-.tq-bar { flex: 1; height: 4px; border-radius: 99px; background: var(--gray-100); }
-.tq-bar-fill { height: 4px; border-radius: 99px; }
-.tq-explanation { font-size: 12px; color: var(--gray-600); line-height: 1.5; }
+.tq-list{display:flex;flex-direction:column;gap:6px}
+.tq-row{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius-sm);padding:.9rem 1.1rem;display:flex;align-items:center;gap:14px}
+.tq-q{flex:1;font-size:13px;color:var(--gray-900);line-height:1.4}
+.tq-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.tq-score{font-size:20px;font-weight:700;min-width:32px;text-align:right}
+.tq-track{width:56px;height:4px;background:var(--gray-100);border-radius:99px}
+.tq-fill{height:4px;border-radius:99px}
+.tq-exp{font-size:11px;color:var(--gray-400);line-height:1.4;margin-top:4px}
+.c-r{color:var(--orange)}.c-a{color:var(--amber)}.c-g{color:var(--green)}
+.f-r{background:var(--orange)}.f-a{background:#EF9F27}.f-g{background:#639922}
+
+/* ── Feed ── */
+.feed-list{display:flex;flex-direction:column;gap:4px}
+.fi{display:flex;gap:10px;align-items:flex-start;padding:.65rem .9rem;border-radius:var(--radius-sm)}
+.fi-s{background:var(--green-light)}.fi-w{background:var(--amber-light)}.fi-c{background:var(--red-light)}
+.fi-icon{font-size:12px;flex-shrink:0;margin-top:1px;font-weight:700}
+.fi-s .fi-icon{color:var(--green)}.fi-w .fi-icon{color:var(--amber)}.fi-c .fi-icon{color:var(--red)}
+.fi-msg{font-size:13px;line-height:1.4}
+.fi-s .fi-msg{color:#173404}.fi-w .fi-msg{color:#412402}.fi-c .fi-msg{color:#501313}
 
 /* ── Photo analysis ── */
-.photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.5rem; }
-.photo-panel { border-radius: 14px; overflow: hidden; }
-.photo-panel-header { padding: 0.75rem 1.1rem; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
-.photo-panel-good .photo-panel-header { background: var(--green-light); color: var(--green); }
-.photo-panel-bad .photo-panel-header { background: var(--red-light); color: var(--red); }
-.photo-panel-body { background: #fff; border: 1px solid var(--gray-100); border-top: none; border-radius: 0 0 14px 14px; }
-.photo-item { padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--gray-100); }
-.photo-item:last-child { border-bottom: none; }
-.photo-desc { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
-.photo-sub { font-size: 12px; color: var(--gray-600); line-height: 1.4; }
+.photo-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.photo-col{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);overflow:hidden}
+.photo-col-head{padding:.75rem 1rem;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.ph-good .photo-col-head{background:var(--green-light);color:var(--green)}
+.ph-bad .photo-col-head{background:var(--red-light);color:var(--red)}
+.photo-item{padding:.85rem 1rem;border-top:1px solid var(--gray-100)}
+.photo-desc{font-size:13px;font-weight:500;color:var(--gray-900);margin-bottom:3px}
+.photo-sub{font-size:12px;color:var(--gray-600);line-height:1.4}
 
 /* ── Competitor gap ── */
-.gap-card { background: #fff; border: 1px solid var(--gray-100); border-radius: 14px; overflow: hidden; margin-bottom: 1.5rem; }
-.gap-summary { padding: 1rem 1.5rem; border-bottom: 1px solid var(--gray-100); font-size: 14px; color: var(--gray-600); line-height: 1.6; }
-.gap-cols { display: grid; grid-template-columns: 1fr 1fr; }
-.gap-col { padding: 1rem 1.5rem; }
-.gap-col:first-child { border-right: 1px solid var(--gray-100); }
-.gap-col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
-.gap-col-bad .gap-col-title { color: var(--red); }
-.gap-col-good .gap-col-title { color: var(--green); }
-.gap-item { font-size: 13px; color: var(--gray-900); padding: 4px 0; display: flex; gap: 8px; line-height: 1.4; }
+.gap-card{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);overflow:hidden}
+.gap-summary{padding:1rem 1.25rem;font-size:14px;color:var(--gray-600);line-height:1.6;border-bottom:1px solid var(--gray-100)}
+.gap-cols{display:grid;grid-template-columns:1fr 1fr}
+.gap-col{padding:1rem 1.25rem}
+.gap-col:first-child{border-right:1px solid var(--gray-100)}
+.gap-col-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.gc-bad .gap-col-head{color:var(--red)}.gc-good .gap-col-head{color:var(--green)}
+.gap-item{font-size:13px;color:var(--gray-900);padding:4px 0;display:flex;gap:8px;line-height:1.4;align-items:flex-start}
+.gi-icon{flex-shrink:0;font-weight:700;font-size:12px;margin-top:1px}
+.gc-bad .gi-icon{color:var(--red)}.gc-good .gi-icon{color:var(--green)}
 
 /* ── Actions ── */
-.actions-card { background: var(--gray-900); border-radius: 16px; padding: 1.5rem 2rem; margin-bottom: 1.5rem; }
-.actions-title { font-size: 12px; font-weight: 700; color: var(--orange); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 1rem; }
-.action-row { display: flex; gap: 14px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #2a2a28; }
-.action-row:last-child { border-bottom: none; }
-.action-num { font-size: 11px; font-weight: 700; color: var(--orange); background: rgba(216,90,48,0.15); min-width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.action-text { font-size: 14px; color: #e8e6de; line-height: 1.5; }
+.actions-wrap{background:var(--gray-900);border-radius:var(--radius);padding:1.5rem}
+.actions-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--orange);margin-bottom:1rem}
+.action-row{display:flex;gap:12px;align-items:flex-start;padding:.85rem 0;border-bottom:1px solid #2A2A28}
+.action-row:last-child{border-bottom:none;padding-bottom:0}
+.a-num{width:24px;height:24px;border-radius:50%;background:rgba(216,90,48,.2);color:var(--orange);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.a-text{font-size:14px;color:#E8E6DE;line-height:1.5}
 
-/* ── Empty / error ── */
-#empty-state { text-align: center; padding: 5rem 2rem; color: var(--gray-600); }
-#empty-state h2 { font-size: 20px; font-weight: 600; color: var(--gray-900); margin-bottom: 8px; }
-#empty-state p { font-size: 14px; line-height: 1.6; max-width: 400px; margin: 0 auto; }
-.error-card { background: var(--orange-light); border: 1px solid var(--orange-mid); border-radius: 12px; padding: 1rem 1.5rem; font-size: 14px; color: #993c1d; }
-
-.c-red { color: var(--orange); } .c-amber { color: var(--amber); } .c-green { color: var(--green); }
-.f-red { background: var(--orange); } .f-amber { background: #ef9f27; } .f-green { background: #639922; }
+/* ── Error ── */
+.error-card{background:var(--orange-light);border:1px solid #F0997B;border-radius:var(--radius-sm);padding:1rem 1.25rem;font-size:14px;color:#712B13}
 </style>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <header>
-  <div class="logo">Builder<span>Audit</span></div>
+  <div class="logo">Builder<em>Audit</em></div>
   <div class="tagline">Forensic trust analysis for UK construction websites</div>
 </header>
 
 <div class="hero">
-  <h1>Find out why your website<br><span>isn't converting visitors into jobs</span></h1>
-  <p>We simulate how a homeowner experiences your site — then show you exactly where trust breaks down and enquiries are lost.</p>
+  <h1>Find out why your site<br>isn't converting into <em>jobs</em></h1>
+  <p>We simulate a homeowner visiting your website and pinpoint every moment they lose trust — and why they call your competitor instead.</p>
   <div class="input-row">
     <input type="url" id="urlInput" placeholder="https://yourbuilderwebsite.co.uk" />
-    <button id="auditBtn" onclick="startAudit()">Run forensic audit →</button>
+    <button id="auditBtn" onclick="startAudit()">Run audit &rarr;</button>
   </div>
   <div class="status-bar" id="statusBar">
     <div class="spinner"></div>
@@ -181,204 +189,209 @@ main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
 </div>
 
 <main>
-  <div id="empty-state">
-    <h2>No website audited yet</h2>
-    <p>Enter any UK builder's website above. We'll crawl it, analyse it like a homeowner, and show you every trust gap.</p>
+  <div id="empty">
+    <h2>No audit run yet</h2>
+    <p>Enter any UK builder website above. We'll crawl it, read it like a homeowner, and tell you exactly what's costing you leads.</p>
   </div>
-  <div id="report-area" class="hidden"></div>
+  <div id="report" style="display:none"></div>
 </main>
 
 <script>
-const API_BASE = window.location.origin;
+const API = window.location.origin;
 
-function sc(s) { return s >= 70 ? 'green' : s >= 45 ? 'amber' : 'red'; }
-function sl(s) { return s >= 70 ? 'Good' : s >= 45 ? 'Needs work' : 'Poor'; }
-function fc(s) { return 'f-' + sc(s); }
-function cc(s) { return 'c-' + sc(s); }
+function sc(n){return n>=70?'g':n>=45?'a':'r'}
+function cc(n){return 'c-'+sc(n)}
+function fc(n){return 'f-'+sc(n)}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function stageLabel(s){return{first_impression:'First impression',scrolling:'As they scroll',decision_moment:'Decision moment'}[s]||s}
+function impactPill(i){return '<span class="bp-pill pill-'+(i||'medium')+'">'+esc(i)+'</span>'}
 
-function stageLabel(s) {
-  return { first_impression: 'First impression', scrolling: 'As they scroll', decision_moment: 'Decision moment' }[s] || s;
+function ringPath(score){
+  var r=34,circ=2*Math.PI*r,offset=circ*(1-score/100);
+  var col=score>=70?'#639922':score>=45?'#EF9F27':'#D85A30';
+  return '<circle cx="44" cy="44" r="'+r+'" fill="none" stroke="#2A2A28" stroke-width="7"/>' +
+    '<circle cx="44" cy="44" r="'+r+'" fill="none" stroke="'+col+'" stroke-width="7" stroke-dasharray="'+circ.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" stroke-linecap="round" transform="rotate(-90 44 44)"/>';
 }
 
-async function startAudit() {
-  const url = document.getElementById('urlInput').value.trim();
-  if (!url || !url.startsWith('http')) { alert('Please enter a full URL starting with https://'); return; }
-  document.getElementById('auditBtn').disabled = true;
-  document.getElementById('empty-state').classList.add('hidden');
-  document.getElementById('report-area').classList.add('hidden');
-  document.getElementById('statusBar').classList.add('active');
-  document.getElementById('steps').classList.add('active');
-  setStatus('Connecting...', 0);
-  try { await runAuditSSE(url); } catch(e) { showError(e.message); }
+async function startAudit(){
+  var url=document.getElementById('urlInput').value.trim();
+  if(!url||!url.startsWith('http')){alert('Please enter a full URL starting with https://');return;}
+  document.getElementById('auditBtn').disabled=true;
+  document.getElementById('empty').style.display='none';
+  document.getElementById('report').style.display='none';
+  document.getElementById('statusBar').classList.add('show');
+  document.getElementById('steps').classList.add('show');
+  setStatus('Connecting...',0);
+  try{await runSSE(url);}catch(e){showError(e.message);}
 }
 
-async function runAuditSSE(url) {
-  const response = await fetch(API_BASE + '/api/audit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  });
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    let lastEvent = null;
-    for (const line of lines) {
-      if (line.startsWith('event: ')) { lastEvent = line.slice(7).trim(); continue; }
-      if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          const evt = lastEvent || (data.step ? 'status' : data.report ? 'complete' : data.message ? 'error' : null);
-          if (evt) handleEvent(evt, data);
-        } catch(e) {}
-        lastEvent = null;
+async function runSSE(url){
+  var res=await fetch(API+'/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
+  var reader=res.body.getReader(),dec=new TextDecoder(),buf='';
+  while(true){
+    var _ref=await reader.read(),done=_ref.done,value=_ref.value;
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    var lines=buf.split('\n');
+    buf=lines.pop();
+    var lastEvt=null;
+    for(var i=0;i<lines.length;i++){
+      var line=lines[i];
+      if(line.startsWith('event: ')){lastEvt=line.slice(7).trim();continue;}
+      if(line.startsWith('data: ')){
+        try{
+          var d=JSON.parse(line.slice(6));
+          var evt=lastEvt||(d.step?'status':d.report?'complete':d.message?'error':null);
+          if(evt)handle(evt,d);
+        }catch(e){}
+        lastEvt=null;
       }
     }
   }
-  document.getElementById('auditBtn').disabled = false;
+  document.getElementById('auditBtn').disabled=false;
 }
 
-function handleEvent(name, data) {
-  if (name === 'status') setStatus(data.message, data.step || 0);
-  else if (name === 'complete') { setStatus('Done!', 3); setTimeout(() => renderReport(data.report, data.url, data.scannedAt), 400); }
-  else if (name === 'error') showError(data.message);
+function handle(name,data){
+  if(name==='status')setStatus(data.message,data.step||0);
+  else if(name==='complete'){setStatus('Done!',3);setTimeout(function(){render(data.report,data.url,data.scannedAt);},400);}
+  else if(name==='error')showError(data.message);
 }
 
-function setStatus(msg, step) {
-  document.getElementById('statusText').textContent = msg;
-  for (let i = 1; i <= 3; i++) document.getElementById('step' + i).classList.toggle('done', i <= step);
+function setStatus(msg,step){
+  document.getElementById('statusText').textContent=msg;
+  for(var i=1;i<=3;i++)document.getElementById('step'+i).classList.toggle('done',i<=step);
 }
 
-function showError(msg) {
-  document.getElementById('statusBar').classList.remove('active');
-  document.getElementById('steps').classList.remove('active');
-  document.getElementById('auditBtn').disabled = false;
-  const area = document.getElementById('report-area');
-  area.classList.remove('hidden');
-  area.innerHTML = '<div class="error-card">Audit failed: ' + esc(msg) + '</div>';
+function showError(msg){
+  document.getElementById('statusBar').classList.remove('show');
+  document.getElementById('steps').classList.remove('show');
+  document.getElementById('auditBtn').disabled=false;
+  var r=document.getElementById('report');
+  r.style.display='block';
+  r.innerHTML='<div class="error-card">Audit failed: '+esc(msg)+'</div>';
 }
 
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function render(r,url,scannedAt){
+  document.getElementById('statusBar').classList.remove('show');
+  document.getElementById('steps').classList.remove('show');
 
-function renderReport(r, url, scannedAt) {
-  document.getElementById('statusBar').classList.remove('active');
-  document.getElementById('steps').classList.remove('active');
+  var score=(r.hero||{}).score||0;
+  var domain='';try{domain=new URL(url).hostname;}catch(e){domain=url;}
+  var date=new Date(scannedAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
 
-  const score = (r.hero || {}).score || 0;
-  const color = sc(score);
-  const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
-  const date = new Date(scannedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  var html='';
 
-  // ── Score hero ──
-  const heroHTML =
-    '<div class="score-hero">' +
-      '<div class="score-big c-' + color + '">' + score + '</div>' +
-      '<div>' +
-        '<div class="score-headline">' + esc((r.hero||{}).headline||'') + '</div>' +
-        '<div class="score-subtext">' + esc((r.hero||{}).subtext||'') + '</div>' +
-        '<div class="ai-voice">' + esc((r.hero||{}).ai_voice_intro||'') + '</div>' +
-        '<div class="score-bar"><div class="score-bar-fill f-' + color + '" style="width:' + score + '%"></div></div>' +
-      '</div>' +
-    '</div>';
+  /* domain meta */
+  html+='<div class="domain-meta">'+esc(domain)+'<div class="meta-dot"></div>Audited '+date+'</div>';
 
-  // ── Homeowner journey ──
-  const journeyHTML = '<div class="section-label">How a homeowner experiences your site</div>' +
-    '<div class="journey-grid">' +
-    (r.homeowner_journey || []).map(j =>
-      '<div class="journey-card">' +
-        '<div class="journey-stage"><div class="journey-dot"></div>' + stageLabel(j.stage) + '</div>' +
-        '<div class="journey-thought">' + esc(j.thought||'') + '</div>' +
-      '</div>'
-    ).join('') +
-    '</div>';
+  /* score band */
+  html+='<div class="score-band">';
+  html+='<div class="ring-wrap"><svg viewBox="0 0 88 88">'+ringPath(score)+'</svg><div class="ring-num">'+score+'</div></div>';
+  html+='<div class="score-copy">';
+  html+='<div class="score-hl">'+esc((r.hero||{}).headline||'')+'</div>';
+  html+='<div class="score-sub">'+esc((r.hero||{}).subtext||'')+'</div>';
+  html+='<div class="ai-voice">'+esc((r.hero||{}).ai_voice_intro||'')+'</div>';
+  html+='</div></div>';
 
-  // ── Live audit feed ──
-  const feedHTML = '<div class="section-label">Live audit findings</div>' +
-    '<div class="feed-card"><div class="feed-title">What our scanner found</div>' +
-    (r.live_audit_feed || []).map(f => {
-      const icon = f.status === 'success' ? '✔' : f.status === 'critical' ? '✖' : '⚠';
-      return '<div class="feed-item feed-' + f.status + '"><div class="feed-icon">' + icon + '</div><div class="feed-msg">' + esc(f.message||'') + '</div></div>';
-    }).join('') +
-    '</div>';
+  /* tabs */
+  var tabs=[
+    {id:'journey',label:'Homeowner journey'},
+    {id:'issues',label:'Trust issues'},
+    {id:'questions',label:'Homeowner view'},
+    {id:'photos',label:'Photo analysis'},
+    {id:'gap',label:'vs Competitors'},
+    {id:'feed',label:'Audit findings'},
+    {id:'actions',label:'Action plan'},
+  ];
+  html+='<div class="tab-bar">';
+  tabs.forEach(function(t,i){html+='<div class="tab'+(i===0?' on':'')+'" onclick="switchTab(\''+t.id+'\',this)">'+t.label+'</div>';});
+  html+='</div>';
 
-  // ── Trust breakpoints ──
-  const impactOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-  const breakpoints = [...(r.trust_breakpoints || [])].sort((a,b) => (impactOrder[a.impact]||4) - (impactOrder[b.impact]||4));
-  const bpHTML = breakpoints.length ? '<div class="section-label">Where homeowners lose trust</div>' +
-    '<div class="breakpoint-card">' +
-      '<div class="breakpoint-header">Trust breakpoints <span style="font-size:12px;color:var(--gray-400);font-weight:400">' + breakpoints.length + ' identified · sorted by impact</span></div>' +
-      breakpoints.map(bp =>
-        '<div class="bp-row">' +
-          '<div class="bp-top"><div class="bp-title">' + esc(bp.title||'') + '</div><span class="impact-pill impact-' + (bp.impact||'medium') + '">' + (bp.impact||'') + '</span></div>' +
-          '<div class="bp-reaction">' + esc(bp.homeowner_reaction||'') + '</div>' +
-          '<div class="bp-evidence">' + esc(bp.evidence||'') + '</div>' +
-          '<div class="bp-fix">' + esc(bp.fix||'') + '</div>' +
-        '</div>'
-      ).join('') +
-    '</div>' : '';
+  /* panel: journey */
+  html+='<div class="panel on" id="panel-journey"><div class="journey-list">';
+  (r.homeowner_journey||[]).forEach(function(j,i){
+    html+='<div class="j-card"><div class="j-num">'+(i+1)+'</div><div><div class="j-stage">'+stageLabel(j.stage)+'</div><div class="j-thought">'+esc(j.thought||'')+'</div></div></div>';
+  });
+  html+='</div></div>';
 
-  // ── Trust questions ──
-  const tqHTML = '<div class="section-label">How a homeowner scores this site</div>' +
-    '<div class="tq-grid">' +
-    (r.trust_questions || []).map(q =>
-      '<div class="tq-card">' +
-        '<div class="tq-question">' + esc(q.question||'') + '</div>' +
-        '<div class="tq-score-row"><div class="tq-score ' + cc(q.score||0) + '">' + (q.score||0) + '</div><div class="tq-bar"><div class="tq-bar-fill ' + fc(q.score||0) + '" style="width:' + (q.score||0) + '%"></div></div></div>' +
-        '<div class="tq-explanation">' + esc(q.explanation||'') + '</div>' +
-      '</div>'
-    ).join('') +
-    '</div>';
+  /* panel: issues (trust breakpoints) */
+  var bps=[...(r.trust_breakpoints||[])].sort(function(a,b){
+    var o={critical:0,high:1,medium:2,low:3};return(o[a.impact]||4)-(o[b.impact]||4);
+  });
+  html+='<div class="panel" id="panel-issues"><div class="bp-list">';
+  bps.forEach(function(bp){
+    html+='<div class="bp-card">';
+    html+='<div class="bp-top"><div class="bp-dot dot-'+(bp.impact||'medium')+'"></div><div class="bp-title">'+esc(bp.title||'')+'</div>'+impactPill(bp.impact)+'</div>';
+    html+='<div class="bp-reaction">'+esc(bp.homeowner_reaction||'')+'</div>';
+    if(bp.evidence)html+='<div class="bp-evidence"><b>Evidence:</b> '+esc(bp.evidence)+'</div>';
+    if(bp.fix)html+='<div class="bp-fix">'+esc(bp.fix)+'</div>';
+    html+='</div>';
+  });
+  html+='</div></div>';
 
-  // ── Photo analysis ──
-  const pa = r.photo_analysis || {};
-  const strongItems = (pa.strong_images || []).map(i =>
-    '<div class="photo-item"><div class="photo-desc">' + esc(i.description||'') + '</div><div class="photo-sub">' + esc(i.why_it_works||'') + '</div></div>'
-  ).join('');
-  const weakItems = (pa.weak_images || []).map(i =>
-    '<div class="photo-item"><div class="photo-desc">' + esc(i.description||'') + '</div><div class="photo-sub">' + esc(i.issue||'') + ' — ' + esc(i.impact||'') + '</div></div>'
-  ).join('');
-  const photoHTML = (strongItems || weakItems) ? '<div class="section-label">Photo & visual analysis</div>' +
-    '<div class="photo-grid">' +
-      (strongItems ? '<div class="photo-panel photo-panel-good"><div class="photo-panel-header">✓ What works</div><div class="photo-panel-body">' + strongItems + '</div></div>' : '') +
-      (weakItems ? '<div class="photo-panel photo-panel-bad"><div class="photo-panel-header">✖ What hurts trust</div><div class="photo-panel-body">' + weakItems + '</div></div>' : '') +
-    '</div>' : '';
+  /* panel: trust questions */
+  html+='<div class="panel" id="panel-questions"><div class="tq-list">';
+  (r.trust_questions||[]).forEach(function(q){
+    var s=q.score||0;
+    html+='<div class="tq-row">';
+    html+='<div class="tq-q">'+esc(q.question||'')+'<div class="tq-exp">'+esc(q.explanation||'')+'</div></div>';
+    html+='<div class="tq-right"><div class="tq-score '+cc(s)+'">'+s+'</div><div class="tq-track"><div class="tq-fill '+fc(s)+'" style="width:'+s+'%"></div></div></div>';
+    html+='</div>';
+  });
+  html+='</div></div>';
 
-  // ── Competitor gap ──
-  const cg = r.competitor_gap || {};
-  const gapHTML = '<div class="section-label">How you compare to top builders</div>' +
-    '<div class="gap-card">' +
-      '<div class="gap-summary">' + esc(cg.summary||'') + '</div>' +
-      '<div class="gap-cols">' +
-        '<div class="gap-col gap-col-bad"><div class="gap-col-title">✖ They have — you don\'t</div>' +
-          (cg.they_have||[]).map(t => '<div class="gap-item"><span style="color:var(--red);font-weight:700;flex-shrink:0">✖</span>' + esc(t) + '</div>').join('') +
-        '</div>' +
-        '<div class="gap-col gap-col-good"><div class="gap-col-title">✓ You already have</div>' +
-          (cg.you_have||[]).map(t => '<div class="gap-item"><span style="color:var(--green);font-weight:700;flex-shrink:0">✓</span>' + esc(t) + '</div>').join('') +
-        '</div>' +
-      '</div>' +
-    '</div>';
+  /* panel: photos */
+  var pa=r.photo_analysis||{};
+  var strongHTML=(pa.strong_images||[]).map(function(i){return '<div class="photo-item"><div class="photo-desc">'+esc(i.description||'')+'</div><div class="photo-sub">'+esc(i.why_it_works||'')+'</div></div>';}).join('');
+  var weakHTML=(pa.weak_images||[]).map(function(i){return '<div class="photo-item"><div class="photo-desc">'+esc(i.description||'')+'</div><div class="photo-sub">'+esc(i.issue||'')+' — '+esc(i.impact||'')+'</div></div>';}).join('');
+  html+='<div class="panel" id="panel-photos"><div class="photo-cols">';
+  html+='<div class="photo-col ph-good"><div class="photo-col-head">What works</div>'+(strongHTML||'<div class="photo-item"><div class="photo-sub">No strong images identified</div></div>')+'</div>';
+  html+='<div class="photo-col ph-bad"><div class="photo-col-head">What hurts trust</div>'+(weakHTML||'<div class="photo-item"><div class="photo-sub">No weak images identified</div></div>')+'</div>';
+  html+='</div></div>';
 
-  // ── Top actions ──
-  const actionsHTML = '<div class="section-label">Your action plan — fix these this week</div>' +
-    '<div class="actions-card"><div class="actions-title">Top ' + (r.top_actions||[]).length + ' actions to win more enquiries</div>' +
-    (r.top_actions||[]).map((a, i) =>
-      '<div class="action-row"><div class="action-num">' + (i+1) + '</div><div class="action-text">' + esc(a) + '</div></div>'
-    ).join('') +
-    '</div>';
+  /* panel: competitor gap */
+  var cg=r.competitor_gap||{};
+  html+='<div class="panel" id="panel-gap"><div class="gap-card">';
+  html+='<div class="gap-summary">'+esc(cg.summary||'')+'</div>';
+  html+='<div class="gap-cols">';
+  html+='<div class="gap-col gc-bad"><div class="gap-col-head">They have — you don\'t</div>';
+  (cg.they_have||[]).forEach(function(t){html+='<div class="gap-item"><div class="gi-icon">✖</div>'+esc(t)+'</div>';});
+  html+='</div>';
+  html+='<div class="gap-col gc-good"><div class="gap-col-head">You already have</div>';
+  (cg.you_have||[]).forEach(function(t){html+='<div class="gap-item"><div class="gi-icon">✓</div>'+esc(t)+'</div>';});
+  html+='</div></div></div></div>';
 
-  document.getElementById('report-area').innerHTML =
-    '<div class="section-label" style="margin-bottom:12px">' + esc(domain) + ' · Audited ' + date + '</div>' +
-    heroHTML + journeyHTML + feedHTML + bpHTML + tqHTML + photoHTML + gapHTML + actionsHTML;
+  /* panel: audit feed */
+  html+='<div class="panel" id="panel-feed"><div class="feed-list">';
+  (r.live_audit_feed||[]).forEach(function(f){
+    var cls=f.status==='success'?'fi-s':f.status==='warning'?'fi-w':'fi-c';
+    var icon=f.status==='success'?'✔':f.status==='warning'?'⚠':'✖';
+    html+='<div class="fi '+cls+'"><div class="fi-icon">'+icon+'</div><div class="fi-msg">'+esc(f.message||'')+'</div></div>';
+  });
+  html+='</div></div>';
 
-  document.getElementById('report-area').classList.remove('hidden');
-  document.getElementById('empty-state').classList.add('hidden');
-  document.getElementById('auditBtn').disabled = false;
-  document.getElementById('report-area').scrollIntoView({ behavior: 'smooth' });
+  /* panel: actions */
+  html+='<div class="panel" id="panel-actions"><div class="actions-wrap">';
+  html+='<div class="actions-head">Your action plan — fix these this week</div>';
+  (r.top_actions||[]).forEach(function(a,i){
+    html+='<div class="action-row"><div class="a-num">'+(i+1)+'</div><div class="a-text">'+esc(a)+'</div></div>';
+  });
+  html+='</div></div>';
+
+  var rep=document.getElementById('report');
+  rep.innerHTML=html;
+  rep.style.display='block';
+  document.getElementById('empty').style.display='none';
+  document.getElementById('auditBtn').disabled=false;
+  rep.scrollIntoView({behavior:'smooth'});
+}
+
+function switchTab(id,el){
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('on');});
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  el.classList.add('on');
+  var panel=document.getElementById('panel-'+id);
+  if(panel)panel.classList.add('on');
 }
 </script>
 </body>

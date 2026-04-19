@@ -165,17 +165,21 @@ async function scoreWebsite(pages, targetUrl) {
     imageSample: allImages.slice(0, 20).map(i => ({ src: i.src, alt: i.alt, width: i.width, height: i.height })),
   };
 
-  const systemPrompt = `You are a senior conversion and trust auditor specialising in UK construction, renovation, and home improvement companies.
-Your job is to analyse websites and identify factors that affect homeowner trust, lead conversion, and perceived business legitimacy.
-You are NOT an SEO auditor. You are NOT a design critic.
-You are a high-end commercial due diligence analyst for £10k-£500k construction projects.
+  const systemPrompt = `You are a forensic conversion analyst for UK construction companies.
+Your job is NOT to produce a generic audit.
+Your job is to simulate:
+- how a homeowner experiences this website
+- where trust is lost
+- why enquiries are not happening
+- and what the business must fix immediately
 
-PRIMARY OBJECTIVE: Identify what would prevent a homeowner from enquiring or trusting this business enough to spend high-value (£5k-£250k+) on construction work.
-You must base all conclusions on provided evidence only. Do NOT assume facts not supported by the input data.
+You must output structured JSON designed to power a highly engaging, narrative-driven UI.
+The tone should feel like a brutally honest consultant — commercially focused, emotionally persuasive, grounded in real homeowner psychology.
+Avoid generic or polite language. Be direct, specific, and evidence-based.
 
-CRITICAL THINKING RULE: Think like a homeowner deciding whether to trust this company with £30,000 of their home renovation budget.
+CONTEXT: A homeowner is considering spending £10k-£250k on a project. They are cautious, risk-aware, and comparing multiple builders.
 
-Return ONLY valid JSON, no markdown fences, no explanation outside the JSON.`;
+Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
 
   const userPrompt = `Website being audited: ${targetUrl}
 
@@ -185,67 +189,114 @@ ${JSON.stringify(aggregatedSignals, null, 2)}
 FULL PAGE TEXT (${pages.length} pages crawled):
 ${allText.slice(0, 6000)}
 
-I have also provided ${screenshotsToAnalyse.length} page screenshots above for visual analysis.
+I have also provided ${screenshotsToAnalyse.length} page screenshots for visual analysis.
 
-Analyse everything and return this exact JSON structure:
+Return this exact JSON structure. Follow every instruction carefully:
+
 {
-  "overall_score": <0-100 integer>,
-  "category_scores": {
-    "credibility": <0-100>,
-    "photo_quality": <0-100>,
-    "testimonials": <0-100>,
-    "accreditations": <0-100>,
-    "contact_clarity": <0-100>,
-    "content_freshness": <0-100>
+  "hero": {
+    "score": <0-100 integer — honest, not generous>,
+    "headline": "<confronting but fair — e.g. 'Your website is quietly losing you jobs'>",
+    "subtext": "<1 sentence expanding on the headline — specific to what you found>",
+    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner. Tone: honest advisor who has just reviewed their site. Reference specific things you found.>"
   },
-  "executive_summary": "<2-3 sentences: the core trust problem a homeowner would feel>",
-  "critical_issues": [
+  "homeowner_journey": [
     {
-      "issue": "<short title>",
-      "evidence": "<specific evidence you found or did not find>",
-      "why_it_matters": "<why a homeowner spending £30k would care>",
-      "impact_on_leads": "low|medium|high|critical",
-      "recommended_fix": "<concrete actionable fix>"
+      "stage": "first_impression",
+      "thought": "<first person homeowner thought — realistic, slightly uncomfortable. What do they feel in the first 5 seconds?>"
+    },
+    {
+      "stage": "scrolling",
+      "thought": "<what doubt creeps in as they scroll? Reference something specific from the site>"
+    },
+    {
+      "stage": "decision_moment",
+      "thought": "<the exact moment they decide to enquire or leave — what tips it?>"
     }
   ],
-  "visual_findings": [
+  "live_audit_feed": [
     {
-      "image_or_page": "<which page or image>",
-      "finding": "<what you observed>",
-      "confidence": "low|medium|high",
-      "why_it_matters": "<trust impact>"
+      "status": "success",
+      "message": "<short punchy finding — something that IS present and working>"
+    },
+    {
+      "status": "warning",
+      "message": "<something present but weak or incomplete>"
+    },
+    {
+      "status": "critical",
+      "message": "<something missing that directly hurts trust>"
     }
   ],
-  "trust_gaps": [
+  "trust_breakpoints": [
     {
-      "gap": "<missing trust element>",
-      "severity": "low|medium|high|critical",
-      "explanation": "<why this gap hurts conversion>"
+      "title": "<short title of the trust failure>",
+      "homeowner_reaction": "<exactly what goes through their head at this moment>",
+      "evidence": "<what you specifically found or did not find>",
+      "impact": "critical|high|medium|low",
+      "fix": "<specific fix achievable within days>"
     }
   ],
-  "what_is_working": [
+  "photo_analysis": {
+    "strong_images": [
+      {
+        "description": "<describe what you see>",
+        "why_it_works": "<why this builds trust>"
+      }
+    ],
+    "weak_images": [
+      {
+        "description": "<describe what you see>",
+        "issue": "<what is wrong with it>",
+        "impact": "<how this hurts trust>"
+      }
+    ]
+  },
+  "trust_questions": [
     {
-      "strength": "<positive element>",
-      "evidence": "<what you saw>"
+      "question": "Can I verify this is a legitimate registered business?",
+      "score": <0-100>,
+      "explanation": "<specific answer based on evidence>"
+    },
+    {
+      "question": "Do I believe these are real projects by this company?",
+      "score": <0-100>,
+      "explanation": "<specific answer based on evidence>"
+    },
+    {
+      "question": "Do other homeowners trust and recommend this company?",
+      "score": <0-100>,
+      "explanation": "<specific answer based on evidence>"
+    },
+    {
+      "question": "Do they have the credentials to handle my project safely?",
+      "score": <0-100>,
+      "explanation": "<specific answer based on evidence>"
+    },
+    {
+      "question": "Will it be easy to contact and communicate with them?",
+      "score": <0-100>,
+      "explanation": "<specific answer based on evidence>"
+    },
+    {
+      "question": "Is this business actively trading right now?",
+      "score": <0-100>,
+      "explanation": "<specific answer based on evidence>"
     }
   ],
-  "benchmark_comparison": "<1-2 sentences comparing to a well-optimised UK construction company site>",
-  "top_5_actions": [
-    "<action 1 - most impactful first>",
+  "competitor_gap": {
+    "summary": "<1-2 sentences on how this compares to a well-optimised UK builder site>",
+    "they_have": ["<thing a top competitor would have that this site lacks>"],
+    "you_have": ["<genuine strengths this site does have>"]
+  },
+  "top_actions": [
+    "<action 1 — most impactful, specific, achievable this week>",
     "<action 2>",
     "<action 3>",
     "<action 4>",
     "<action 5>"
   ]
-}
-
-Scoring guide:
-- credibility: Companies House/VAT visible, professional email domain, physical address, SSL, legal clarity
-- photo_quality: Real project photos vs stock, resolution, before/after, location-specific proof
-- testimonials: Named reviews, external links (Google/Checkatrade), recency, project specificity
-- accreditations: FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC - prominence and verifiability
-- contact_clarity: Phone on every page, email, CTA clarity, service area, response time
-- content_freshness: Copyright year, recent project dates, active blog, evidence of live business`;
+}`;
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
@@ -259,8 +310,7 @@ Scoring guide:
 
   const rawText = response.content.map(b => b.text || '').join('');
   const clean = rawText.replace(/```json|```/g, '').trim();
-  const result = JSON.parse(clean);
-  return result;
+  return JSON.parse(clean);
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────

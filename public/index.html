@@ -184,6 +184,39 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
   .iv-none-icon{font-size:24px;margin-bottom:8px}
   .iv-none-text{font-size:14px;color:var(--green);font-weight:600}
   .iv-none-sub{font-size:13px;color:#3B6D11;margin-top:4px}
+
+  /* ── Business snapshot ── */
+  .bs-section{margin-bottom:2rem}
+  .bs-intro{font-size:13px;color:var(--gray-600);line-height:1.6;margin-bottom:1.25rem;padding:.85rem 1.1rem;background:var(--orange-light);border-left:3px solid var(--orange);border-radius:var(--radius-sm)}
+  .bs-intro b{color:#712B13;font-weight:600}
+  .bs-header{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);padding:1.5rem 1.75rem;margin-bottom:10px}
+  .bs-company{font-size:24px;font-weight:700;letter-spacing:-.02em;margin-bottom:6px}
+  .bs-oneliner{font-size:15px;color:var(--gray-600);line-height:1.5;margin-bottom:14px}
+  .bs-meta{display:flex;flex-wrap:wrap;gap:8px}
+  .bs-chip{font-size:12px;padding:5px 12px;border-radius:99px;background:var(--gray-50);border:1px solid var(--gray-100);color:var(--gray-600);display:inline-flex;align-items:center;gap:6px}
+  .bs-chip b{color:var(--gray-900);font-weight:600}
+  .bs-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}
+  .bs-card{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);padding:1.1rem 1.25rem}
+  .bs-card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-400);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+  .bs-card-icon{color:var(--orange);font-size:14px}
+  .bs-list{display:flex;flex-direction:column;gap:6px}
+  .bs-item{font-size:13px;color:var(--gray-900);line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+  .bs-item::before{content:"\2022";color:var(--orange);font-weight:700;flex-shrink:0}
+  .bs-pills{display:flex;flex-wrap:wrap;gap:6px}
+  .bs-pill{font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);background:var(--orange-light);color:#712B13;font-weight:500}
+  .bs-pill-accred{background:var(--green-light);color:var(--green)}
+  .bs-pill-award{background:#EEEDFE;color:#3C3489}
+  .bs-empty{font-size:12px;color:var(--gray-400);font-style:italic}
+  .bs-team-item{font-size:13px;color:var(--gray-900);padding:6px 0;border-bottom:1px solid var(--gray-100)}
+  .bs-team-item:last-child{border-bottom:none}
+  .bs-team-role{font-size:11px;color:var(--gray-400)}
+  .bs-gaps{background:var(--gray-900);border-radius:var(--radius);padding:1.25rem 1.5rem;margin-top:10px}
+  .bs-gaps-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--orange);margin-bottom:10px}
+  .bs-gap-item{font-size:13px;color:#D3D1C7;padding:5px 0;line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+  .bs-gap-item::before{content:"?";color:var(--orange);font-weight:700;flex-shrink:0;width:14px;height:14px;border-radius:50%;border:1px solid var(--orange);display:inline-flex;align-items:center;justify-content:center;font-size:10px;margin-top:2px}
+  .bs-divider{text-align:center;margin:2rem 0 1.5rem;position:relative}
+  .bs-divider::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--gray-200)}
+  .bs-divider-text{position:relative;background:var(--gray-50);padding:0 16px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--gray-400);font-weight:600}
 </style>
 </head>
 <body>
@@ -307,6 +340,112 @@ function render(r,url,scannedAt){
 
   /* domain meta */
   html+='<div class="domain-meta">'+esc(domain)+'<div class="meta-dot"></div>Audited '+date+'</div>';
+
+
+  /* business snapshot — appears BEFORE the forensic audit */
+  var bs=r.business_snapshot||{};
+  if(bs.company_name){
+    html+='<div class="bs-section">';
+    html+='<div class="bs-intro"><b>Before we pick it apart:</b> here is what we learned about your business from your website. If anything below is missing or wrong, that is itself a finding — homeowners need this information to trust you.</div>';
+
+    /* header */
+    html+='<div class="bs-header">';
+    html+='<div class="bs-company">'+esc(bs.company_name)+'</div>';
+    if(bs.one_liner)html+='<div class="bs-oneliner">'+esc(bs.one_liner)+'</div>';
+    html+='<div class="bs-meta">';
+    if(bs.established&&bs.established!=='not stated')html+='<div class="bs-chip">Est. <b>'+esc(bs.established)+'</b></div>';
+    if(bs.years_trading)html+='<div class="bs-chip"><b>'+esc(bs.years_trading)+'</b> trading</div>';
+    if(bs.location)html+='<div class="bs-chip">Based in <b>'+esc(bs.location)+'</b></div>';
+    if(bs.service_area)html+='<div class="bs-chip">Covers <b>'+esc(bs.service_area)+'</b></div>';
+    if(bs.project_value_range)html+='<div class="bs-chip">Projects <b>'+esc(bs.project_value_range)+'</b></div>';
+    html+='</div>';
+    html+='</div>';
+
+    /* 2-col grid */
+    html+='<div class="bs-grid">';
+
+    /* work types */
+    html+='<div class="bs-card"><div class="bs-card-title"><span class="bs-card-icon">■</span>Type of work</div>';
+    if((bs.work_types||[]).length){
+      html+='<div class="bs-pills">';
+      bs.work_types.forEach(function(w){html+='<span class="bs-pill">'+esc(w)+'</span>';});
+      html+='</div>';
+    } else html+='<div class="bs-empty">No specific project types listed</div>';
+    html+='</div>';
+
+    /* accreditations */
+    html+='<div class="bs-card"><div class="bs-card-title"><span class="bs-card-icon">◆</span>Accreditations</div>';
+    if((bs.accreditations||[]).length){
+      html+='<div class="bs-pills">';
+      bs.accreditations.forEach(function(a){html+='<span class="bs-pill bs-pill-accred">'+esc(a)+'</span>';});
+      html+='</div>';
+    } else html+='<div class="bs-empty">None detected on site</div>';
+    html+='</div>';
+
+    /* team */
+    var team=bs.team||{};
+    html+='<div class="bs-card"><div class="bs-card-title"><span class="bs-card-icon">●</span>Team & ownership</div>';
+    var teamContent='';
+    if(team.team_size)teamContent+='<div class="bs-item">Team size: '+esc(team.team_size)+'</div>';
+    (team.owners||[]).forEach(function(o){teamContent+='<div class="bs-team-item">'+esc(o)+'<div class="bs-team-role">Owner / director</div></div>';});
+    (team.key_people||[]).forEach(function(p){
+      var parts=String(p).split(/\s[-–]\s|,\s/);
+      if(parts.length>=2)teamContent+='<div class="bs-team-item">'+esc(parts[0])+'<div class="bs-team-role">'+esc(parts.slice(1).join(', '))+'</div></div>';
+      else teamContent+='<div class="bs-team-item">'+esc(p)+'</div>';
+    });
+    html+=teamContent||'<div class="bs-empty">No named team members on site</div>';
+    html+='</div>';
+
+    /* awards */
+    html+='<div class="bs-card"><div class="bs-card-title"><span class="bs-card-icon">★</span>Awards & recognition</div>';
+    if((bs.awards||[]).length){
+      html+='<div class="bs-pills">';
+      bs.awards.forEach(function(a){html+='<span class="bs-pill bs-pill-award">'+esc(a)+'</span>';});
+      html+='</div>';
+    } else html+='<div class="bs-empty">No awards mentioned</div>';
+    html+='</div>';
+
+    /* USPs */
+    if((bs.unique_selling_points||[]).length){
+      html+='<div class="bs-card" style="grid-column:1/-1"><div class="bs-card-title"><span class="bs-card-icon">▲</span>What you emphasise</div>';
+      html+='<div class="bs-list">';
+      bs.unique_selling_points.forEach(function(u){html+='<div class="bs-item">'+esc(u)+'</div>';});
+      html+='</div></div>';
+    }
+
+    /* notable clients */
+    if((bs.notable_clients||[]).length){
+      html+='<div class="bs-card" style="grid-column:1/-1"><div class="bs-card-title"><span class="bs-card-icon">■</span>Notable clients</div>';
+      html+='<div class="bs-pills">';
+      bs.notable_clients.forEach(function(c){html+='<span class="bs-pill">'+esc(c)+'</span>';});
+      html+='</div></div>';
+    }
+
+    html+='</div>';
+
+    /* contact */
+    var contact=bs.contact||{};
+    if(contact.phone||contact.email||contact.address){
+      html+='<div class="bs-card" style="margin-top:10px"><div class="bs-card-title"><span class="bs-card-icon">●</span>How homeowners reach you</div>';
+      html+='<div class="bs-meta">';
+      if(contact.phone)html+='<div class="bs-chip">Phone: <b>'+esc(contact.phone)+'</b></div>';
+      if(contact.email)html+='<div class="bs-chip">Email: <b>'+esc(contact.email)+'</b></div>';
+      if(contact.address)html+='<div class="bs-chip">Address: <b>'+esc(contact.address)+'</b></div>';
+      html+='</div></div>';
+    }
+
+    /* gaps */
+    if((bs.what_we_could_not_find||[]).length){
+      html+='<div class="bs-gaps"><div class="bs-gaps-title">What we could not find on your site</div>';
+      bs.what_we_could_not_find.forEach(function(g){html+='<div class="bs-gap-item">'+esc(g)+'</div>';});
+      html+='</div>';
+    }
+
+    html+='</div>';
+
+    /* divider before forensic audit */
+    html+='<div class="bs-divider"><span class="bs-divider-text">Now the forensic audit</span></div>';
+  }
 
   /* score band */
   html+='<div class="score-band">';

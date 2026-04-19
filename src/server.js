@@ -1,20 +1,45 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const https = require('https');
 const { chromium } = require('playwright');
 const Anthropic = require('@anthropic-ai/sdk');
+const { customAlphabet } = require('nanoid');
+const db = require('./db');
+
+const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
 const app = express();
 app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+
+const PUBLIC = path.join(__dirname, '../public');
 
 const client = new Anthropic();
 const MAX_PAGES = 20;
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-// ── Stock photo domains — instant flag, no API call needed ────────────────────
+// Initialise the database on startup
+db.initSchema().catch(err => console.error('DB init failed:', err.message));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATIC ASSETS & PAGE ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+// Serve static assets (CSS, JS, images)
+app.use('/assets', express.static(path.join(PUBLIC, 'assets')));
+
+// Page routes — each returns one HTML file
+app.get('/', (req, res) => res.sendFile(path.join(PUBLIC, 'home.html')));
+app.get('/audit', (req, res) => res.sendFile(path.join(PUBLIC, 'audit.html')));
+app.get('/report/:id', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
+app.get('/report/:id/:section', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STOCK DOMAINS — instant flag
+// ─────────────────────────────────────────────────────────────────────────────
 const STOCK_DOMAINS = [
   'shutterstock.com','istockphoto.com','gettyimages.com','getty.com',
   'dreamstime.com','depositphotos.com','alamy.com','123rf.com',
@@ -22,87 +47,54 @@ const STOCK_DOMAINS = [
   'freepik.com','canva.com','pixabay.com','stocksy.com',
 ];
 
-// ── Reverse image search via SerpAPI ─────────────────────────────────────────
 function reverseImageSearch(imageUrl) {
   return new Promise((resolve) => {
     if (!SERPAPI_KEY) return resolve({ verdict: 'unknown', reason: 'No SerpAPI key configured' });
-
     const params = new URLSearchParams({
       engine: 'google_reverse_image',
       image_url: imageUrl,
       api_key: SERPAPI_KEY,
     });
-
     const url = 'https://serpapi.com/search.json?' + params.toString();
-
     https.get(url, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
           const json = JSON.parse(data);
-
-          // Check inline_images and image_results for stock site matches
           const allResults = [
             ...(json.image_results || []),
             ...(json.inline_images || []),
             ...(json.reverse_image_search || []),
           ];
-
           const sources = allResults.map(r => (r.link || r.source || '')).filter(Boolean);
-
-          // Check for stock site matches
           const stockMatch = sources.find(src =>
             STOCK_DOMAINS.some(domain => src.toLowerCase().includes(domain))
           );
-
           if (stockMatch) {
             const domain = STOCK_DOMAINS.find(d => stockMatch.toLowerCase().includes(d));
-            return resolve({
-              verdict: 'stock',
-              reason: 'Found on ' + domain,
-              source: stockMatch,
-              matchCount: sources.length,
-            });
+            return resolve({ verdict: 'stock', reason: 'Found on ' + domain, source: stockMatch, matchCount: sources.length });
           }
-
-          // Check if image appears on many OTHER websites (stolen/shared)
           const externalMatches = sources.filter(src => {
-            try {
-              return !src.includes(new URL(imageUrl).hostname);
-            } catch { return false; }
+            try { return !src.includes(new URL(imageUrl).hostname); } catch { return false; }
           });
-
           if (externalMatches.length >= 3) {
-            return resolve({
-              verdict: 'duplicated',
-              reason: 'Image found on ' + externalMatches.length + ' other websites',
-              sources: externalMatches.slice(0, 3),
-              matchCount: externalMatches.length,
-            });
+            return resolve({ verdict: 'duplicated', reason: 'Image found on ' + externalMatches.length + ' other websites', sources: externalMatches.slice(0, 3), matchCount: externalMatches.length });
           }
-
           resolve({ verdict: 'original', reason: 'No stock or duplicate matches found', matchCount: sources.length });
-
         } catch (e) {
           resolve({ verdict: 'error', reason: 'Parse error: ' + e.message });
         }
       });
-    }).on('error', (e) => {
-      resolve({ verdict: 'error', reason: 'Request failed: ' + e.message });
-    });
+    }).on('error', (e) => resolve({ verdict: 'error', reason: 'Request failed: ' + e.message }));
   });
 }
 
-// ── Select best images to check (largest, most prominent) ────────────────────
 function selectImagesForVerification(allImages, max = 8) {
-  // Filter out tiny images (icons, logos) and prefer larger ones
   const candidates = allImages
     .filter(img => img.width > 300 && img.height > 200)
     .filter(img => !img.src.includes('logo') && !img.src.includes('icon') && !img.src.includes('badge'))
     .sort((a, b) => (b.width * b.height) - (a.width * a.height));
-
-  // Deduplicate by URL
   const seen = new Set();
   const unique = [];
   for (const img of candidates) {
@@ -115,56 +107,33 @@ function selectImagesForVerification(allImages, max = 8) {
   return unique;
 }
 
-// ── Run image verification across selected images ─────────────────────────────
 async function verifyImages(allImages) {
   const toCheck = selectImagesForVerification(allImages, 8);
   console.log('Checking ' + toCheck.length + ' images for stock/duplication...');
-
   const results = [];
-
   for (const img of toCheck) {
-    console.log('  Checking:', img.src.slice(0, 80));
     const result = await reverseImageSearch(img.src);
-    results.push({
-      src: img.src,
-      alt: img.alt,
-      width: img.width,
-      height: img.height,
-      ...result,
-    });
-    // Small delay to avoid rate limiting
+    results.push({ src: img.src, alt: img.alt, width: img.width, height: img.height, ...result });
     await new Promise(r => setTimeout(r, 500));
   }
-
-  const stockImages = results.filter(r => r.verdict === 'stock');
-  const duplicatedImages = results.filter(r => r.verdict === 'duplicated');
-  const originalImages = results.filter(r => r.verdict === 'original');
-  const checkedCount = results.filter(r => r.verdict !== 'error' && r.verdict !== 'unknown').length;
-
-  console.log('Image check complete:', stockImages.length, 'stock,', duplicatedImages.length, 'duplicated,', originalImages.length, 'original');
-
   return {
-    checked: checkedCount,
+    checked: results.filter(r => r.verdict !== 'error' && r.verdict !== 'unknown').length,
     total: allImages.length,
-    stockImages,
-    duplicatedImages,
-    originalImages,
+    stockImages: results.filter(r => r.verdict === 'stock'),
+    duplicatedImages: results.filter(r => r.verdict === 'duplicated'),
+    originalImages: results.filter(r => r.verdict === 'original'),
     allResults: results,
   };
 }
 
-// ── Crawler ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CRAWLER
+// ─────────────────────────────────────────────────────────────────────────────
 async function crawlWebsite(startUrl) {
   const browser = await chromium.launch({
     headless: true,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-    ],
+    args: ['--disable-blink-features=AutomationControlled','--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
   });
-
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 800 },
@@ -173,7 +142,6 @@ async function crawlWebsite(startUrl) {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     },
   });
-
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     window.chrome = { runtime: {} };
@@ -184,8 +152,6 @@ async function crawlWebsite(startUrl) {
   const origin = new URL(startUrl).origin;
   const pages = [];
 
-  console.log('Crawling:', startUrl);
-
   while (queue.length > 0 && pages.length < MAX_PAGES) {
     const url = queue.shift();
     if (visited.has(url)) continue;
@@ -194,15 +160,11 @@ async function crawlWebsite(startUrl) {
     try {
       const page = await context.newPage();
       await page.waitForTimeout(500 + Math.random() * 1000);
-
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-
       if (response && (response.status() === 403 || response.status() === 429)) {
-        console.warn('Blocked:', url, response.status());
         await page.close();
         continue;
       }
-
       await page.waitForTimeout(1500);
 
       const screenshot = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 75 });
@@ -210,18 +172,14 @@ async function crawlWebsite(startUrl) {
 
       const textContent = await page.evaluate(() => {
         const el = document.body.cloneNode(true);
-        ['nav','footer','script','style','noscript'].forEach(tag => {
-          el.querySelectorAll(tag).forEach(n => n.remove());
-        });
+        ['nav','footer','script','style','noscript'].forEach(tag => el.querySelectorAll(tag).forEach(n => n.remove()));
         return el.innerText.replace(/\s+/g, ' ').trim().slice(0, 8000);
       });
 
       const images = await page.evaluate(() => {
         return [...document.querySelectorAll('img')].map(img => ({
-          src: img.src || '',
-          alt: img.alt || '',
-          width: img.naturalWidth,
-          height: img.naturalHeight,
+          src: img.src || '', alt: img.alt || '',
+          width: img.naturalWidth, height: img.naturalHeight,
         })).filter(i => i.src.startsWith('http'));
       });
 
@@ -244,9 +202,7 @@ async function crawlWebsite(startUrl) {
       });
 
       const links = await page.evaluate((base) => {
-        return [...document.querySelectorAll('a[href]')]
-          .map(a => a.href)
-          .filter(h => h.startsWith(base));
+        return [...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => h.startsWith(base));
       }, origin);
 
       links.forEach(l => {
@@ -255,7 +211,6 @@ async function crawlWebsite(startUrl) {
       });
 
       pages.push({ url, textContent, images, meta, screenshotB64 });
-      console.log('Crawled:', url, '--', images.length, 'images');
       await page.close();
     } catch (err) {
       console.warn('Failed:', url, err.message);
@@ -263,7 +218,6 @@ async function crawlWebsite(startUrl) {
   }
 
   await browser.close();
-  console.log('Crawl complete:', pages.length, 'pages');
   return pages;
 }
 
@@ -276,10 +230,10 @@ function normaliseUrl(raw) {
   } catch { return raw; }
 }
 
-// ── Scorer ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// AI SCORER
+// ─────────────────────────────────────────────────────────────────────────────
 async function scoreWebsite(pages, targetUrl, imageVerification) {
-  console.log('Sending to Claude for analysis...');
-
   const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
@@ -290,20 +244,11 @@ async function scoreWebsite(pages, targetUrl, imageVerification) {
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
   }));
 
-  // Build image verification summary for the prompt
   const imgVerifySummary = imageVerification ? {
     imagesChecked: imageVerification.checked,
     totalImagesOnSite: imageVerification.total,
-    confirmedStockImages: imageVerification.stockImages.map(i => ({
-      url: i.src,
-      foundOn: i.reason,
-      source: i.source || null,
-    })),
-    duplicatedElsewhere: imageVerification.duplicatedImages.map(i => ({
-      url: i.src,
-      foundOn: i.reason,
-      matchCount: i.matchCount,
-    })),
+    confirmedStockImages: imageVerification.stockImages.map(i => ({ url: i.src, foundOn: i.reason, source: i.source || null })),
+    duplicatedElsewhere: imageVerification.duplicatedImages.map(i => ({ url: i.src, foundOn: i.reason, matchCount: i.matchCount })),
     confirmedOriginal: imageVerification.originalImages.length,
   } : null;
 
@@ -345,42 +290,40 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
   const userPrompt = 'Website being audited: ' + targetUrl + '\n\nEXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\nFULL PAGE TEXT (' + pages.length + ' pages crawled):\n' + allText.slice(0, 6000) + '\n\nI have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
   (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?
     'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n' : '') +
-  'Return this exact JSON structure:\n\n{\n  "business_snapshot": {\n    "company_name": "<the business name as shown>",\n    "one_liner": "<1 sentence describing what they do, based on what the site says>",\n    "established": "<year founded if mentioned, or \"not stated\">",\n    "years_trading": "<e.g. \"20+ years\" if mentioned, else null>",\n    "location": "<where they are based, city or region>",\n    "service_area": "<where they cover — county, region, or radius if stated>",\n    "work_types": ["<list the main project types they advertise — extensions, loft conversions, new builds, etc.>"],\n    "project_value_range": "<if mentioned e.g. \"£20k-£500k\" or null>",\n    "team": {\n      "owners": ["<names of owners/directors if mentioned>"],\n      "team_size": "<if mentioned e.g. \"team of 8\" or null>",\n      "key_people": ["<any named team members and their role>"]\n    },\n    "accreditations": ["<list every accreditation/certification found — FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC, Checkatrade, Which Trusted Trader, etc.>"],\n    "awards": ["<any awards, commendations, or industry recognition mentioned>"],\n    "notable_clients": ["<if any notable clients, architects, or organisations are mentioned>"],\n    "unique_selling_points": ["<2-4 things they emphasise as differentiators>"],\n    "contact": {\n      "phone": "<phone if visible>",\n      "email": "<email if visible>",\n      "address": "<address if visible>"\n    },\n    "what_we_could_not_find": ["<things a homeowner would expect but the site does not mention — e.g. Companies House number, insurance details, year established>"]\n  },\n  "hero": {\n    "score": <0-100 integer>,\n    "headline": "<confronting but fair>",\n    "subtext": "<1 sentence specific to what you found>",\n    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings including any confirmed stock photos>"\n  },\n  "homeowner_journey": [\n    {"stage": "first_impression", "thought": "<first person homeowner — realistic>"},\n    {"stage": "scrolling", "thought": "<doubt as they scroll>"},\n    {"stage": "decision_moment", "thought": "<the moment they decide to leave or enquire>"}\n  ],\n  "live_audit_feed": [\n    {"status": "success|warning|critical", "message": "<punchy finding>"}\n  ],\n  "trust_breakpoints": [\n    {\n      "title": "<trust failure title>",\n      "homeowner_reaction": "<inner monologue>",\n      "evidence": "<specific evidence — for confirmed stock images name the source>",\n      "impact": "critical|high|medium|low",\n      "fix": "<specific fix achievable within days>"\n    }\n  ],\n  "photo_analysis": {\n    "summary": "<overall verdict on the photo strategy>",\n    "strong_images": [{"description": "", "why_it_works": ""}],\n    "weak_images": [{"description": "", "issue": "<if confirmed stock, state where it was found>", "impact": "", "confirmed_stock": true|false, "stock_source": "<source URL if confirmed>"}]\n  },\n  "trust_questions": [\n    {"question": "Can I verify this is a legitimate registered business?", "score": <0-100>, "explanation": ""},\n    {"question": "Do I believe these are real projects by this company?", "score": <0-100>, "explanation": "<if stock images confirmed, state this clearly>"},\n    {"question": "Do other homeowners trust and recommend this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do they have credentials to handle my project safely?", "score": <0-100>, "explanation": ""},\n    {"question": "Will they be easy to contact and communicate with?", "score": <0-100>, "explanation": ""},\n    {"question": "Is this business actively trading right now?", "score": <0-100>, "explanation": ""}\n  ],\n  "competitor_gap": {\n    "summary": "<1-2 sentences>",\n    "they_have": ["<thing competitors have>"],\n    "you_have": ["<genuine strength>"]\n  },\n  "top_actions": [\n    "<action 1 — most impactful first>",\n    "<action 2>",\n    "<action 3>",\n    "<action 4>",\n    "<action 5>"\n  ]\n}';
+  'Return this exact JSON structure:\n\n{\n  "business_snapshot": {\n    "company_name": "<the business name as shown>",\n    "one_liner": "<1 sentence describing what they do>",\n    "established": "<year founded if mentioned, or \\"not stated\\">",\n    "years_trading": "<e.g. \\"20+ years\\" if mentioned, else null>",\n    "location": "<where they are based>",\n    "service_area": "<where they cover>",\n    "work_types": ["<main project types>"],\n    "project_value_range": "<if mentioned e.g. \\"£20k-£500k\\" or null>",\n    "team": {\n      "owners": ["<names of owners/directors if mentioned>"],\n      "team_size": "<if mentioned else null>",\n      "key_people": ["<named team members and their role>"]\n    },\n    "accreditations": ["<every accreditation found>"],\n    "awards": ["<any awards or recognition>"],\n    "notable_clients": ["<notable clients or architects>"],\n    "unique_selling_points": ["<2-4 differentiators they emphasise>"],\n    "contact": {\n      "phone": "<phone if visible>",\n      "email": "<email if visible>",\n      "address": "<address if visible>"\n    },\n    "what_we_could_not_find": ["<expected info the site does not mention>"]\n  },\n  "hero": {\n    "score": <0-100 integer>,\n    "headline": "<confronting but fair>",\n    "subtext": "<1 sentence specific to what you found>",\n    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings>"\n  },\n  "homeowner_journey": [\n    {"stage": "first_impression", "thought": "<first person homeowner>"},\n    {"stage": "scrolling", "thought": "<doubt as they scroll>"},\n    {"stage": "decision_moment", "thought": "<the moment they decide>"}\n  ],\n  "live_audit_feed": [{"status": "success|warning|critical", "message": "<punchy finding>"}],\n  "trust_breakpoints": [\n    {\n      "title": "<trust failure title>",\n      "homeowner_reaction": "<inner monologue>",\n      "evidence": "<specific evidence>",\n      "impact": "critical|high|medium|low",\n      "fix": "<specific fix within days>"\n    }\n  ],\n  "photo_analysis": {\n    "summary": "<overall verdict>",\n    "strong_images": [{"description": "", "why_it_works": ""}],\n    "weak_images": [{"description": "", "issue": "", "impact": "", "confirmed_stock": true|false, "stock_source": "<if confirmed>"}]\n  },\n  "trust_questions": [\n    {"question": "Can I verify this is a legitimate registered business?", "score": <0-100>, "explanation": ""},\n    {"question": "Do I believe these are real projects by this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do other homeowners trust and recommend this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do they have credentials to handle my project safely?", "score": <0-100>, "explanation": ""},\n    {"question": "Will they be easy to contact and communicate with?", "score": <0-100>, "explanation": ""},\n    {"question": "Is this business actively trading right now?", "score": <0-100>, "explanation": ""}\n  ],\n  "competitor_gap": {\n    "summary": "<1-2 sentences>",\n    "they_have": ["<thing competitors have>"],\n    "you_have": ["<genuine strength>"]\n  },\n  "top_actions": [\n    "<action 1 most impactful>",\n    "<action 2>",\n    "<action 3>",\n    "<action 4>",\n    "<action 5>"\n  ]\n}';
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
     max_tokens: 6000,
     system: systemPrompt,
-    messages: [{
-      role: 'user',
-      content: [...imageBlocks, { type: 'text', text: userPrompt }],
-    }],
+    messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: userPrompt }] }],
   });
 
   const rawText = response.content.map(b => b.text || '').join('');
-  let clean = rawText.replace(/```json|```/g, '').trim();
-
+  const clean = rawText.replace(/```json|```/g, '').trim();
   let result;
   try {
     result = JSON.parse(clean);
   } catch (e) {
-    console.error('JSON parse failed. Response length:', clean.length);
-    console.error('Last 300 chars:', clean.slice(-300));
-    console.error('Stop reason:', response.stop_reason);
-    throw new Error('AI response was incomplete or malformed. This usually means the response was too long. Try again or audit a smaller site.');
+    console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', clean.slice(-300));
+    throw new Error('AI response was incomplete. Try again.');
   }
-
-  // Attach the raw image verification data to the report
   result.imageVerification = imageVerification;
   return result;
 }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({ status: 'ok', serpapi: !!SERPAPI_KEY }));
+// ─────────────────────────────────────────────────────────────────────────────
+// API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({
+  status: 'ok',
+  serpapi: !!SERPAPI_KEY,
+  database: db.isEnabled(),
+}));
 
+// Run an audit — streams progress via SSE, saves to DB on complete
 app.post('/api/audit', async (req, res) => {
   const { url } = req.body;
-
   if (!url || !url.startsWith('http')) {
     return res.status(400).json({ error: 'Please provide a valid URL starting with http/https' });
   }
@@ -396,41 +339,121 @@ app.post('/api/audit', async (req, res) => {
     const pages = await crawlWebsite(url);
 
     if (pages.length === 0) {
-      send('error', { message: 'Could not reach the website. It may be blocking automated access. Try a different site.' });
+      send('error', { message: 'Could not reach the website. It may be blocking automated access.' });
       return res.end();
     }
 
     const allImages = pages.flatMap(p => p.images);
     send('status', {
-      message: 'Crawled ' + pages.length + ' pages, ' + allImages.length + ' images found. Verifying photos...',
-      step: 2,
-      total: 4,
+      message: 'Crawled ' + pages.length + ' pages, ' + allImages.length + ' images. Verifying photos...',
+      step: 2, total: 4,
     });
 
     const imageVerification = await verifyImages(allImages);
-
-    const stockCount = imageVerification.stockImages.length;
-    const dupCount = imageVerification.duplicatedImages.length;
-    const flagged = stockCount + dupCount;
+    const flagged = imageVerification.stockImages.length + imageVerification.duplicatedImages.length;
     send('status', {
-      message: flagged > 0
-        ? flagged + ' suspicious image' + (flagged > 1 ? 's' : '') + ' found. Running AI analysis...'
-        : 'Images verified. Running AI analysis...',
-      step: 3,
-      total: 4,
+      message: flagged > 0 ? flagged + ' suspicious image' + (flagged > 1 ? 's' : '') + ' found. Running AI analysis...' : 'Images verified. Running AI analysis...',
+      step: 3, total: 4,
     });
 
     const report = await scoreWebsite(pages, url, imageVerification);
 
-    send('status', { message: 'Building your report...', step: 4, total: 4 });
-    send('complete', { report, url, scannedAt: new Date().toISOString() });
+    send('status', { message: 'Saving your report...', step: 4, total: 4 });
 
+    // Save to database and return an ID
+    const auditId = 'rpt_' + nanoid();
+    if (db.isEnabled()) {
+      await db.saveAudit({ id: auditId, url, report });
+    }
+
+    send('complete', { id: auditId, url, scannedAt: new Date().toISOString() });
   } catch (err) {
     console.error(err);
     send('error', { message: err.message || 'Audit failed. Please try again.' });
   }
-
   res.end();
+});
+
+// Unlock report with email → set cookie
+app.post('/api/report/:id/unlock', async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.body;
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address' });
+  }
+
+  if (!db.isEnabled()) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const meta = await db.getAuditMeta(id);
+  if (!meta) {
+    return res.status(404).json({ error: 'Report not found' });
+  }
+
+  await db.unlockAudit(id, email);
+
+  res.cookie('audit_unlock_' + id, '1', {
+    maxAge: COOKIE_MAX_AGE,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+  });
+
+  res.json({ success: true });
+});
+
+// Get full report data (requires unlock cookie)
+app.get('/api/report/:id/data', async (req, res) => {
+  const { id } = req.params;
+
+  if (!db.isEnabled()) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const audit = await db.getAudit(id);
+  if (!audit) {
+    return res.status(404).json({ error: 'Report not found' });
+  }
+
+  const isUnlocked = req.cookies['audit_unlock_' + id] === '1';
+
+  if (!isUnlocked) {
+    // Return only preview data
+    return res.json({
+      locked: true,
+      url: audit.url,
+      score: audit.score,
+      companyName: audit.report_json?.business_snapshot?.company_name || null,
+      headline: audit.report_json?.hero?.headline || null,
+      scannedAt: audit.created_at,
+    });
+  }
+
+  res.json({
+    locked: false,
+    id: audit.id,
+    url: audit.url,
+    report: audit.report_json,
+    scannedAt: audit.created_at,
+  });
+});
+
+// Meta check (for the report shell to show the right locked/unlocked UI)
+app.get('/api/report/:id/meta', async (req, res) => {
+  const { id } = req.params;
+  if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
+  const meta = await db.getAuditMeta(id);
+  if (!meta) return res.status(404).json({ error: 'Not found' });
+  const isUnlocked = req.cookies['audit_unlock_' + id] === '1';
+  res.json({
+    id: meta.id,
+    url: meta.url,
+    score: meta.score,
+    scannedAt: meta.created_at,
+    unlocked: isUnlocked,
+  });
 });
 
 const PORT = process.env.PORT || 3000;

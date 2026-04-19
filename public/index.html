@@ -161,6 +161,29 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
 
 /* ── Error ── */
 .error-card{background:var(--orange-light);border:1px solid #F0997B;border-radius:var(--radius-sm);padding:1rem 1.25rem;font-size:14px;color:#712B13}
+
+  /* ── Image verification ── */
+  .iv-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1rem}
+  .iv-stat{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius-sm);padding:.85rem 1rem;text-align:center}
+  .iv-num{font-size:28px;font-weight:700;line-height:1;margin-bottom:2px}
+  .iv-lbl{font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.05em}
+  .iv-num-bad{color:var(--orange)}.iv-num-warn{color:var(--amber)}.iv-num-good{color:var(--green)}
+  .iv-list{display:flex;flex-direction:column;gap:8px}
+  .iv-card{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);padding:1.1rem 1.25rem}
+  .iv-card-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .iv-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:99px}
+  .ivb-stock{background:var(--red-light);color:var(--red)}
+  .ivb-dup{background:var(--orange-light);color:#712B13}
+  .ivb-ok{background:var(--green-light);color:var(--green)}
+  .iv-card-title{font-size:13px;font-weight:600;flex:1;color:var(--gray-900)}
+  .iv-source{font-size:12px;color:var(--gray-600);margin-bottom:6px;line-height:1.4}
+  .iv-source b{color:var(--red);font-weight:600}
+  .iv-url{font-size:11px;color:var(--gray-400);word-break:break-all;font-family:monospace}
+  .iv-impact{font-size:13px;color:var(--gray-600);line-height:1.5;padding:8px 12px;background:var(--red-light);border-radius:var(--radius-sm);margin-top:6px}
+  .iv-none{background:var(--green-light);border-radius:var(--radius);padding:1.5rem;text-align:center}
+  .iv-none-icon{font-size:24px;margin-bottom:8px}
+  .iv-none-text{font-size:14px;color:var(--green);font-weight:600}
+  .iv-none-sub{font-size:13px;color:#3B6D11;margin-top:4px}
 </style>
 </head>
 <body>
@@ -185,6 +208,7 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
     <div class="step" id="step1"></div>
     <div class="step" id="step2"></div>
     <div class="step" id="step3"></div>
+    <div class="step" id="step4"></div>
   </div>
 </div>
 
@@ -259,7 +283,7 @@ function handle(name,data){
 
 function setStatus(msg,step){
   document.getElementById('statusText').textContent=msg;
-  for(var i=1;i<=3;i++)document.getElementById('step'+i).classList.toggle('done',i<=step);
+  for(var i=1;i<=4;i++)document.getElementById('step'+i).classList.toggle('done',i<=step);
 }
 
 function showError(msg){
@@ -298,6 +322,7 @@ function render(r,url,scannedAt){
     {id:'journey',label:'Homeowner journey'},
     {id:'issues',label:'Trust issues'},
     {id:'questions',label:'Homeowner view'},
+    {id:'imgcheck',label:'Image verification'},
     {id:'photos',label:'Photo analysis'},
     {id:'gap',label:'vs Competitors'},
     {id:'feed',label:'Audit findings'},
@@ -339,6 +364,45 @@ function render(r,url,scannedAt){
     html+='</div>';
   });
   html+='</div></div>';
+
+
+  /* panel: image verification */
+  var iv=r.imageVerification||{};
+  var ivStock=iv.stockImages||[];
+  var ivDup=iv.duplicatedImages||[];
+  var ivOrig=iv.originalImages||[];
+  var ivChecked=iv.checked||0;
+  var ivTotal=iv.total||0;
+  var ivFlagged=ivStock.length+ivDup.length;
+  html+='<div class="panel" id="panel-imgcheck">';
+  html+='<div class="iv-summary">';
+  html+='<div class="iv-stat"><div class="iv-num iv-num-bad">'+ivStock.length+'</div><div class="iv-lbl">Confirmed stock</div></div>';
+  html+='<div class="iv-stat"><div class="iv-num iv-num-warn">'+ivDup.length+'</div><div class="iv-lbl">Found elsewhere</div></div>';
+  html+='<div class="iv-stat"><div class="iv-num iv-num-good">'+ivOrig.length+'</div><div class="iv-lbl">Appear original</div></div>';
+  html+='</div>';
+  if(ivFlagged===0){
+    html+='<div class="iv-none"><div class="iv-none-icon">&#10003;</div><div class="iv-none-text">No stock or duplicate images detected</div><div class="iv-none-sub">We checked '+ivChecked+' of '+ivTotal+' images — all appear to be original photography</div></div>';
+  } else {
+    html+='<div class="iv-list">';
+    ivStock.forEach(function(img){
+      html+='<div class="iv-card">';
+      html+='<div class="iv-card-head"><span class="iv-badge ivb-stock">Confirmed stock photo</span></div>';
+      html+='<div class="iv-source"><b>Found on:</b> '+esc(img.reason||'')+'</div>';
+      if(img.source)html+='<div class="iv-url">'+esc(img.source)+'</div>';
+      html+='<div class="iv-impact">A homeowner who spots this will immediately question whether any of your project photos are real. This is one of the fastest ways to destroy trust.</div>';
+      html+='</div>';
+    });
+    ivDup.forEach(function(img){
+      html+='<div class="iv-card">';
+      html+='<div class="iv-card-head"><span class="iv-badge ivb-dup">Found on '+img.matchCount+' other sites</span></div>';
+      html+='<div class="iv-source"><b>Appears on:</b> '+esc(img.reason||'')+'</div>';
+      html+='<div class="iv-impact">This image is being used by multiple websites. Even if it is genuinely yours, homeowners who do their research will find it elsewhere and lose confidence.</div>';
+      html+='</div>';
+    });
+    html+='</div>';
+  }
+  html+='<div style="margin-top:10px;font-size:12px;color:var(--gray-400)">'+ivChecked+' images checked via reverse image search out of '+ivTotal+' total images on site</div>';
+  html+='</div>';
 
   /* panel: photos */
   var pa=r.photo_analysis||{};

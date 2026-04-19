@@ -7,8 +7,6 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { crawlWebsite } = require('./crawler');
-const { scoreWebsite } = require('./scorer');
  
 const app = express();
 app.use(cors());
@@ -67,4 +65,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`\n🚀 SiteAudit server running at http://localhost:${PORT}\n`);
 });
- 

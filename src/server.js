@@ -349,7 +349,7 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
-    max_tokens: 3000,
+    max_tokens: 6000,
     system: systemPrompt,
     messages: [{
       role: 'user',
@@ -358,8 +358,17 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
   });
 
   const rawText = response.content.map(b => b.text || '').join('');
-  const clean = rawText.replace(/```json|```/g, '').trim();
-  const result = JSON.parse(clean);
+  let clean = rawText.replace(/```json|```/g, '').trim();
+
+  let result;
+  try {
+    result = JSON.parse(clean);
+  } catch (e) {
+    console.error('JSON parse failed. Response length:', clean.length);
+    console.error('Last 300 chars:', clean.slice(-300));
+    console.error('Stop reason:', response.stop_reason);
+    throw new Error('AI response was incomplete or malformed. This usually means the response was too long. Try again or audit a smaller site.');
+  }
 
   // Attach the raw image verification data to the report
   result.imageVerification = imageVerification;

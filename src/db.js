@@ -28,11 +28,14 @@ async function initSchema() {
       email TEXT,
       score INTEGER,
       report_json JSONB NOT NULL,
+      overrides JSONB DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       unlocked_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS idx_audits_email ON audits(email);
     CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC);
+
+    ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb;
   `);
 
   console.log('✓ Database schema ready');
@@ -91,11 +94,36 @@ async function getAuditMeta(id) {
   return rows[0] || null;
 }
 
+/* Save or clear an override for a specific flagged image.
+ * overrides format: { "image_src_url": "accepted" | "rejected" }
+ * "accepted" = user says the flag is valid
+ * "rejected" = user says "this is actually mine, don't penalise"
+ */
+async function setImageOverride(auditId, imageSrc, decision) {
+  if (!pool) throw new Error('Database not configured');
+  const validDecisions = ['accepted', 'rejected', null];
+  if (!validDecisions.includes(decision)) throw new Error('Invalid decision');
+
+  if (decision === null) {
+    /* Remove the override */
+    await pool.query(
+      `UPDATE audits SET overrides = overrides - $1 WHERE id = $2`,
+      [imageSrc, auditId]
+    );
+  } else {
+    await pool.query(
+      `UPDATE audits SET overrides = jsonb_set(COALESCE(overrides,'{}'::jsonb), $1, $2::jsonb) WHERE id = $3`,
+      ['{' + imageSrc.replace(/"/g, '\\"') + '}', JSON.stringify(decision), auditId]
+    );
+  }
+}
+
 module.exports = {
   initSchema,
   saveAudit,
   getAudit,
   getAuditMeta,
   unlockAudit,
+  setImageOverride,
   isEnabled: () => !!pool,
 };

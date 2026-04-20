@@ -319,7 +319,7 @@ function animateScores(root){
     var ringCircle=root.querySelector('.ring-wrap svg circle:nth-child(2)');
     if(ringCircle){
       var targetOffset=ringCircle.getAttribute('stroke-dashoffset');
-      ringCircle.setAttribute('stroke-dashoffset','213');
+      ringCircle.setAttribute('stroke-dashoffset','283');
       void ringCircle.getBoundingClientRect();
       requestAnimationFrame(function(){ringCircle.setAttribute('stroke-dashoffset',targetOffset);});
     }
@@ -346,7 +346,7 @@ function renderOverview(r){
 
   /* Score band */
   html+='<div class="score-band">';
-  html+='<div class="ring-wrap"><svg viewBox="0 0 88 88">'+ringPath(score,88)+'</svg><div class="ring-num">'+score+'</div></div>';
+  html+='<div class="ring-wrap"><svg viewBox="0 0 112 112">'+ringPath(score,112)+'</svg><div class="ring-num">'+score+'</div></div>';
   html+='<div class="score-copy">';
   html+='<div class="score-hl">'+esc((r.hero||{}).headline||'')+'</div>';
   html+='<div class="score-sub">'+esc((r.hero||{}).subtext||'')+'</div>';

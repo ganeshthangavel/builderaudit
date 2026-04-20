@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Our services — BuilderAudit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+.svc-wrap { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+.svc-hero { text-align: center; margin-bottom: 2.5rem; }
+.svc-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--azure); font-weight: 700; margin-bottom: 10px; }
+.svc-hero h1 { font-size: 42px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; margin-bottom: 12px; max-width: 720px; margin-inline: auto; }
+.svc-hero h1 em { color: var(--coral); font-style: normal; }
+.svc-hero p { font-size: 17px; color: var(--slate-deep); line-height: 1.55; max-width: 560px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" style="text-decoration:none"><div class="logo">Builder<em>Audit</em></div></a>
+  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+</header>
+
+<div class="svc-wrap">
+  <div class="svc-hero">
+    <div class="svc-eyebrow">Our services</div>
+    <h1>Know what's wrong. <em>Let us fix it.</em></h1>
+    <p>Our forensics team can take over any finding from your audit. Real, UK-based specialists — web, SEO, photography, and full managed service.</p>
+  </div>
+
+  <div class="services-grid">
+
+    <div class="service-card">
+      <div class="service-card-icon">&#9633;</div>
+      <div class="service-card-title">Web design / rebuild</div>
+      <div class="service-card-body">Full rebuild of your website, engineered around trust signals homeowners actually check. Companies House, verified testimonials, real project photography, proper case studies.</div>
+      <div class="service-card-footer">
+        <div class="service-card-price">£1.5k&ndash;£6k <span>typical</span></div>
+        <button class="service-card-btn" onclick="enquire('web_rebuild','Web design / rebuild')">Enquire</button>
+      </div>
+    </div>
+
+    <div class="service-card">
+      <div class="service-card-icon">&#9650;</div>
+      <div class="service-card-title">SEO services</div>
+      <div class="service-card-body">Local SEO focused on builders — Google Business Profile, service-area pages, backlinks from builder directories, and technical fixes that move the needle in 3 months.</div>
+      <div class="service-card-footer">
+        <div class="service-card-price">£400&ndash;£1.2k <span>/month</span></div>
+        <button class="service-card-btn" onclick="enquire('seo','SEO services')">Enquire</button>
+      </div>
+    </div>
+
+    <div class="service-card">
+      <div class="service-card-icon">&#9712;</div>
+      <div class="service-card-title">Professional photography</div>
+      <div class="service-card-body">Real photos of your actual work — before, during, and after. Done professionally so your site stops looking like every other Shutterstock-filled competitor.</div>
+      <div class="service-card-footer">
+        <div class="service-card-price">£450&ndash;£1.5k <span>per shoot</span></div>
+        <button class="service-card-btn" onclick="enquire('photography','Professional photography')">Enquire</button>
+      </div>
+    </div>
+
+    <div class="service-card">
+      <div class="service-card-icon">&#10070;</div>
+      <div class="service-card-title">Testimonial &amp; review gathering</div>
+      <div class="service-card-body">We reach out to your past customers, collect verified testimonials with photos and real names, and help you get them onto Google Reviews, Checkatrade, and your website.</div>
+      <div class="service-card-footer">
+        <div class="service-card-price">£600&ndash;£1.8k <span>project</span></div>
+        <button class="service-card-btn" onclick="enquire('testimonials','Testimonial &amp; review gathering')">Enquire</button>
+      </div>
+    </div>
+
+    <div class="service-card" style="grid-column:1/-1;background:var(--ink);color:#fff;border-color:rgba(255,255,255,.1)">
+      <div class="service-card-icon" style="background:rgba(255,122,24,.2);color:var(--coral)">&#10003;</div>
+      <div class="service-card-title" style="color:#fff">Full done-for-you fix <span style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--coral);padding:3px 8px;background:rgba(255,92,51,.15);border-radius:99px;margin-left:8px;vertical-align:middle">Most popular</span></div>
+      <div class="service-card-body" style="color:var(--slate)">We take your entire audit and handle every fix &mdash; new site, real photography, SEO, verified testimonials, accreditation support. You focus on building, we handle the rest.</div>
+      <div class="service-card-footer" style="border-color:rgba(255,255,255,.1)">
+        <div class="service-card-price" style="color:#fff">£3k&ndash;£15k <span style="color:var(--slate)">depending on scope</span></div>
+        <button class="service-card-btn" onclick="enquire('managed_service','Full done-for-you fix')">Enquire</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Enquiry modal -->
+<div class="enquiry-modal" id="enquiryModal" onclick="if(event.target===this)closeEnquiry()">
+  <div class="enquiry-box" id="enquiryBox"></div>
+</div>
+
+<script>
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+var currentService = null;
+var currentServiceLabel = null;
+
+async function enquire(service, label){
+  currentService = service;
+  currentServiceLabel = label;
+
+  /* Check if user is logged in */
+  try {
+    var res = await fetch('/api/auth/me', { credentials: 'include' });
+    var data = await res.json();
+    if (!data.user) {
+      showEnquiryLogin();
+    } else {
+      showEnquiryForm(data.user);
+    }
+    document.getElementById('enquiryModal').classList.add('on');
+  } catch (e) {
+    alert('Could not load form: ' + e.message);
+  }
+}
+
+function showEnquiryLogin(){
+  document.getElementById('enquiryBox').innerHTML =
+    '<div class="enquiry-eyebrow">Quick account needed</div>'+
+    '<div class="enquiry-title">Create an account to enquire</div>'+
+    '<div class="enquiry-sub">We need a few details about your business so our team can prepare a proper quote and follow up properly.</div>'+
+    '<div class="enquiry-login-prompt">Have an account already? <a href="/login?next=/services">Log in</a>. Or <a href="/signup">create one now</a> — takes 30 seconds.</div>'+
+    '<div class="enquiry-actions"><button class="enquiry-cancel" onclick="closeEnquiry()">Cancel</button><a href="/signup" class="enquiry-submit" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">Create account &rarr;</a></div>';
+}
+
+function showEnquiryForm(user){
+  document.getElementById('enquiryBox').innerHTML =
+    '<div class="enquiry-eyebrow">Service enquiry</div>'+
+    '<div class="enquiry-title">'+esc(currentServiceLabel)+'</div>'+
+    '<div class="enquiry-sub">Tell us a bit about what you need. One of our forensics team will reply within 1 business day.</div>'+
+    '<label class="enquiry-label" for="enqNotes">Your notes <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--slate-text)">(optional)</span></label>'+
+    '<textarea class="enquiry-textarea" id="enqNotes" placeholder="e.g. I have 12 past customers we could approach for testimonials, and ~40 project photos that need replacing..."></textarea>'+
+    '<div class="enquiry-actions"><button class="enquiry-cancel" onclick="closeEnquiry()">Cancel</button><button class="enquiry-submit" id="enqSubmitBtn" onclick="submitEnquiry()">Send enquiry &rarr;</button></div>';
+}
+
+async function submitEnquiry(){
+  var btn=document.getElementById('enqSubmitBtn');
+  var notes=document.getElementById('enqNotes').value.trim();
+  btn.disabled=true;btn.textContent='Sending...';
+  try {
+    var res = await fetch('/api/enquiry',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({service:currentService, notes:notes})
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error||'Send failed');
+    showEnquirySuccess();
+  } catch(e) {
+    btn.disabled=false;btn.textContent='Send enquiry \u2192';
+    alert('Could not send: '+e.message);
+  }
+}
+
+function showEnquirySuccess(){
+  document.getElementById('enquiryBox').innerHTML =
+    '<div class="enquiry-success">'+
+      '<div class="enquiry-success-icon">\u2713</div>'+
+      '<div class="enquiry-title">Enquiry sent</div>'+
+      '<div class="enquiry-sub">We\'ve emailed you a confirmation. One of our forensics team will be in touch within 1 business day.</div>'+
+      '<div class="enquiry-actions"><button class="enquiry-submit" onclick="closeEnquiry()">Close</button></div>'+
+    '</div>';
+}
+
+function closeEnquiry(){
+  document.getElementById('enquiryModal').classList.remove('on');
+}
+</script>
+</body>
+</html>

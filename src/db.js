@@ -104,18 +104,27 @@ async function setImageOverride(auditId, imageSrc, decision) {
   const validDecisions = ['accepted', 'rejected', null];
   if (!validDecisions.includes(decision)) throw new Error('Invalid decision');
 
+  /* Read, modify, write back — safest for arbitrary keys (URLs contain slashes, special chars) */
+  const { rows } = await pool.query(
+    `SELECT overrides FROM audits WHERE id = $1`,
+    [auditId]
+  );
+  if (rows.length === 0) throw new Error('Audit not found');
+
+  const current = rows[0].overrides || {};
+
   if (decision === null) {
-    /* Remove the override */
-    await pool.query(
-      `UPDATE audits SET overrides = overrides - $1 WHERE id = $2`,
-      [imageSrc, auditId]
-    );
+    delete current[imageSrc];
   } else {
-    await pool.query(
-      `UPDATE audits SET overrides = jsonb_set(COALESCE(overrides,'{}'::jsonb), $1, $2::jsonb) WHERE id = $3`,
-      ['{' + imageSrc.replace(/"/g, '\\"') + '}', JSON.stringify(decision), auditId]
-    );
+    current[imageSrc] = decision;
   }
+
+  await pool.query(
+    `UPDATE audits SET overrides = $1::jsonb WHERE id = $2`,
+    [JSON.stringify(current), auditId]
+  );
+
+  return current;
 }
 
 module.exports = {

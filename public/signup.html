@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create your account — BuilderAudit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+.auth-wrap { max-width: 480px; margin: 3rem auto; padding: 0 1.5rem 4rem; }
+.auth-card { background: #fff; border: 1px solid var(--ice); border-radius: 20px; padding: 2.5rem 2.25rem; box-shadow: 0 20px 60px -20px rgba(15,23,42,.15); }
+.auth-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--azure); font-weight: 700; margin-bottom: 6px; }
+.auth-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin-bottom: 8px; line-height: 1.15; }
+.auth-sub { font-size: 15px; color: var(--slate-deep); line-height: 1.55; margin-bottom: 1.75rem; }
+.field { margin-bottom: 1rem; }
+.field label { font-size: 12px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 6px; }
+.field input, .field select { width: 100%; padding: 12px 14px; border: 1.5px solid var(--ice); border-radius: 10px; font-size: 15px; font-family: var(--font); outline: none; transition: border-color .2s; box-sizing: border-box; color: var(--ink); background: #fff; }
+.field input:focus, .field select:focus { border-color: var(--azure); }
+.field-hint { font-size: 12px; color: var(--slate-text); margin-top: 4px; }
+.radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.radio-opt { position: relative; }
+.radio-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.radio-opt label { display: block; padding: 12px 14px; border: 1.5px solid var(--ice); border-radius: 10px; font-size: 13px; font-weight: 500; text-align: center; cursor: pointer; transition: all .2s; text-transform: none; letter-spacing: normal; color: var(--slate-deep); margin-bottom: 0; }
+.radio-opt input:checked + label { border-color: var(--azure); background: var(--azure-tint); color: var(--azure-deep); font-weight: 600; }
+.submit-btn { width: 100%; padding: 14px; background: var(--coral); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: all .2s; margin-top: 6px; }
+.submit-btn:hover { background: var(--red-signal); transform: translateY(-1px); box-shadow: 0 12px 28px -8px rgba(255,92,51,.4); }
+.submit-btn:disabled { opacity: .5; transform: none; }
+.auth-alt { text-align: center; margin-top: 1.5rem; font-size: 13px; color: var(--slate-deep); }
+.auth-alt a { color: var(--azure); font-weight: 600; text-decoration: none; }
+.err-box { background: var(--red-tint); color: var(--red-ink); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 1rem; display: none; }
+.err-box.on { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" style="text-decoration:none"><div class="logo">Builder<em>Audit</em></div></a>
+  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+</header>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-eyebrow">Create your account</div>
+    <div class="auth-title">Get started with BuilderAudit</div>
+    <div class="auth-sub">Save your audits, track improvements over time, and get feedback tailored to your business type and region.</div>
+
+    <div class="err-box" id="errBox"></div>
+
+    <div class="field">
+      <label for="email">Your email</label>
+      <input type="email" id="email" autocomplete="email" required autofocus>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="new-password" required minlength="8">
+      <div class="field-hint">Minimum 8 characters</div>
+    </div>
+
+    <div class="field">
+      <label for="companyName">Company name</label>
+      <input type="text" id="companyName" required>
+    </div>
+
+    <div class="field">
+      <label>Business type</label>
+      <div class="radio-grid">
+        <div class="radio-opt">
+          <input type="radio" name="businessType" value="ltd" id="bt-ltd">
+          <label for="bt-ltd">Limited Company</label>
+        </div>
+        <div class="radio-opt">
+          <input type="radio" name="businessType" value="sole_trader" id="bt-sole">
+          <label for="bt-sole">Sole Trader</label>
+        </div>
+        <div class="radio-opt">
+          <input type="radio" name="businessType" value="partnership" id="bt-part">
+          <label for="bt-part">Partnership</label>
+        </div>
+        <div class="radio-opt">
+          <input type="radio" name="businessType" value="llp" id="bt-llp">
+          <label for="bt-llp">LLP</label>
+        </div>
+      </div>
+      <div class="field-hint">We use this to tailor your feedback — Sole Traders aren't penalised for lacking Companies House details, for example.</div>
+    </div>
+
+    <div class="field">
+      <label for="region">Region</label>
+      <select id="region" required>
+        <option value="">Choose your region...</option>
+        <option value="London">London</option>
+        <option value="South East">South East</option>
+        <option value="South West">South West</option>
+        <option value="East of England">East of England</option>
+        <option value="East Midlands">East Midlands</option>
+        <option value="West Midlands">West Midlands</option>
+        <option value="Yorkshire and the Humber">Yorkshire and the Humber</option>
+        <option value="North West">North West</option>
+        <option value="North East">North East</option>
+        <option value="Scotland">Scotland</option>
+        <option value="Wales">Wales</option>
+        <option value="Northern Ireland">Northern Ireland</option>
+      </select>
+    </div>
+
+    <button class="submit-btn" id="submitBtn" onclick="signup()">Create account &rarr;</button>
+
+    <div class="auth-alt">Already have an account? <a href="/login">Log in</a></div>
+  </div>
+</div>
+
+<script>
+/* If there's a ?claim=rpt_xxx param, capture it so we can link the audit to the new account */
+var urlParams = new URLSearchParams(window.location.search);
+var claimAuditId = urlParams.get('claim');
+
+function showErr(msg){
+  var box=document.getElementById('errBox');
+  box.textContent=msg;
+  box.classList.add('on');
+}
+
+async function signup(){
+  var btn=document.getElementById('submitBtn');
+  var email=document.getElementById('email').value.trim();
+  var password=document.getElementById('password').value;
+  var companyName=document.getElementById('companyName').value.trim();
+  var businessTypeEl=document.querySelector('input[name="businessType"]:checked');
+  var region=document.getElementById('region').value;
+
+  if(!email||!password||!companyName||!businessTypeEl||!region){
+    showErr('Please fill in all fields');return;
+  }
+
+  btn.disabled=true;btn.textContent='Creating account...';
+  document.getElementById('errBox').classList.remove('on');
+
+  try{
+    var res=await fetch('/api/auth/signup',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({
+        email:email,password:password,
+        companyName:companyName,
+        businessType:businessTypeEl.value,
+        region:region,
+        claimAuditId:claimAuditId
+      })
+    });
+    var data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Signup failed');
+
+    /* If they had an audit, go back to it. Otherwise dashboard */
+    window.location.href=claimAuditId?('/report/'+claimAuditId):'/dashboard';
+  }catch(e){
+    btn.disabled=false;btn.textContent='Create account \u2192';
+    showErr(e.message);
+  }
+}
+
+/* Enter key submits */
+['email','password','companyName'].forEach(function(id){
+  document.getElementById(id).addEventListener('keydown',function(e){
+    if(e.key==='Enter')signup();
+  });
+});
+</script>
+</body>
+</html>

@@ -111,16 +111,33 @@ function reverseImageSearch(imageUrl) {
   });
 }
 
-function selectImagesForVerification(allImages, max = 12) {
+function selectImagesForVerification(allImages, max = 14) {
   /* Filter by size + exclude obvious non-project images via URL hints */
   const candidates = allImages
-    .filter(img => img.width > 300 && img.height > 200)
+    .filter(img => img.width > 400 && img.height > 300)
+    .filter(img => {
+      /* Skip images that are clearly square (likely avatars/icons/logos) */
+      const ratio = img.width / img.height;
+      if (ratio > 0.85 && ratio < 1.15 && img.width < 600) return false;
+      return true;
+    })
     .filter(img => {
       const s = img.src.toLowerCase();
-      const excludeHints = ['logo', 'icon', 'badge', 'avatar', 'favicon', '/team/', 'headshot', 'staff-', 'profile-', 'signature'];
+      const excludeHints = [
+        'logo', 'icon', 'badge', 'avatar', 'favicon', 'headshot',
+        'staff', 'profile', 'signature', 'thumb', 'sprite',
+        '/team/', '/staff/', '/people/', '/about/', '/employees/',
+        'accreditation', 'certification', 'trustmark', 'fmb-',
+        'nhbc-', 'chas-', 'gas-safe', 'niceic-', 'checkatrade-',
+        'which-trusted', 'award', 'certificate', 'illustration',
+        'cartoon', 'vector', '.svg', 'graphic', 'banner-',
+        'header-', 'footer-', 'nav-', 'bg-', 'background-',
+        'pattern-', 'texture-', 'gradient-',
+      ];
       return !excludeHints.some(h => s.includes(h));
     })
     .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
   const seen = new Set();
   const unique = [];
   for (const img of candidates) {
@@ -155,13 +172,29 @@ async function classifyProjectImages(candidates) {
         source: { type: 'url', url: img.src },
       }));
 
-      const prompt = 'You are classifying images from a UK construction company website.\n\n' +
+      const prompt = 'You are classifying images from a UK construction company website. You must be STRICT and CAUTIOUS.\n\n' +
         'For each of the ' + batch.length + ' images I have provided (in order), decide whether it is a PROJECT IMAGE or NOT.\n\n' +
-        'PROJECT IMAGE = photo of a finished building, construction work in progress, property exterior, interior room, kitchen, bathroom, extension, renovation, landscape/garden work. These are the images a homeowner would judge the builder\'s capability on.\n\n' +
-        'NOT PROJECT IMAGE = company logo, team photo / headshot, accreditation badge (FMB/NHBC/etc), icon, illustration, chart, diagram, certificate scan, random decorative image.\n\n' +
+        'PROJECT IMAGE = A photograph (not illustration, not cartoon, not vector) of:\n' +
+        '- A finished building or property (exterior, full-house shot, front view)\n' +
+        '- Construction work in progress (scaffolding, bricklaying, framing)\n' +
+        '- Interior rooms that show completed work (kitchens, bathrooms, living rooms, bedrooms)\n' +
+        '- Extensions, loft conversions, garden/landscape work\n' +
+        'These are images that prove what the builder has actually built.\n\n' +
+        'NOT A PROJECT IMAGE — classify as not_project if ANY of these apply:\n' +
+        '- Any photo containing a person as the main subject (team photos, headshots, portraits, staff photos, customer photos)\n' +
+        '- Any illustration, cartoon, drawing, sketch, vector graphic, or animated image (NOT a real photograph)\n' +
+        '- Company logos, brand marks, or wordmarks\n' +
+        '- Accreditation badges or logos (FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC, Checkatrade, Which Trusted Trader, etc)\n' +
+        '- Awards, certificates, or trophy images\n' +
+        '- Icons, symbols, or UI elements\n' +
+        '- Charts, diagrams, floor plans, or technical drawings\n' +
+        '- Decorative banners, textures, patterns, or abstract backgrounds\n' +
+        '- Screenshots of anything\n' +
+        '- Stock illustration style images even if they show buildings (look for cartoon/flat design style)\n\n' +
+        'IMPORTANT: When in doubt, classify as not_project. False positives (flagging a team photo as a project) are worse than false negatives.\n\n' +
         'Return ONLY a JSON array with one entry per image in order. Each entry must be:\n' +
-        '{"type": "project" | "not_project", "subject": "<brief description e.g. kitchen interior, company logo, team photo>"}\n\n' +
-        'Example output:\n[{"type":"project","subject":"kitchen extension interior"},{"type":"not_project","subject":"FMB accreditation badge"}]\n\n' +
+        '{"type": "project" | "not_project", "subject": "<brief description>"}\n\n' +
+        'Example: [{"type":"project","subject":"kitchen extension interior"},{"type":"not_project","subject":"team member headshot"},{"type":"not_project","subject":"cartoon illustration of houses"}]\n\n' +
         'Return nothing else. No markdown, no explanation.';
 
       const resp = await client.messages.create({
@@ -177,8 +210,8 @@ async function classifyProjectImages(candidates) {
       });
     } catch (err) {
       console.warn('Classify batch failed:', err.message);
-      /* On failure, assume project to avoid dropping real images */
-      batch.forEach(img => classifications.push({ ...img, classification: { type: 'project', subject: 'unknown' } }));
+      /* On failure, assume NOT project to avoid false flags on team photos / logos */
+      batch.forEach(img => classifications.push({ ...img, classification: { type: 'not_project', subject: 'classifier_failed' } }));
     }
   }
 

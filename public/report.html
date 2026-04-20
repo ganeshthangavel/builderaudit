@@ -533,29 +533,63 @@ function renderImages(r){
   html+='</div>';
 
   if(ivFlagged===0){
-    html+='<div class="iv-none"><div class="iv-none-icon">\u2713</div><div class="iv-none-text">No stock or duplicate images detected</div><div class="iv-none-sub">We checked '+ivChecked+' of '+ivTotal+' images — all appear to be original photography</div></div>';
+    html+='<div class="iv-none"><div class="iv-none-icon">\u2713</div><div class="iv-none-text">No stock or duplicate images detected</div><div class="iv-none-sub">We checked '+ivChecked+' of '+ivTotal+' images \u2014 all appear to be original photography</div></div>';
   } else {
     html+='<div class="iv-list">';
     ivStock.forEach(function(img){
-      html+='<div class="iv-card">';
-      html+='<div class="iv-card-head"><span class="iv-badge ivb-stock">Confirmed stock photo</span></div>';
-      html+='<div class="iv-source"><b>Found on:</b> '+esc(img.reason||'')+'</div>';
-      if(img.source)html+='<div class="iv-url">'+esc(img.source)+'</div>';
-      html+='<div class="iv-impact">A homeowner who spots this will immediately question whether any of your project photos are real. This is one of the fastest ways to destroy trust.</div>';
-      html+='</div>';
+      html+=imageCard(img,'stock','Confirmed stock photo','A homeowner who spots this will immediately question whether any of your project photos are real. This is one of the fastest ways to destroy trust.');
     });
     ivDup.forEach(function(img){
-      html+='<div class="iv-card">';
-      html+='<div class="iv-card-head"><span class="iv-badge ivb-dup">Found on '+img.matchCount+' other sites</span></div>';
-      html+='<div class="iv-source"><b>Appears on:</b> '+esc(img.reason||'')+'</div>';
-      html+='<div class="iv-impact">This image is being used by multiple websites. Even if it is genuinely yours, homeowners who do their research will find it elsewhere and lose confidence.</div>';
-      html+='</div>';
+      html+=imageCard(img,'dup','Found on '+img.matchCount+' other sites','This image is being used by multiple websites. Even if it is genuinely yours, homeowners who do their research will find it elsewhere and lose confidence.');
     });
     html+='</div>';
   }
   html+='<div style="margin-top:10px;font-size:12px;color:var(--slate-text)">'+ivChecked+' images checked via reverse image search out of '+ivTotal+' total</div>';
   return html;
 }
+
+function imageCard(img,type,badgeLabel,impactText){
+  var safeSrc=esc(img.src||'');
+  var overlayLabel=type==='stock'?'STOCK':'DUPLICATE';
+  var badgeClass=type==='stock'?'ivb-stock':'ivb-dup';
+  var html='<div class="iv-card">';
+  html+='<div class="iv-thumb" onclick="openLightbox(\''+safeSrc+'\',\''+esc(badgeLabel).replace(/'/g,"\\'")+'\')" style="cursor:zoom-in">';
+  html+='<div class="iv-thumb-fallback">\u25A1</div>';
+  html+='<img src="'+safeSrc+'" alt="Flagged image" loading="lazy" onerror="this.style.display=\'none\'" onload="this.previousElementSibling.style.display=\'none\'">';
+  html+='<div class="iv-thumb-overlay '+type+'">'+overlayLabel+'</div>';
+  html+='</div>';
+  html+='<div class="iv-body">';
+  html+='<div class="iv-card-head"><span class="iv-badge '+badgeClass+'">'+esc(badgeLabel)+'</span></div>';
+  html+='<div class="iv-source"><b>'+(type==='stock'?'Found on:':'Appears on:')+'</b> '+esc(img.reason||'')+'</div>';
+  if(img.source)html+='<div class="iv-url">'+esc(img.source)+'</div>';
+  html+='<div class="iv-impact">'+esc(impactText)+'</div>';
+  html+='<a href="'+safeSrc+'" target="_blank" rel="noopener" class="iv-view-link">View original \u2197</a>';
+  html+='</div>';
+  html+='</div>';
+  return html;
+}
+
+function openLightbox(src,caption){
+  var existing=document.getElementById('ivLightbox');
+  if(existing)existing.remove();
+  var lb=document.createElement('div');
+  lb.id='ivLightbox';
+  lb.className='iv-lightbox on';
+  lb.innerHTML='<button class="iv-lightbox-close" onclick="closeLightbox()" aria-label="Close">\u2715</button>'+
+    '<img src="'+esc(src)+'" alt="Full image">'+
+    '<div class="iv-lightbox-caption">'+esc(caption)+'</div>';
+  lb.addEventListener('click',function(e){if(e.target===lb)closeLightbox();});
+  document.body.appendChild(lb);
+  document.addEventListener('keydown',lightboxKeyHandler);
+  document.body.style.overflow='hidden';
+}
+function closeLightbox(){
+  var lb=document.getElementById('ivLightbox');
+  if(lb)lb.remove();
+  document.removeEventListener('keydown',lightboxKeyHandler);
+  document.body.style.overflow='';
+}
+function lightboxKeyHandler(e){if(e.key==='Escape')closeLightbox();}
 
 /* ═══ Competitors ═══ */
 function renderCompetitors(r){

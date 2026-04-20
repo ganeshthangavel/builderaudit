@@ -73,13 +73,34 @@ function reverseImageSearch(imageUrl) {
           );
           if (stockMatch) {
             const domain = STOCK_DOMAINS.find(d => stockMatch.toLowerCase().includes(d));
-            return resolve({ verdict: 'stock', reason: 'Found on ' + domain, source: stockMatch, matchCount: sources.length });
+            return resolve({
+              verdict: 'stock',
+              reason: 'Found on ' + domain,
+              source: stockMatch,
+              matchCount: sources.length,
+              matchedSites: [stockMatch],
+            });
           }
           const externalMatches = sources.filter(src => {
             try { return !src.includes(new URL(imageUrl).hostname); } catch { return false; }
           });
           if (externalMatches.length >= 3) {
-            return resolve({ verdict: 'duplicated', reason: 'Image found on ' + externalMatches.length + ' other websites', sources: externalMatches.slice(0, 3), matchCount: externalMatches.length });
+            /* Extract unique hostnames from matches */
+            const hostnameMap = {};
+            externalMatches.forEach(src => {
+              try {
+                const h = new URL(src).hostname.replace(/^www\./, '');
+                if (!hostnameMap[h]) hostnameMap[h] = src;
+              } catch {}
+            });
+            const uniqueSites = Object.entries(hostnameMap).slice(0, 8).map(([hostname, fullUrl]) => ({ hostname, url: fullUrl }));
+            return resolve({
+              verdict: 'duplicated',
+              reason: 'Image found on ' + Object.keys(hostnameMap).length + ' other websites',
+              sources: externalMatches.slice(0, 3),
+              matchCount: externalMatches.length,
+              matchedSites: uniqueSites,
+            });
           }
           resolve({ verdict: 'original', reason: 'No stock or duplicate matches found', matchCount: sources.length });
         } catch (e) {
@@ -90,10 +111,15 @@ function reverseImageSearch(imageUrl) {
   });
 }
 
-function selectImagesForVerification(allImages, max = 8) {
+function selectImagesForVerification(allImages, max = 12) {
+  /* Filter by size + exclude obvious non-project images via URL hints */
   const candidates = allImages
     .filter(img => img.width > 300 && img.height > 200)
-    .filter(img => !img.src.includes('logo') && !img.src.includes('icon') && !img.src.includes('badge'))
+    .filter(img => {
+      const s = img.src.toLowerCase();
+      const excludeHints = ['logo', 'icon', 'badge', 'avatar', 'favicon', '/team/', 'headshot', 'staff-', 'profile-', 'signature'];
+      return !excludeHints.some(h => s.includes(h));
+    })
     .sort((a, b) => (b.width * b.height) - (a.width * a.height));
   const seen = new Set();
   const unique = [];
@@ -107,18 +133,92 @@ function selectImagesForVerification(allImages, max = 8) {
   return unique;
 }
 
+/*
+ * Classify images via Claude vision to only audit real project/property photos.
+ * Sends the candidate images as URLs (batch) and asks Claude to return
+ * which are construction work / interiors / exteriors vs UI / team / logo.
+ */
+async function classifyProjectImages(candidates) {
+  if (candidates.length === 0) return [];
+
+  /* Batch up to 10 images per Claude call. */
+  const batches = [];
+  for (let i = 0; i < candidates.length; i += 10) {
+    batches.push(candidates.slice(i, i + 10));
+  }
+
+  const classifications = [];
+  for (const batch of batches) {
+    try {
+      const imgBlocks = batch.map(img => ({
+        type: 'image',
+        source: { type: 'url', url: img.src },
+      }));
+
+      const prompt = 'You are classifying images from a UK construction company website.\n\n' +
+        'For each of the ' + batch.length + ' images I have provided (in order), decide whether it is a PROJECT IMAGE or NOT.\n\n' +
+        'PROJECT IMAGE = photo of a finished building, construction work in progress, property exterior, interior room, kitchen, bathroom, extension, renovation, landscape/garden work. These are the images a homeowner would judge the builder\'s capability on.\n\n' +
+        'NOT PROJECT IMAGE = company logo, team photo / headshot, accreditation badge (FMB/NHBC/etc), icon, illustration, chart, diagram, certificate scan, random decorative image.\n\n' +
+        'Return ONLY a JSON array with one entry per image in order. Each entry must be:\n' +
+        '{"type": "project" | "not_project", "subject": "<brief description e.g. kitchen interior, company logo, team photo>"}\n\n' +
+        'Example output:\n[{"type":"project","subject":"kitchen extension interior"},{"type":"not_project","subject":"FMB accreditation badge"}]\n\n' +
+        'Return nothing else. No markdown, no explanation.';
+
+      const resp = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: [...imgBlocks, { type: 'text', text: prompt }] }],
+      });
+
+      const text = resp.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(text);
+      parsed.forEach((c, i) => {
+        if (batch[i]) classifications.push({ ...batch[i], classification: c });
+      });
+    } catch (err) {
+      console.warn('Classify batch failed:', err.message);
+      /* On failure, assume project to avoid dropping real images */
+      batch.forEach(img => classifications.push({ ...img, classification: { type: 'project', subject: 'unknown' } }));
+    }
+  }
+
+  return classifications;
+}
+
 async function verifyImages(allImages) {
-  const toCheck = selectImagesForVerification(allImages, 8);
-  console.log('Checking ' + toCheck.length + ' images for stock/duplication...');
+  const candidates = selectImagesForVerification(allImages, 12);
+  console.log('Classifying ' + candidates.length + ' candidate images...');
+
+  /* 1. Classify with vision — only audit real project photos */
+  const classified = await classifyProjectImages(candidates);
+  const projectImages = classified.filter(c => c.classification?.type === 'project');
+  const skippedImages = classified.filter(c => c.classification?.type !== 'project');
+
+  console.log('Kept ' + projectImages.length + ' project images, skipped ' + skippedImages.length + ' (logos/team/icons)');
+
+  /* Cap at 8 reverse-image lookups to save SerpAPI credits */
+  const toCheck = projectImages.slice(0, 8);
+
+  /* 2. Reverse-image search only project photos */
   const results = [];
   for (const img of toCheck) {
     const result = await reverseImageSearch(img.src);
-    results.push({ src: img.src, alt: img.alt, width: img.width, height: img.height, ...result });
+    results.push({
+      src: img.src,
+      alt: img.alt,
+      width: img.width,
+      height: img.height,
+      subject: img.classification?.subject || '',
+      ...result,
+    });
     await new Promise(r => setTimeout(r, 500));
   }
+
   return {
     checked: results.filter(r => r.verdict !== 'error' && r.verdict !== 'unknown').length,
     total: allImages.length,
+    projectImagesFound: projectImages.length,
+    skippedNonProject: skippedImages.length,
     stockImages: results.filter(r => r.verdict === 'stock'),
     duplicatedImages: results.filter(r => r.verdict === 'duplicated'),
     originalImages: results.filter(r => r.verdict === 'original'),
@@ -436,6 +536,7 @@ app.get('/api/report/:id/data', async (req, res) => {
     id: audit.id,
     url: audit.url,
     report: audit.report_json,
+    overrides: audit.overrides || {},
     scannedAt: audit.created_at,
   });
 });
@@ -454,6 +555,53 @@ app.get('/api/report/:id/meta', async (req, res) => {
     scannedAt: meta.created_at,
     unlocked: isUnlocked,
   });
+});
+
+/* Override a flagged image — user says "this is actually mine" */
+app.post('/api/report/:id/override', async (req, res) => {
+  const { id } = req.params;
+  const { imageSrc, decision } = req.body;
+
+  if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
+  if (!imageSrc) return res.status(400).json({ error: 'Missing imageSrc' });
+  if (req.cookies['audit_unlock_' + id] !== '1') return res.status(403).json({ error: 'Report not unlocked' });
+
+  try {
+    await db.setImageOverride(id, imageSrc, decision);
+
+    /* Recalculate score based on remaining (non-overridden) flags */
+    const audit = await db.getAudit(id);
+    if (!audit) return res.status(404).json({ error: 'Not found' });
+
+    const overrides = audit.overrides || {};
+    const iv = audit.report_json?.imageVerification || {};
+    const stockRemaining = (iv.stockImages || []).filter(img => overrides[img.src] !== 'rejected').length;
+    const dupRemaining = (iv.duplicatedImages || []).filter(img => overrides[img.src] !== 'rejected').length;
+    const flaggedRemaining = stockRemaining + dupRemaining;
+
+    /* Score bump: each removed flag restores some trust.
+       Stock photo is the most damaging (weight 4), duplicate less so (weight 2).
+       Original score was based on AI's view of the flags; removing flags should increase the score. */
+    const baseScore = audit.report_json?.hero?.score || 0;
+    const originalFlagged = (iv.stockImages || []).length + (iv.duplicatedImages || []).length;
+    const removedFlags = originalFlagged - flaggedRemaining;
+    let adjustedScore = baseScore + (removedFlags * 3); /* 3 points per removed flag */
+    if (adjustedScore > 100) adjustedScore = 100;
+    if (adjustedScore < 0) adjustedScore = 0;
+
+    res.json({
+      success: true,
+      overrides,
+      adjustedScore,
+      stockRemaining,
+      dupRemaining,
+      flaggedRemaining,
+      originalScore: baseScore,
+    });
+  } catch (err) {
+    console.error('Override failed:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

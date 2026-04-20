@@ -370,8 +370,10 @@ async function scoreWebsite(pages, targetUrl, imageVerification) {
   const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
-  const screenshotsToAnalyse = pages.slice(0, 4);
 
+  /* Only include image blocks for pages that have screenshots (fresh audits).
+     Replays use text-only analysis since screenshots arent stored. */
+  const screenshotsToAnalyse = pages.slice(0, 4).filter(p => p.screenshotB64);
   const imageBlocks = screenshotsToAnalyse.map(p => ({
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
@@ -586,8 +588,56 @@ app.get('/api/report/:id/meta', async (req, res) => {
     url: meta.url,
     score: meta.score,
     scannedAt: meta.created_at,
+    lastAnalyzedAt: meta.last_analyzed_at,
+    canReanalyze: meta.has_raw_data,
     unlocked: isUnlocked,
   });
+});
+
+/* Re-analyse — reuses stored raw data, just runs the AI prompt again.
+   Cheap and fast: no crawl, no image search. Costs roughly one AI call. */
+app.post('/api/report/:id/reanalyze', async (req, res) => {
+  const { id } = req.params;
+
+  if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
+  if (req.cookies['audit_unlock_' + id] !== '1') {
+    return res.status(403).json({ error: 'Report not unlocked' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const send = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
+
+  try {
+    send('status', { message: 'Loading stored data...', step: 1, total: 2 });
+
+    const audit = await db.getAudit(id);
+    if (!audit) { send('error', { message: 'Report not found' }); return res.end(); }
+
+    const rawData = audit.raw_data;
+    if (!rawData || !rawData.pages) {
+      send('error', { message: 'This report was audited before re-analyse was available. Please run a new audit.' });
+      return res.end();
+    }
+
+    send('status', { message: 'Running fresh AI analysis...', step: 2, total: 2 });
+
+    const newReport = await scoreWebsite(
+      rawData.pages,
+      audit.url,
+      rawData.imageVerification || null
+    );
+
+    await db.updateAnalysis(id, newReport);
+
+    send('complete', { id, success: true });
+  } catch (err) {
+    console.error('Re-analyse failed:', err);
+    send('error', { message: err.message || 'Re-analyse failed' });
+  }
+  res.end();
 });
 
 /* Override a flagged image — user says "this is actually mine" */

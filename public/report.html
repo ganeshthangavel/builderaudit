@@ -63,6 +63,21 @@
 .sp-sub { font-size: 15px; color: var(--slate-deep); line-height: 1.5; max-width: 600px; }
 
 .section-divider { height: 1px; background: var(--ice); margin: 2rem 0; }
+
+/* Re-analyse button and overlay */
+.reanalyze-btn { margin-left: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600; background: var(--azure); color: #fff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .2s; }
+.reanalyze-btn:hover { background: var(--azure-deep); transform: translateY(-1px); box-shadow: 0 6px 14px -4px rgba(47,107,255,.4); }
+.reanalyze-btn:disabled { opacity: .5; cursor: not-allowed; }
+.reanalyze-btn.disabled { background: var(--slate); cursor: not-allowed; }
+
+.reanalyze-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.85); display: none; align-items: center; justify-content: center; z-index: 200; backdrop-filter: blur(4px); }
+.reanalyze-overlay.on { display: flex; }
+.reanalyze-box { background: var(--ink); border-radius: 16px; padding: 2rem 2.5rem; text-align: center; max-width: 420px; border: 1px solid rgba(255,255,255,.1); }
+.reanalyze-box .scan-core { width: 80px; height: 80px; margin: 0 auto 1.5rem; }
+.reanalyze-box .scan-core svg { width: 80px; height: 80px; }
+.reanalyze-title { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px; letter-spacing: -.01em; }
+.reanalyze-msg { font-size: 14px; color: var(--slate); line-height: 1.5; }
+
 </style>
 </head>
 <body>
@@ -247,6 +262,74 @@ function showTopNav(data){
   if(data.report&&data.report.hero){
     document.getElementById('navScore').style.display='flex';
     document.getElementById('navScoreNum').textContent=data.report.hero.score||'—';
+  }
+  /* Check if this report supports re-analysis */
+  fetchReanalyzeAvailability();
+}
+
+async function fetchReanalyzeAvailability(){
+  try{
+    var res=await fetch('/api/report/'+REPORT_ID+'/meta');
+    if(!res.ok)return;
+    var meta=await res.json();
+    var btn=document.getElementById('reanalyzeBtn');
+    if(!btn)return;
+    if(meta.canReanalyze){
+      btn.style.display='inline-flex';
+      if(meta.lastAnalyzedAt){
+        var analyzedDate=new Date(meta.lastAnalyzedAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'});
+        btn.title='Last analysed: '+analyzedDate+'. Click to run a fresh AI analysis with the latest prompt and scoring logic.';
+      }
+    }
+  }catch(e){console.warn('Meta check failed:',e);}
+}
+
+async function reanalyze(){
+  var btn=document.getElementById('reanalyzeBtn');
+  var overlay=document.getElementById('reanalyzeOverlay');
+  var title=document.getElementById('reanalyzeTitle');
+  var msg=document.getElementById('reanalyzeMsg');
+  btn.disabled=true;
+  overlay.classList.add('on');
+  title.textContent='Re-analysing';
+  msg.textContent='Loading your stored audit data...';
+
+  try{
+    var res=await fetch('/api/report/'+REPORT_ID+'/reanalyze',{method:'POST'});
+    var reader=res.body.getReader(),dec=new TextDecoder(),buf='';
+    while(true){
+      var r=await reader.read();
+      if(r.done)break;
+      buf+=dec.decode(r.value,{stream:true});
+      var lines=buf.split('\n');
+      buf=lines.pop();
+      var lastEvt=null;
+      for(var i=0;i<lines.length;i++){
+        var line=lines[i];
+        if(line.startsWith('event: ')){lastEvt=line.slice(7).trim();continue;}
+        if(line.startsWith('data: ')){
+          try{
+            var d=JSON.parse(line.slice(6));
+            if(lastEvt==='status'){msg.textContent=d.message;}
+            if(lastEvt==='complete'){
+              title.textContent='Done';
+              msg.textContent='Loading your updated report...';
+              setTimeout(function(){window.location.reload();},700);
+            }
+            if(lastEvt==='error'){
+              title.textContent='Could not re-analyse';
+              msg.textContent=d.message;
+              setTimeout(function(){overlay.classList.remove('on');btn.disabled=false;},2500);
+            }
+          }catch(e){}
+          lastEvt=null;
+        }
+      }
+    }
+  }catch(e){
+    title.textContent='Error';
+    msg.textContent=e.message;
+    setTimeout(function(){overlay.classList.remove('on');btn.disabled=false;},2500);
   }
 }
 

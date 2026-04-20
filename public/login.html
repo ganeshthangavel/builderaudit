@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — BuilderAudit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+.auth-wrap { max-width: 440px; margin: 4rem auto; padding: 0 1.5rem 4rem; }
+.auth-card { background: #fff; border: 1px solid var(--ice); border-radius: 20px; padding: 2.5rem 2.25rem; box-shadow: 0 20px 60px -20px rgba(15,23,42,.15); }
+.auth-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--azure); font-weight: 700; margin-bottom: 6px; }
+.auth-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin-bottom: 8px; line-height: 1.15; }
+.auth-sub { font-size: 15px; color: var(--slate-deep); line-height: 1.55; margin-bottom: 1.75rem; }
+.field { margin-bottom: 1rem; }
+.field label { font-size: 12px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 6px; }
+.field input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--ice); border-radius: 10px; font-size: 15px; font-family: var(--font); outline: none; transition: border-color .2s; box-sizing: border-box; color: var(--ink); background: #fff; }
+.field input:focus { border-color: var(--azure); }
+.submit-btn { width: 100%; padding: 14px; background: var(--coral); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: all .2s; margin-top: 6px; }
+.submit-btn:hover { background: var(--red-signal); transform: translateY(-1px); box-shadow: 0 12px 28px -8px rgba(255,92,51,.4); }
+.submit-btn:disabled { opacity: .5; transform: none; }
+.auth-alt { text-align: center; margin-top: 1.5rem; font-size: 13px; color: var(--slate-deep); }
+.auth-alt a { color: var(--azure); font-weight: 600; text-decoration: none; }
+.err-box { background: var(--red-tint); color: var(--red-ink); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 1rem; display: none; }
+.err-box.on { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" style="text-decoration:none"><div class="logo">Builder<em>Audit</em></div></a>
+  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+</header>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-eyebrow">Log in</div>
+    <div class="auth-title">Welcome back</div>
+    <div class="auth-sub">Log in to see your audits, scores, and service enquiries.</div>
+
+    <div class="err-box" id="errBox"></div>
+
+    <div class="field">
+      <label for="email">Your email</label>
+      <input type="email" id="email" autocomplete="email" required autofocus>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+    </div>
+
+    <button class="submit-btn" id="submitBtn" onclick="login()">Log in &rarr;</button>
+
+    <div class="auth-alt">Don't have an account? <a href="/signup">Create one</a></div>
+  </div>
+</div>
+
+<script>
+var urlParams = new URLSearchParams(window.location.search);
+var redirectTo = urlParams.get('next') || '/dashboard';
+
+function showErr(msg){
+  var box=document.getElementById('errBox');
+  box.textContent=msg;box.classList.add('on');
+}
+
+async function login(){
+  var btn=document.getElementById('submitBtn');
+  var email=document.getElementById('email').value.trim();
+  var password=document.getElementById('password').value;
+  if(!email||!password){showErr('Please enter your email and password');return;}
+
+  btn.disabled=true;btn.textContent='Logging in...';
+  document.getElementById('errBox').classList.remove('on');
+
+  try{
+    var res=await fetch('/api/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({email:email,password:password})
+    });
+    var data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Login failed');
+    window.location.href=redirectTo;
+  }catch(e){
+    btn.disabled=false;btn.textContent='Log in \u2192';
+    showErr(e.message);
+  }
+}
+
+['email','password'].forEach(function(id){
+  document.getElementById(id).addEventListener('keydown',function(e){
+    if(e.key==='Enter')login();
+  });
+});
+</script>
+</body>
+</html>

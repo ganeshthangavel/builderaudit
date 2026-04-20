@@ -109,6 +109,8 @@ var REPORT_ID = pathParts[1];
 var SECTION = pathParts[2] || 'overview';
 
 var reportData = null;
+var reportOverrides = {};
+var currentScore = 0;
 
 function sc(n){return n>=70?'g':n>=45?'a':'r'}
 function cc(n){return 'c-'+sc(n)}
@@ -170,6 +172,8 @@ function setupReveal(root){
       showLockScreen(data);
     } else {
       reportData=data.report;
+      reportOverrides=data.overrides||{};
+      currentScore=(reportData&&reportData.hero&&reportData.hero.score)||0;
       showTopNav(data);
       renderSection(SECTION);
     }
@@ -521,52 +525,146 @@ function renderImages(r){
   var ivOrig=iv.originalImages||[];
   var ivChecked=iv.checked||0;
   var ivTotal=iv.total||0;
-  var ivFlagged=ivStock.length+ivDup.length;
+  var skipped=iv.skippedNonProject||0;
+
+  /* Filter out overridden flags from display counts */
+  var activeStock=ivStock.filter(function(i){return reportOverrides[i.src]!=='rejected';});
+  var activeDup=ivDup.filter(function(i){return reportOverrides[i.src]!=='rejected';});
+  var ivFlagged=activeStock.length+activeDup.length;
 
   var html='';
-  html+='<div class="sp-header"><div class="sp-eyebrow">Image verification</div><h1 class="sp-title">Are your photos real?</h1><p class="sp-sub">We reverse-searched every meaningful image on your site to find stock photos and duplicated content. Homeowners notice this more than any other trust signal.</p></div>';
+  html+='<div class="sp-header"><div class="sp-eyebrow">Image verification</div><h1 class="sp-title">Are your photos real?</h1><p class="sp-sub">We reverse-searched the project photos on your site to find stock and duplicated images. If we got any wrong, you can override them below and your score will update instantly.</p></div>';
 
   html+='<div class="iv-summary">';
-  html+='<div class="iv-stat"><div class="iv-num iv-num-bad">'+ivStock.length+'</div><div class="iv-lbl">Confirmed stock</div></div>';
-  html+='<div class="iv-stat"><div class="iv-num iv-num-warn">'+ivDup.length+'</div><div class="iv-lbl">Found elsewhere</div></div>';
+  html+='<div class="iv-stat"><div class="iv-num iv-num-bad" id="ivStockCount">'+activeStock.length+'</div><div class="iv-lbl">Confirmed stock</div></div>';
+  html+='<div class="iv-stat"><div class="iv-num iv-num-warn" id="ivDupCount">'+activeDup.length+'</div><div class="iv-lbl">Found elsewhere</div></div>';
   html+='<div class="iv-stat"><div class="iv-num iv-num-good">'+ivOrig.length+'</div><div class="iv-lbl">Appear original</div></div>';
   html+='</div>';
 
-  if(ivFlagged===0){
-    html+='<div class="iv-none"><div class="iv-none-icon">\u2713</div><div class="iv-none-text">No stock or duplicate images detected</div><div class="iv-none-sub">We checked '+ivChecked+' of '+ivTotal+' images \u2014 all appear to be original photography</div></div>';
+  if(ivFlagged===0&&ivStock.length+ivDup.length===0){
+    html+='<div class="iv-none"><div class="iv-none-icon">\u2713</div><div class="iv-none-text">No stock or duplicate images detected</div><div class="iv-none-sub">We checked '+ivChecked+' project image'+(ivChecked===1?'':'s')+' via reverse image search \u2014 all appear to be original photography</div></div>';
+  } else if(ivFlagged===0){
+    html+='<div class="iv-none"><div class="iv-none-icon">\u2713</div><div class="iv-none-text">All flagged images have been marked as yours</div><div class="iv-none-sub">Your score has been adjusted to reflect this.</div></div>';
+    html+='<div style="margin-top:14px"><div class="iv-list">';
+    ivStock.forEach(function(img){html+=imageCard(img,'stock','Confirmed stock photo','A homeowner who spots this will immediately question whether any of your project photos are real.');});
+    ivDup.forEach(function(img){html+=imageCard(img,'dup','Found on '+img.matchCount+' other sites','Homeowners who do their research will find it elsewhere and lose confidence.');});
+    html+='</div></div>';
   } else {
     html+='<div class="iv-list">';
     ivStock.forEach(function(img){
-      html+=imageCard(img,'stock','Confirmed stock photo','A homeowner who spots this will immediately question whether any of your project photos are real. This is one of the fastest ways to destroy trust.');
+      html+=imageCard(img,'stock','Confirmed stock photo','A homeowner who spots this will immediately question whether any of your project photos are real.');
     });
     ivDup.forEach(function(img){
-      html+=imageCard(img,'dup','Found on '+img.matchCount+' other sites','This image is being used by multiple websites. Even if it is genuinely yours, homeowners who do their research will find it elsewhere and lose confidence.');
+      html+=imageCard(img,'dup','Found on '+img.matchCount+' other sites','Homeowners who do their research will find it elsewhere and lose confidence.');
     });
     html+='</div>';
   }
-  html+='<div style="margin-top:10px;font-size:12px;color:var(--slate-text)">'+ivChecked+' images checked via reverse image search out of '+ivTotal+' total</div>';
+
+  html+='<div style="margin-top:12px;font-size:12px;color:var(--slate-text)">'+ivChecked+' project image'+(ivChecked===1?'':'s')+' reverse-searched';
+  if(skipped>0)html+=' \u00B7 '+skipped+' non-project image'+(skipped===1?'':'s')+' skipped (logos, team photos, icons)';
+  html+='</div>';
   return html;
 }
 
 function imageCard(img,type,badgeLabel,impactText){
   var safeSrc=esc(img.src||'');
-  var overlayLabel=type==='stock'?'STOCK':'DUPLICATE';
+  var srcKey=img.src||'';
+  var overlayLabel=type==='stock'?'STOCK':'DUPE';
   var badgeClass=type==='stock'?'ivb-stock':'ivb-dup';
-  var html='<div class="iv-card">';
-  html+='<div class="iv-thumb" onclick="openLightbox(\''+safeSrc+'\',\''+esc(badgeLabel).replace(/'/g,"\\'")+'\')" style="cursor:zoom-in">';
+  var isOverridden=reportOverrides[srcKey]==='rejected';
+  var toggleClass=isOverridden?'iv-toggle on':'iv-toggle';
+  var cardClass=isOverridden?'iv-card overridden':'iv-card';
+
+  var html='<div class="'+cardClass+'" data-src="'+safeSrc+'">';
+  html+='<div class="iv-thumb" onclick="openLightbox(\''+safeSrc.replace(/'/g,"\\'")+'\',\''+esc(badgeLabel).replace(/'/g,"\\'")+'\')" style="cursor:zoom-in">';
   html+='<div class="iv-thumb-fallback">\u25A1</div>';
   html+='<img src="'+safeSrc+'" alt="Flagged image" loading="lazy" onerror="this.style.display=\'none\'" onload="this.previousElementSibling.style.display=\'none\'">';
   html+='<div class="iv-thumb-overlay '+type+'">'+overlayLabel+'</div>';
   html+='</div>';
   html+='<div class="iv-body">';
-  html+='<div class="iv-card-head"><span class="iv-badge '+badgeClass+'">'+esc(badgeLabel)+'</span></div>';
+  html+='<div class="iv-card-head" style="margin-bottom:6px"><span class="iv-badge '+badgeClass+'">'+esc(badgeLabel)+'</span>';
+  if(img.subject)html+='<span style="font-size:11px;color:var(--slate-text);margin-left:8px">\u00B7 '+esc(img.subject)+'</span>';
+  html+='</div>';
   html+='<div class="iv-source"><b>'+(type==='stock'?'Found on:':'Appears on:')+'</b> '+esc(img.reason||'')+'</div>';
-  if(img.source)html+='<div class="iv-url">'+esc(img.source)+'</div>';
+
+  /* Matched sites list for duplicates */
+  if(img.matchedSites&&img.matchedSites.length>0){
+    html+='<div class="iv-matches">';
+    html+='<div class="iv-matches-title">Found on these websites:</div>';
+    img.matchedSites.slice(0,5).forEach(function(site){
+      var host=site.hostname||site;
+      var url=site.url||site;
+      html+='<a href="'+esc(url)+'" target="_blank" rel="noopener" class="iv-match-link">\u2197 '+esc(host)+'</a>';
+    });
+    html+='</div>';
+  } else if(img.source){
+    html+='<div class="iv-matches"><div class="iv-matches-title">Source:</div><a href="'+esc(img.source)+'" target="_blank" rel="noopener" class="iv-match-link">\u2197 '+esc(img.source.length>60?img.source.slice(0,60)+'\u2026':img.source)+'</a></div>';
+  }
+
   html+='<div class="iv-impact">'+esc(impactText)+'</div>';
-  html+='<a href="'+safeSrc+'" target="_blank" rel="noopener" class="iv-view-link">View original \u2197</a>';
+
+  /* Override toggle */
+  html+='<div class="iv-override">';
+  html+='<div class="iv-override-label"><b>This is actually our photo</b><br><span style="font-size:11px;color:var(--slate-text)">Toggle on to remove this flag and update your score</span></div>';
+  html+='<button class="'+toggleClass+'" aria-label="Override this flag" onclick="toggleOverride(\''+srcKey.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\',this)"></button>';
   html+='</div>';
-  html+='</div>';
+
+  html+='</div></div>';
   return html;
+}
+
+async function toggleOverride(imageSrc, btn){
+  var wasOn=btn.classList.contains('on');
+  var newDecision=wasOn?null:'rejected';
+
+  /* Optimistic UI update */
+  btn.classList.toggle('on');
+  var card=btn.closest('.iv-card');
+  if(card)card.classList.toggle('overridden');
+  reportOverrides[imageSrc]=newDecision;
+
+  try{
+    var res=await fetch('/api/report/'+REPORT_ID+'/override',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({imageSrc:imageSrc,decision:newDecision})
+    });
+    if(!res.ok)throw new Error('Override failed');
+    var data=await res.json();
+
+    /* Update score chip and counts */
+    updateScoreDisplay(data.adjustedScore, currentScore);
+    document.getElementById('ivStockCount').textContent=data.stockRemaining;
+    document.getElementById('ivDupCount').textContent=data.dupRemaining;
+    currentScore=data.adjustedScore;
+  }catch(e){
+    /* Revert on error */
+    btn.classList.toggle('on');
+    if(card)card.classList.toggle('overridden');
+    reportOverrides[imageSrc]=wasOn?'rejected':null;
+    alert('Could not save override. Try again.');
+  }
+}
+
+function updateScoreDisplay(newScore, oldScore){
+  var chip=document.getElementById('navScoreNum');
+  if(!chip)return;
+  var delta=newScore-oldScore;
+  countUp(chip,oldScore,newScore,500);
+  chip.parentElement.classList.add('score-adjusting');
+  setTimeout(function(){chip.parentElement.classList.remove('score-adjusting');},600);
+
+  /* Show a delta pill briefly */
+  var existing=document.querySelector('.score-chip-delta');
+  if(existing)existing.remove();
+  if(delta!==0){
+    var deltaEl=document.createElement('span');
+    deltaEl.className='score-chip-delta';
+    deltaEl.textContent=(delta>0?'+':'')+delta;
+    chip.parentElement.appendChild(deltaEl);
+    requestAnimationFrame(function(){deltaEl.classList.add('show');});
+    setTimeout(function(){deltaEl.classList.remove('show');setTimeout(function(){if(deltaEl.parentElement)deltaEl.remove();},400);},2000);
+  }
 }
 
 function openLightbox(src,caption){

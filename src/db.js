@@ -1,7 +1,7 @@
 /**
  * db.js
- * Postgres connection + schema + query helpers for audits.
- * Auto-creates the audits table on first run.
+ * Postgres connection + schema + query helpers.
+ * Tables: users, audits (linked by user_id)
  */
 
 const { Pool } = require('pg');
@@ -9,7 +9,7 @@ const { Pool } = require('pg');
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-  console.warn('⚠  DATABASE_URL not set — database features disabled. Add DATABASE_URL in Railway to enable saved reports.');
+  console.warn('⚠  DATABASE_URL not set — database features disabled.');
 }
 
 const pool = connectionString ? new Pool({
@@ -22,8 +22,21 @@ async function initSchema() {
   if (!pool) return;
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      company_name TEXT,
+      business_type TEXT,
+      region TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_login_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
     CREATE TABLE IF NOT EXISTS audits (
       id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
       url TEXT NOT NULL,
       email TEXT,
       score INTEGER,
@@ -34,124 +47,182 @@ async function initSchema() {
       last_analyzed_at TIMESTAMPTZ,
       unlocked_at TIMESTAMPTZ
     );
+    CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id);
     CREATE INDEX IF NOT EXISTS idx_audits_email ON audits(email);
     CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC);
 
     ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb;
     ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB;
     ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ;
+    ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
   `);
 
   console.log('✓ Database schema ready');
 }
 
-// ── Save a new audit ──────────────────────────────────────────────────────────
-async function saveAudit({ id, url, report, rawData }) {
+// ═════════════════════════════════════════════════════════════════════════════
+// USERS
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function createUser({ id, email, passwordHash, companyName, businessType, region }) {
+  if (!pool) throw new Error('Database not configured');
+
+  try {
+    await pool.query(
+      `INSERT INTO users (id, email, password_hash, company_name, business_type, region)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region]
+    );
+    return { id, email, companyName, businessType, region };
+  } catch (err) {
+    if (err.code === '23505') {
+      throw new Error('An account with this email already exists');
+    }
+    throw err;
+  }
+}
+
+async function getUserByEmail(email) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `SELECT id, email, password_hash, company_name, business_type, region, created_at
+     FROM users WHERE email = $1`,
+    [email.toLowerCase().trim()]
+  );
+  return rows[0] || null;
+}
+
+async function getUserById(id) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `SELECT id, email, company_name, business_type, region, created_at
+     FROM users WHERE id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function recordLogin(userId) {
+  if (!pool) return;
+  await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userId]);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AUDITS
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function saveAudit({ id, userId, url, report, rawData }) {
   if (!pool) throw new Error('Database not configured');
 
   const score = report?.hero?.score || null;
 
   await pool.query(
-    `INSERT INTO audits (id, url, score, report_json, raw_data, last_analyzed_at)
-     VALUES ($1, $2, $3, $4, $5, NOW())`,
-    [id, url, score, report, rawData || null]
+    `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, last_analyzed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [id, userId || null, url, score, report, rawData || null]
   );
 
   return { id, url, score };
 }
 
-// ── Update existing audit with new analysis (same raw data, new AI output) ───
 async function updateAnalysis(id, report) {
   if (!pool) throw new Error('Database not configured');
-
   const score = report?.hero?.score || null;
-
   await pool.query(
     `UPDATE audits
      SET report_json = $1, score = $2, last_analyzed_at = NOW()
      WHERE id = $3`,
     [report, score, id]
   );
-
   return { id, score };
 }
 
-// ── Get audit by id ───────────────────────────────────────────────────────────
 async function getAudit(id) {
   if (!pool) throw new Error('Database not configured');
-
   const { rows } = await pool.query(
-    `SELECT id, url, email, score, report_json, raw_data, overrides, created_at, last_analyzed_at, unlocked_at
+    `SELECT id, user_id, url, email, score, report_json, raw_data, overrides,
+            created_at, last_analyzed_at, unlocked_at
      FROM audits WHERE id = $1`,
     [id]
   );
-
   return rows[0] || null;
 }
 
-// ── Unlock audit with email ───────────────────────────────────────────────────
-async function unlockAudit(id, email) {
-  if (!pool) throw new Error('Database not configured');
-
-  await pool.query(
-    `UPDATE audits
-     SET email = $1, unlocked_at = NOW()
-     WHERE id = $2`,
-    [email.toLowerCase().trim(), id]
-  );
-}
-
-// ── Get meta only (no full report JSON) — for existence check ────────────────
 async function getAuditMeta(id) {
   if (!pool) return null;
-
   const { rows } = await pool.query(
-    `SELECT id, url, email, score, created_at, last_analyzed_at, unlocked_at,
+    `SELECT id, user_id, url, email, score, created_at, last_analyzed_at, unlocked_at,
             (raw_data IS NOT NULL) AS has_raw_data
      FROM audits WHERE id = $1`,
     [id]
   );
-
   return rows[0] || null;
 }
 
-/* Save or clear an override for a specific flagged image.
- * overrides format: { "image_src_url": "accepted" | "rejected" }
- */
+// List all audits for a user — newest first
+async function listAuditsForUser(userId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT id, url, score, created_at, last_analyzed_at
+     FROM audits
+     WHERE user_id = $1
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+async function unlockAudit(id, email) {
+  if (!pool) throw new Error('Database not configured');
+  await pool.query(
+    `UPDATE audits SET email = $1, unlocked_at = NOW() WHERE id = $2`,
+    [email.toLowerCase().trim(), id]
+  );
+}
+
+// Link an existing anonymous audit to a user (when they sign up after running an audit)
+async function claimAudit(auditId, userId) {
+  if (!pool) throw new Error('Database not configured');
+  await pool.query(
+    `UPDATE audits SET user_id = $1 WHERE id = $2 AND user_id IS NULL`,
+    [userId, auditId]
+  );
+}
+
 async function setImageOverride(auditId, imageSrc, decision) {
   if (!pool) throw new Error('Database not configured');
   const validDecisions = ['accepted', 'rejected', null];
   if (!validDecisions.includes(decision)) throw new Error('Invalid decision');
 
-  const { rows } = await pool.query(
-    `SELECT overrides FROM audits WHERE id = $1`,
-    [auditId]
-  );
+  const { rows } = await pool.query(`SELECT overrides FROM audits WHERE id = $1`, [auditId]);
   if (rows.length === 0) throw new Error('Audit not found');
 
   const current = rows[0].overrides || {};
-
-  if (decision === null) {
-    delete current[imageSrc];
-  } else {
-    current[imageSrc] = decision;
-  }
+  if (decision === null) delete current[imageSrc];
+  else current[imageSrc] = decision;
 
   await pool.query(
     `UPDATE audits SET overrides = $1::jsonb WHERE id = $2`,
     [JSON.stringify(current), auditId]
   );
-
   return current;
 }
 
 module.exports = {
   initSchema,
+  // users
+  createUser,
+  getUserByEmail,
+  getUserById,
+  recordLogin,
+  // audits
   saveAudit,
   updateAnalysis,
   getAudit,
   getAuditMeta,
+  listAuditsForUser,
   unlockAudit,
+  claimAudit,
   setImageOverride,
   isEnabled: () => !!pool,
 };

@@ -78,6 +78,19 @@
 .reanalyze-title { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px; letter-spacing: -.01em; }
 .reanalyze-msg { font-size: 14px; color: var(--slate); line-height: 1.5; }
 
+
+/* Debounced update indicator — subtle bar below the top nav */
+.update-banner{display:none;background:var(--azure-tint);border-bottom:1px solid var(--ice);padding:10px 1.5rem;font-size:13px;color:var(--azure-deep);text-align:center;position:sticky;top:60px;z-index:49;backdrop-filter:blur(6px)}
+.update-banner.show{display:flex;align-items:center;justify-content:center;gap:8px}
+.update-banner.success{background:#D1FAE5;color:#065F46}
+.update-banner.error{background:var(--red-tint);color:var(--red-ink)}
+.update-banner .dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulseDot 1.2s ease-in-out infinite}
+@keyframes pulseDot{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+.update-banner.success .dot,.update-banner.error .dot{animation:none;opacity:1}
+.update-banner .spinner-mini{width:12px;height:12px;border:1.5px solid rgba(47,107,255,.3);border-top-color:var(--azure);border-radius:50%;animation:spin .7s linear infinite}
+.update-banner button{background:none;border:none;color:currentColor;font-size:12px;font-weight:600;cursor:pointer;padding:2px 8px;margin-left:4px;text-decoration:underline;opacity:.8}
+.update-banner button:hover{opacity:1}
+
 </style>
 </head>
 <body>
@@ -94,6 +107,12 @@
       <span class="score-chip-num" id="navScoreNum">—</span>
     </div>
   </div>
+</div>
+
+<div class="update-banner" id="updateBanner">
+  <span class="dot"></span>
+  <span id="updateBannerText">Your report will update based on your changes in 3 seconds</span>
+  <button onclick="cancelDebounce()" id="updateBannerCancel">Cancel</button>
 </div>
 
 <main id="mainArea">
@@ -696,6 +715,10 @@ function imageCard(img,type,badgeLabel,impactText){
   return html;
 }
 
+var debounceTimer=null;
+var debounceSeconds=3;
+var debounceCountdown=null;
+
 async function toggleOverride(imageSrc, btn){
   var wasOn=btn.classList.contains('on');
   var newDecision=wasOn?null:'rejected';
@@ -705,8 +728,6 @@ async function toggleOverride(imageSrc, btn){
   var card=btn.closest('.iv-card');
   if(card)card.classList.toggle('overridden');
   reportOverrides[imageSrc]=newDecision;
-
-  /* Immediately update counts from local data — no waiting for server */
   updateImageCountsLocally();
 
   try{
@@ -720,21 +741,128 @@ async function toggleOverride(imageSrc, btn){
       throw new Error('Server returned '+res.status+': '+errText.slice(0,100));
     }
     var data=await res.json();
-    console.log('Override saved:',data);
 
-    /* Update score chip with server's calculation */
     if(typeof data.adjustedScore==='number'){
       updateScoreDisplay(data.adjustedScore, currentScore);
       currentScore=data.adjustedScore;
     }
+
+    /* Kick off debounced re-analysis */
+    scheduleFullReanalysis();
   }catch(e){
     console.error('Override error:',e);
-    /* Revert on error */
     btn.classList.toggle('on');
     if(card)card.classList.toggle('overridden');
     reportOverrides[imageSrc]=wasOn?'rejected':null;
     updateImageCountsLocally();
     alert('Could not save your change: '+e.message);
+  }
+}
+
+function scheduleFullReanalysis(){
+  /* Clear any existing timer */
+  if(debounceTimer){clearTimeout(debounceTimer);}
+  if(debounceCountdown){clearInterval(debounceCountdown);}
+
+  var banner=document.getElementById('updateBanner');
+  var bannerText=document.getElementById('updateBannerText');
+  var cancelBtn=document.getElementById('updateBannerCancel');
+  banner.className='update-banner show';
+  banner.querySelector('.dot').style.display='inline-block';
+  cancelBtn.style.display='inline-block';
+
+  var remaining=debounceSeconds;
+  bannerText.textContent='Your report will update based on your changes in '+remaining+' seconds';
+
+  debounceCountdown=setInterval(function(){
+    remaining--;
+    if(remaining>0){
+      bannerText.textContent='Your report will update based on your changes in '+remaining+' second'+(remaining===1?'':'s');
+    }
+  },1000);
+
+  debounceTimer=setTimeout(function(){
+    clearInterval(debounceCountdown);
+    runFullReanalysis();
+  },debounceSeconds*1000);
+}
+
+function cancelDebounce(){
+  if(debounceTimer){clearTimeout(debounceTimer);debounceTimer=null;}
+  if(debounceCountdown){clearInterval(debounceCountdown);debounceCountdown=null;}
+  var banner=document.getElementById('updateBanner');
+  banner.classList.remove('show');
+}
+
+async function runFullReanalysis(){
+  var banner=document.getElementById('updateBanner');
+  var bannerText=document.getElementById('updateBannerText');
+  var cancelBtn=document.getElementById('updateBannerCancel');
+
+  banner.className='update-banner show';
+  banner.querySelector('.dot').style.display='none';
+  cancelBtn.style.display='none';
+  bannerText.innerHTML='<span class="spinner-mini"></span> <span>Updating your full report based on your changes...</span>';
+
+  try{
+    var res=await fetch('/api/report/'+REPORT_ID+'/reanalyze',{method:'POST'});
+    var reader=res.body.getReader(),dec=new TextDecoder(),buf='';
+    var success=false;var errorMsg=null;
+    while(true){
+      var r=await reader.read();
+      if(r.done)break;
+      buf+=dec.decode(r.value,{stream:true});
+      var lines=buf.split('\n');
+      buf=lines.pop();
+      var lastEvt=null;
+      for(var i=0;i<lines.length;i++){
+        var line=lines[i];
+        if(line.startsWith('event: ')){lastEvt=line.slice(7).trim();continue;}
+        if(line.startsWith('data: ')){
+          try{
+            var d=JSON.parse(line.slice(6));
+            if(lastEvt==='complete')success=true;
+            if(lastEvt==='error')errorMsg=d.message;
+          }catch(e){}
+          lastEvt=null;
+        }
+      }
+    }
+
+    if(success){
+      /* Fetch the new report data and soft-refresh the current section */
+      var dataRes=await fetch('/api/report/'+REPORT_ID+'/data');
+      var data=await dataRes.json();
+      if(!data.locked){
+        reportData=data.report;
+        reportOverrides=data.overrides||{};
+        currentScore=(reportData&&reportData.hero&&reportData.hero.score)||currentScore;
+
+        /* Update the top nav score */
+        var navScoreEl=document.getElementById('navScoreNum');
+        if(navScoreEl&&reportData.hero){
+          navScoreEl.textContent=reportData.hero.score;
+        }
+
+        /* Re-render the currently visible section */
+        var parts=window.location.pathname.split('/').filter(Boolean);
+        var currentSection=parts[2]||'overview';
+        renderSection(currentSection);
+
+        /* Show success banner */
+        banner.className='update-banner show success';
+        bannerText.innerHTML='<span class="dot"></span> <span>Your report has been fully updated</span>';
+        setTimeout(function(){banner.classList.remove('show');},3500);
+      }
+    } else {
+      banner.className='update-banner show error';
+      bannerText.innerHTML='<span class="dot"></span> <span>Could not update report: '+(errorMsg||'unknown error')+'</span>';
+      setTimeout(function(){banner.classList.remove('show');},5000);
+    }
+  }catch(e){
+    banner.className='update-banner show error';
+    bannerText.innerHTML='<span class="dot"></span> <span>Update failed: '+e.message+'</span>';
+    setTimeout(function(){banner.classList.remove('show');},5000);
   }
 }
 

@@ -622,3 +622,229 @@ h1, h2, h3, .score-hl, .bs-company, .sp-title, .score-title { font-feature-setti
   .score-hl { font-size: 18px; }
   .actions-wrap, .bs-header { padding: 1.5rem 1.5rem; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   SERVICE ENQUIRIES — buttons, modal, confirmation banner
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Small "get help" links inside issue cards */
+.service-offer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--azure);
+  text-decoration: none;
+  padding: 6px 12px;
+  border: 1px solid var(--ice);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: all .2s;
+}
+.service-offer:hover {
+  background: var(--azure-tint);
+  border-color: var(--azure);
+  color: var(--azure-deep);
+  transform: translateY(-1px);
+}
+.service-offer::after { content: "→"; font-weight: 600; }
+
+/* Services grid — used both on /services page and in modals */
+.services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 1.5rem 0; }
+.service-card {
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all .25s;
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 12px -6px rgba(15,23,42,.06);
+}
+.service-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 16px 32px -10px rgba(15,23,42,.14);
+  border-color: rgba(47,107,255,.3);
+}
+.service-card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--azure-tint);
+  color: var(--azure-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+.service-card-title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.service-card-body { font-size: 14px; line-height: 1.55; color: var(--slate-deep); flex: 1; }
+.service-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ice); }
+.service-card-price {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.service-card-price span { color: var(--slate-text); font-weight: 500; }
+.service-card-btn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--coral);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.service-card-btn:hover {
+  background: var(--red-signal);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px -4px rgba(255,92,51,.4);
+}
+
+/* Enquiry modal */
+.enquiry-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.7);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 2rem;
+  cursor: zoom-out;
+}
+.enquiry-modal.on { display: flex; }
+.enquiry-box {
+  background: #fff;
+  border-radius: 20px;
+  padding: 2rem 2.25rem;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  cursor: auto;
+  box-shadow: 0 40px 80px -20px rgba(15,23,42,.4);
+}
+.enquiry-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--azure); font-weight: 700; margin-bottom: 6px; }
+.enquiry-title { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin-bottom: 8px; }
+.enquiry-sub { font-size: 14px; color: var(--slate-deep); line-height: 1.55; margin-bottom: 1.25rem; }
+.enquiry-price {
+  background: var(--azure-tint);
+  color: var(--azure-deep);
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 1.25rem;
+}
+.enquiry-price b { font-weight: 700; }
+.enquiry-label { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: .05em; }
+.enquiry-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--ice);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: var(--font);
+  resize: vertical;
+  min-height: 100px;
+  outline: none;
+  transition: border-color .2s;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+.enquiry-textarea:focus { border-color: var(--azure); }
+.enquiry-actions { display: flex; gap: 10px; margin-top: 1.25rem; }
+.enquiry-submit {
+  flex: 1;
+  padding: 13px 20px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all .2s;
+}
+.enquiry-submit:hover { background: var(--red-signal); transform: translateY(-1px); }
+.enquiry-submit:disabled { opacity: .5; cursor: not-allowed; }
+.enquiry-cancel {
+  padding: 13px 20px;
+  background: #fff;
+  color: var(--slate-deep);
+  border: 1.5px solid var(--ice);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all .2s;
+}
+.enquiry-cancel:hover { background: var(--mist); }
+
+/* Login-required CTA in modal */
+.enquiry-login-prompt {
+  background: var(--mist);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--slate-deep);
+  line-height: 1.55;
+  margin-bottom: 1rem;
+}
+.enquiry-login-prompt a { color: var(--azure); font-weight: 600; text-decoration: none; }
+
+/* Success state */
+.enquiry-success {
+  text-align: center;
+  padding: 1rem 0;
+}
+.enquiry-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  background: var(--green-light);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+/* Existing enquiries list on dashboard */
+.my-enquiries { margin-top: 2rem; }
+.enq-row {
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.enq-service { font-size: 14px; font-weight: 600; flex: 1; }
+.enq-meta { font-size: 12px; color: var(--slate-text); }
+.enq-status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 3px 10px;
+  border-radius: 99px;
+}
+.enq-status.new { background: var(--azure-tint); color: var(--azure-deep); }
+.enq-status.responded { background: var(--green-light); color: var(--green); }

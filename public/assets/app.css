@@ -50,7 +50,7 @@
   --gray-600:var(--slate-deep);
   --gray-900:var(--ink);
 
-  --font:'DM Sans',system-ui,sans-serif;
+  --font:'Inter',system-ui,-apple-system,sans-serif;
   --radius:12px; --radius-sm:8px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -378,15 +378,42 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
   .tab-bar{box-shadow:inset 0 1px 2px rgba(15,23,42,.04)}
   .tab.on{box-shadow:0 2px 6px -2px rgba(15,23,42,.15),0 0 0 0.5px var(--ice)}
 /* Image verification — visual cards */
-.iv-card{display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:stretch;overflow:hidden;padding:0}
+.iv-card{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:stretch;overflow:hidden;padding:0;position:relative;transition:opacity .25s,filter .25s}
+.iv-card.overridden{opacity:.55;filter:grayscale(.3)}
 .iv-thumb{background:var(--mist);position:relative;overflow:hidden;aspect-ratio:1;border-right:1px solid var(--ice)}
 .iv-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .iv-thumb-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:24px;background:var(--mist)}
-.iv-thumb-overlay{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em}
+.iv-thumb-overlay{position:absolute;top:6px;left:6px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em}
 .iv-thumb-overlay.stock{background:var(--red-signal);color:#fff}
 .iv-thumb-overlay.dup{background:var(--coral);color:#fff}
-.iv-body{padding:1rem 1.25rem 1.1rem 0}
+.iv-body{padding:.9rem 1.1rem .9rem 0}
 @media (max-width:600px){.iv-card{grid-template-columns:1fr}.iv-thumb{aspect-ratio:16/9;border-right:none;border-bottom:1px solid var(--ice)}.iv-body{padding:1rem 1.25rem}}
+
+/* Matched sites list */
+.iv-matches{margin-top:8px;padding:8px 10px;background:var(--mist);border-radius:6px;border-left:2px solid var(--coral)}
+.iv-matches-title{font-size:10px;font-weight:600;color:var(--slate-deep);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.iv-match-link{display:block;font-size:11px;color:var(--azure);text-decoration:none;padding:2px 0;font-family:monospace;word-break:break-all}
+.iv-match-link:hover{color:var(--azure-deep);text-decoration:underline}
+
+/* Override toggle */
+.iv-override{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--ice)}
+.iv-override-label{font-size:12px;color:var(--slate-deep);flex:1;line-height:1.4}
+.iv-override-label b{color:var(--ink);font-weight:600}
+.iv-toggle{position:relative;width:40px;height:22px;background:var(--slate);border-radius:99px;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;padding:0}
+.iv-toggle::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.iv-toggle.on{background:var(--green)}
+.iv-toggle.on::after{transform:translateX(18px)}
+.iv-toggle:hover{opacity:.85}
+
+/* Score pulse when it updates */
+@keyframes scoreAdjust{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.score-adjusting{animation:scoreAdjust .6s ease}
+.score-chip-delta{font-size:10px;font-weight:600;padding:2px 6px;border-radius:99px;margin-left:4px;background:rgba(5,150,105,.25);color:#A7F3D0;opacity:0;transition:opacity .3s}
+.score-chip-delta.show{opacity:1}
+
+.iv-card .iv-view-link{display:inline-block;margin-top:6px;font-size:10px;color:var(--slate-text);text-decoration:none;padding:2px 6px;background:var(--mist);border-radius:4px;font-family:monospace}
+
+.iv-impact{font-size:12px;line-height:1.5}
 .iv-view-link{display:inline-block;margin-top:8px;font-size:11px;color:var(--slate-text);text-decoration:none;padding:3px 8px;background:var(--mist);border-radius:6px;font-family:monospace}
 .iv-view-link:hover{color:var(--ink);background:var(--ice)}
 
@@ -397,3 +424,200 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
 .iv-lightbox-caption{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);background:#fff;padding:.75rem 1.25rem;border-radius:10px;font-size:13px;color:var(--ink);max-width:80vw;text-align:center}
 .iv-lightbox-close{position:absolute;top:1.5rem;right:1.5rem;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .iv-lightbox-close:hover{background:rgba(255,255,255,.25)}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FACELIFT — modern, bigger, more confident
+   Applied AFTER base styles to override cleanly.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 1. Typography scale — bump everything up */
+body { font-family: var(--font); font-feature-settings: 'cv11','ss01','ss03'; font-size: 16px; line-height: 1.55; color: var(--ink); }
+
+.hero h1 { font-size: 56px; font-weight: 700; letter-spacing: -.035em; line-height: 1.05; }
+.hero p { font-size: 18px; line-height: 1.6; max-width: 540px; }
+
+.score-hl { font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.score-sub { font-size: 15px; line-height: 1.55; }
+.ai-voice { font-size: 15px; line-height: 1.65; padding-left: 14px; border-left-width: 3px; }
+
+.sp-title { font-size: 34px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+.sp-sub { font-size: 17px; line-height: 1.55; }
+.sp-eyebrow { font-size: 11px; letter-spacing: .1em; font-weight: 600; }
+
+/* 2. Generous spacing */
+.report-layout { padding: 2.5rem 1.5rem 6rem; gap: 2rem; }
+.score-band { padding: 2.25rem 2.5rem; gap: 2rem; border-radius: 20px; }
+.bp-card, .bs-card, .iv-card, .j-card { border-radius: 16px; }
+.bp-card, .bs-card, .j-card { padding: 1.5rem 1.75rem; }
+
+/* 3. Richer depth */
+.score-band { box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 20px 48px -20px rgba(15,23,42,.35), 0 8px 16px -8px rgba(15,23,42,.15); }
+.actions-wrap { box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 20px 48px -20px rgba(15,23,42,.32); border-radius: 20px; padding: 2rem 2.25rem; }
+.bp-card, .bs-card, .j-card, .iv-card, .tq-row, .score-card, .gap-card, .iv-stat {
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 12px -6px rgba(15,23,42,.06);
+  border: 0.5px solid rgba(203,213,225,.5);
+}
+.bp-card:hover, .bs-card:hover, .j-card:hover, .iv-card:hover, .tq-row:hover {
+  box-shadow: 0 2px 4px rgba(15,23,42,.06), 0 16px 32px -10px rgba(15,23,42,.14);
+  transform: translateY(-2px);
+  border-color: rgba(47,107,255,.25);
+}
+
+/* 4. Bigger ring and number — score is the hero */
+.ring-wrap { width: 112px; height: 112px; }
+.ring-wrap svg { width: 112px; height: 112px; }
+.ring-wrap svg circle { r: 45; }
+.ring-num { font-size: 38px; font-weight: 700; letter-spacing: -.03em; }
+
+/* 5. Journey cards — more room to breathe */
+.j-thought { font-size: 17px; line-height: 1.65; }
+.j-stage { font-size: 11px; letter-spacing: .1em; font-weight: 600; }
+.j-num { width: 32px; height: 32px; font-size: 13px; font-weight: 700; }
+
+/* 6. Trust breakpoint titles and reactions bigger */
+.bp-title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.bp-reaction { font-size: 15px; line-height: 1.6; padding: 12px 16px; border-radius: 10px; border-left-width: 3px; }
+.bp-evidence { font-size: 13px; }
+.bp-fix { font-size: 13px; font-weight: 500; }
+
+/* 7. Trust question rows larger */
+.tq-row { padding: 1.1rem 1.4rem; border-radius: 14px; gap: 16px; }
+.tq-q { font-size: 15px; line-height: 1.45; font-weight: 500; }
+.tq-exp { font-size: 13px; margin-top: 6px; line-height: 1.5; }
+.tq-score { font-size: 28px; font-weight: 700; letter-spacing: -.02em; min-width: 40px; }
+.tq-track { width: 72px; height: 5px; }
+.tq-fill { height: 5px; }
+
+/* 8. Bigger score cards in grids */
+.score-card { padding: 1.25rem 1.4rem; border-radius: 14px; }
+.score-card-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.score-card-num { font-size: 36px; font-weight: 700; letter-spacing: -.03em; }
+
+/* 9. Business snapshot refresh */
+.bs-header { padding: 2rem 2.25rem; border-radius: 18px; margin-bottom: 14px; }
+.bs-company { font-size: 30px; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; }
+.bs-oneliner { font-size: 17px; line-height: 1.5; margin-bottom: 18px; }
+.bs-chip { font-size: 13px; padding: 6px 14px; border-radius: 99px; border: 0.5px solid rgba(203,213,225,.5); }
+.bs-card-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; margin-bottom: 14px; }
+.bs-pill { font-size: 13px; padding: 5px 12px; font-weight: 500; border-radius: 8px; }
+.bs-gaps { padding: 1.5rem 1.75rem; border-radius: 16px; }
+.bs-gap-item { font-size: 14px; padding: 6px 0; line-height: 1.55; }
+.bs-team-item { font-size: 14px; padding: 8px 0; }
+
+/* 10. Hero button size up */
+.input-row { max-width: 640px; gap: 10px; }
+.input-row input { padding: 16px 20px; font-size: 16px; border-radius: 12px; border-width: 1.5px; }
+.input-row button { padding: 16px 28px; font-size: 15px; font-weight: 600; border-radius: 12px; letter-spacing: -.01em; }
+
+/* 11. Sidebar nav refresh */
+.side-nav { padding: .65rem; border-radius: 16px; }
+.side-nav a { font-size: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 500; }
+.side-nav a.active { font-weight: 600; }
+.side-nav-icon { width: 18px; height: 18px; font-size: 14px; }
+
+/* 12. Top nav bigger */
+.report-nav-inner { padding: 1rem 1.5rem; gap: 1.75rem; }
+.report-domain { font-size: 14px; font-weight: 600; }
+.report-domain-meta { font-size: 12px; }
+.report-score-chip { padding: 8px 16px; font-size: 14px; }
+.score-chip-num { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+
+/* 13. Action plan bigger */
+.actions-head { font-size: 12px; letter-spacing: .1em; font-weight: 600; margin-bottom: 1.25rem; }
+.action-row { padding: 1rem 0; gap: 16px; }
+.a-num { width: 28px; height: 28px; font-size: 13px; font-weight: 700; }
+.a-text { font-size: 15px; line-height: 1.55; }
+
+/* 14. Image verification tighter and more refined */
+.iv-stat { padding: 1.25rem 1.4rem; border-radius: 14px; }
+.iv-num { font-size: 38px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; }
+.iv-lbl { font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.iv-card-title, .iv-card .iv-source, .iv-card .iv-impact { line-height: 1.55; }
+.iv-source { font-size: 13px; }
+.iv-impact { font-size: 13px; padding: 10px 14px; border-radius: 10px; }
+.iv-override-label { font-size: 13px; line-height: 1.45; }
+
+/* 15. Hero background richer with animated gradient */
+.hero { padding: 5rem 1.5rem 5.5rem; position: relative; overflow: hidden; }
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  left: -20%;
+  width: 140%;
+  height: 180%;
+  background:
+    radial-gradient(ellipse 40% 30% at 35% 40%, rgba(255,92,51,.22), transparent 55%),
+    radial-gradient(ellipse 35% 28% at 70% 55%, rgba(76,201,240,.16), transparent 55%),
+    radial-gradient(ellipse 30% 25% at 50% 75%, rgba(255,122,24,.12), transparent 55%);
+  animation: heroGradient 16s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes heroGradient {
+  0% { transform: translate(0,0) rotate(0deg); }
+  100% { transform: translate(-4%,-3%) rotate(8deg); }
+}
+
+/* 16. Hero title — make it confident */
+.hero h1 { font-weight: 700; letter-spacing: -.04em; }
+
+/* 17. Buttons — tactile feel */
+button, .hero-cta { transition: transform .15s cubic-bezier(.2,.8,.2,1), box-shadow .25s, opacity .2s; }
+.input-row button:hover { box-shadow: 0 12px 28px -8px rgba(255,92,51,.55); }
+
+/* 18. Score band — cleaner, lighter shadow on light bg */
+.score-band {
+  background: var(--ink);
+  border: 1px solid rgba(255,255,255,.06);
+}
+
+/* 19. Main container wider */
+.report-layout { max-width: 1180px; grid-template-columns: 260px 1fr; }
+main { max-width: 1100px; }
+
+/* 20. Subtle noise on dark panels for depth */
+.score-band, .actions-wrap, .hero, .home-hero, .cta-band {
+  position: relative;
+}
+.score-band::after, .actions-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.025 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  opacity: .6;
+}
+.score-band > *, .actions-wrap > * { position: relative; z-index: 1; }
+
+/* 21. Tab bar — more breathing room */
+.tab-bar { padding: 5px; border-radius: 12px; gap: 4px; margin-bottom: 1.5rem; }
+.tab { padding: 10px 14px; font-size: 13px; font-weight: 500; border-radius: 8px; letter-spacing: -.005em; }
+.tab.on { font-weight: 600; }
+
+/* 22. Stronger headers */
+h1, h2, h3, .score-hl, .bs-company, .sp-title, .score-title { font-feature-settings: 'ss01','cv11'; }
+
+/* 23. Feed items — more substantial */
+.fi { padding: .85rem 1.1rem; border-radius: 10px; gap: 12px; }
+.fi-msg { font-size: 14px; line-height: 1.45; font-weight: 500; }
+
+/* 24. Reveal animations smoother and slightly longer */
+.reveal { transition: opacity .7s cubic-bezier(.2,.8,.2,1), transform .7s cubic-bezier(.2,.8,.2,1); transform: translateY(20px); }
+.stagger > * { transition: opacity .6s cubic-bezier(.2,.8,.2,1), transform .6s cubic-bezier(.2,.8,.2,1); transform: translateY(16px); }
+
+/* 25. Responsive type down */
+@media (max-width: 720px) {
+  .hero h1 { font-size: 36px; }
+  .hero p { font-size: 16px; }
+  .sp-title { font-size: 24px; }
+  .bs-company { font-size: 24px; }
+  .score-band { padding: 1.5rem; gap: 1.25rem; }
+  .ring-wrap { width: 88px; height: 88px; }
+  .ring-wrap svg { width: 88px; height: 88px; }
+  .ring-num { font-size: 30px; }
+  .score-hl { font-size: 18px; }
+  .actions-wrap, .bs-header { padding: 1.5rem 1.5rem; }
+}

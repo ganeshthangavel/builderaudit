@@ -377,3 +377,23 @@ main{max-width:900px;margin:0 auto;padding:2rem 1.5rem 5rem}
   /* Tab bar subtle depth */
   .tab-bar{box-shadow:inset 0 1px 2px rgba(15,23,42,.04)}
   .tab.on{box-shadow:0 2px 6px -2px rgba(15,23,42,.15),0 0 0 0.5px var(--ice)}
+/* Image verification — visual cards */
+.iv-card{display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:stretch;overflow:hidden;padding:0}
+.iv-thumb{background:var(--mist);position:relative;overflow:hidden;aspect-ratio:1;border-right:1px solid var(--ice)}
+.iv-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.iv-thumb-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:24px;background:var(--mist)}
+.iv-thumb-overlay{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em}
+.iv-thumb-overlay.stock{background:var(--red-signal);color:#fff}
+.iv-thumb-overlay.dup{background:var(--coral);color:#fff}
+.iv-body{padding:1rem 1.25rem 1.1rem 0}
+@media (max-width:600px){.iv-card{grid-template-columns:1fr}.iv-thumb{aspect-ratio:16/9;border-right:none;border-bottom:1px solid var(--ice)}.iv-body{padding:1rem 1.25rem}}
+.iv-view-link{display:inline-block;margin-top:8px;font-size:11px;color:var(--slate-text);text-decoration:none;padding:3px 8px;background:var(--mist);border-radius:6px;font-family:monospace}
+.iv-view-link:hover{color:var(--ink);background:var(--ice)}
+
+/* Lightbox for full image view */
+.iv-lightbox{position:fixed;inset:0;background:rgba(15,23,42,.9);display:none;align-items:center;justify-content:center;z-index:100;padding:2rem;cursor:zoom-out}
+.iv-lightbox.on{display:flex}
+.iv-lightbox img{max-width:90vw;max-height:85vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.iv-lightbox-caption{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);background:#fff;padding:.75rem 1.25rem;border-radius:10px;font-size:13px;color:var(--ink);max-width:80vw;text-align:center}
+.iv-lightbox-close{position:absolute;top:1.5rem;right:1.5rem;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.iv-lightbox-close:hover{background:rgba(255,255,255,.25)}

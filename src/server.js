@@ -366,10 +366,18 @@ function normaliseUrl(raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI SCORER
 // ─────────────────────────────────────────────────────────────────────────────
-async function scoreWebsite(pages, targetUrl, imageVerification) {
+async function scoreWebsite(pages, targetUrl, imageVerification, overrides) {
   const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
+
+  /* Apply overrides — user has said these flagged images are actually theirs, so remove them from evidence */
+  overrides = overrides || {};
+  const filteredVerification = imageVerification ? {
+    ...imageVerification,
+    stockImages: (imageVerification.stockImages || []).filter(img => overrides[img.src] !== 'rejected'),
+    duplicatedImages: (imageVerification.duplicatedImages || []).filter(img => overrides[img.src] !== 'rejected'),
+  } : null;
 
   /* Only include image blocks for pages that have screenshots (fresh audits).
      Replays use text-only analysis since screenshots arent stored. */
@@ -379,12 +387,13 @@ async function scoreWebsite(pages, targetUrl, imageVerification) {
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
   }));
 
-  const imgVerifySummary = imageVerification ? {
-    imagesChecked: imageVerification.checked,
-    totalImagesOnSite: imageVerification.total,
-    confirmedStockImages: imageVerification.stockImages.map(i => ({ url: i.src, foundOn: i.reason, source: i.source || null })),
-    duplicatedElsewhere: imageVerification.duplicatedImages.map(i => ({ url: i.src, foundOn: i.reason, matchCount: i.matchCount })),
-    confirmedOriginal: imageVerification.originalImages.length,
+  const imgVerifySummary = filteredVerification ? {
+    imagesChecked: filteredVerification.checked,
+    totalImagesOnSite: filteredVerification.total,
+    confirmedStockImages: filteredVerification.stockImages.map(i => ({ url: i.src, foundOn: i.reason, source: i.source || null })),
+    duplicatedElsewhere: filteredVerification.duplicatedImages.map(i => ({ url: i.src, foundOn: i.reason, matchCount: i.matchCount })),
+    confirmedOriginal: (filteredVerification.originalImages || []).length,
+    userOverrideCount: Object.values(overrides).filter(v => v === 'rejected').length,
   } : null;
 
   const aggregatedSignals = {
@@ -443,6 +452,8 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
     console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', clean.slice(-300));
     throw new Error('AI response was incomplete. Try again.');
   }
+  /* Attach the ORIGINAL (unfiltered) imageVerification so the UI can still show flags + overrides.
+     The AI has been shown the filtered version so its reasoning reflects the users overrides. */
   result.imageVerification = imageVerification;
   return result;
 }
@@ -627,7 +638,8 @@ app.post('/api/report/:id/reanalyze', async (req, res) => {
     const newReport = await scoreWebsite(
       rawData.pages,
       audit.url,
-      rawData.imageVerification || null
+      rawData.imageVerification || null,
+      audit.overrides || {}
     );
 
     await db.updateAnalysis(id, newReport);
@@ -690,3 +702,4 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+  

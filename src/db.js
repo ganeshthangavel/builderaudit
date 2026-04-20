@@ -76,7 +76,51 @@ async function initSchema() {
     END $$;
   `);
 
+  /* Step 6: enquiries table — services the user has requested help with */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS enquiries (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      audit_id TEXT REFERENCES audits(id) ON DELETE SET NULL,
+      service TEXT NOT NULL,
+      notes TEXT,
+      status TEXT DEFAULT 'new',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      responded_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_enquiries_user ON enquiries(user_id);
+    CREATE INDEX IF NOT EXISTS idx_enquiries_audit ON enquiries(audit_id);
+    CREATE INDEX IF NOT EXISTS idx_enquiries_created_at ON enquiries(created_at DESC);
+  `);
+
   console.log('✓ Database schema ready');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENQUIRIES
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function createEnquiry({ id, userId, auditId, service, notes }) {
+  if (!pool) throw new Error('Database not configured');
+
+  await pool.query(
+    `INSERT INTO enquiries (id, user_id, audit_id, service, notes)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, userId, auditId || null, service, notes || null]
+  );
+  return { id };
+}
+
+async function listEnquiriesForUser(userId) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT id, audit_id, service, notes, status, created_at, responded_at
+     FROM enquiries
+     WHERE user_id = $1
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  return rows;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -243,5 +287,8 @@ module.exports = {
   unlockAudit,
   claimAudit,
   setImageOverride,
+  // enquiries
+  createEnquiry,
+  listEnquiriesForUser,
   isEnabled: () => !!pool,
 };

@@ -7,13 +7,15 @@ const { chromium } = require('playwright');
 const Anthropic = require('@anthropic-ai/sdk');
 const { customAlphabet } = require('nanoid');
 const db = require('./db');
+const auth = require('./auth');
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
 const app = express();
-app.use(cors());
+app.use(cors({ credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+app.use(auth.attachUser);
 
 const PUBLIC = path.join(__dirname, '../public');
 
@@ -34,6 +36,9 @@ app.use('/assets', express.static(path.join(PUBLIC, 'assets')));
 // Page routes — each returns one HTML file
 app.get('/', (req, res) => res.sendFile(path.join(PUBLIC, 'home.html')));
 app.get('/audit', (req, res) => res.sendFile(path.join(PUBLIC, 'audit.html')));
+app.get('/signup', (req, res) => res.sendFile(path.join(PUBLIC, 'signup.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC, 'login.html')));
+app.get('/dashboard', (req, res) => res.sendFile(path.join(PUBLIC, 'dashboard.html')));
 app.get('/report/:id', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
 app.get('/report/:id/:section', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
 
@@ -366,7 +371,7 @@ function normaliseUrl(raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI SCORER
 // ─────────────────────────────────────────────────────────────────────────────
-async function scoreWebsite(pages, targetUrl, imageVerification, overrides) {
+async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext) {
   const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
@@ -413,6 +418,22 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides) {
     imageVerification: imgVerifySummary,
   };
 
+  /* Build a user-context line that tailors the AI feedback */
+  let contextLine = '';
+  if (userContext && userContext.businessType) {
+    const typeLabels = {
+      ltd: 'Limited Company (Ltd) — homeowners expect Companies House number, VAT number, registered office address, director names',
+      sole_trader: 'Sole Trader — homeowners expect UTR or trading name, physical business address, insurance details; Companies House is NOT applicable',
+      partnership: 'Partnership — homeowners expect trading name, partner names, registered address, partnership agreement reference',
+      llp: 'Limited Liability Partnership (LLP) — homeowners expect Companies House LLP number, registered address, members names',
+    };
+    contextLine += '\n\nBUSINESS CONTEXT: This website belongs to a ' + (typeLabels[userContext.businessType] || userContext.businessType) + '.';
+    if (userContext.region) {
+      contextLine += '\nRegion: ' + userContext.region + '. Consider regional accreditations (e.g. local FMB chapter, Trading Standards) and regional homeowner expectations.';
+    }
+    contextLine += '\nYour feedback MUST acknowledge this business type. For example: do not penalise a Sole Trader for not having a Companies House number. Do not expect regional Ltd accreditations if they are a Partnership. Tailor the trust_questions, trust_breakpoints, and scoring accordingly.';
+  }
+
   const systemPrompt = `You are a forensic conversion analyst for UK construction companies.
 Your job is NOT to produce a generic audit.
 Your job is to simulate:
@@ -429,7 +450,7 @@ IMPORTANT: You have been given VERIFIED image data from a reverse image search e
 
 CONTEXT: A homeowner is considering spending £10k-£250k on a project. They are cautious, risk-aware, and comparing multiple builders.
 
-Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
+Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + contextLine;
 
   const userPrompt = 'Website being audited: ' + targetUrl + '\n\nEXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\nFULL PAGE TEXT (' + pages.length + ' pages crawled):\n' + allText.slice(0, 6000) + '\n\nI have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
   (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?
@@ -502,7 +523,12 @@ app.post('/api/audit', async (req, res) => {
       step: 3, total: 4,
     });
 
-    const report = await scoreWebsite(pages, url, imageVerification);
+    const userContext = req.user ? {
+      businessType: req.user.business_type,
+      region: req.user.region,
+      companyName: req.user.company_name,
+    } : null;
+    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext);
 
     send('status', { message: 'Saving your report...', step: 4, total: 4 });
 
@@ -550,7 +576,7 @@ app.post('/api/report/:id/unlock', async (req, res) => {
   res.json({ success: true });
 });
 
-// Get full report data (requires unlock cookie)
+// Get full report data (requires login + ownership)
 app.get('/api/report/:id/data', async (req, res) => {
   const { id } = req.params;
 
@@ -563,12 +589,14 @@ app.get('/api/report/:id/data', async (req, res) => {
     return res.status(404).json({ error: 'Report not found' });
   }
 
-  const isUnlocked = req.cookies['audit_unlock_' + id] === '1';
+  /* If user is not logged in OR this audit belongs to a different user → return locked preview */
+  const isOwner = req.user && audit.user_id === req.user.id;
+  const isUnclaimed = !audit.user_id && req.cookies['audit_unlock_' + id] === '1';
 
-  if (!isUnlocked) {
-    // Return only preview data
+  if (!isOwner && !isUnclaimed) {
     return res.json({
       locked: true,
+      needsAuth: !req.user,
       url: audit.url,
       score: audit.score,
       companyName: audit.report_json?.business_snapshot?.company_name || null,
@@ -593,7 +621,10 @@ app.get('/api/report/:id/meta', async (req, res) => {
   if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
   const meta = await db.getAuditMeta(id);
   if (!meta) return res.status(404).json({ error: 'Not found' });
-  const isUnlocked = req.cookies['audit_unlock_' + id] === '1';
+
+  const isOwner = req.user && meta.user_id === req.user.id;
+  const isUnclaimed = !meta.user_id && req.cookies['audit_unlock_' + id] === '1';
+
   res.json({
     id: meta.id,
     url: meta.url,
@@ -601,7 +632,9 @@ app.get('/api/report/:id/meta', async (req, res) => {
     scannedAt: meta.created_at,
     lastAnalyzedAt: meta.last_analyzed_at,
     canReanalyze: meta.has_raw_data,
-    unlocked: isUnlocked,
+    unlocked: isOwner || isUnclaimed,
+    hasUser: !!meta.user_id,
+    loggedIn: !!req.user,
   });
 });
 
@@ -635,11 +668,22 @@ app.post('/api/report/:id/reanalyze', async (req, res) => {
 
     send('status', { message: 'Running fresh AI analysis...', step: 2, total: 2 });
 
+    let userContext = null;
+    if (audit.user_id) {
+      const owner = await db.getUserById(audit.user_id);
+      if (owner) userContext = {
+        businessType: owner.business_type,
+        region: owner.region,
+        companyName: owner.company_name,
+      };
+    }
+
     const newReport = await scoreWebsite(
       rawData.pages,
       audit.url,
       rawData.imageVerification || null,
-      audit.overrides || {}
+      audit.overrides || {},
+      userContext
     );
 
     await db.updateAnalysis(id, newReport);
@@ -702,4 +746,4 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-  
+        

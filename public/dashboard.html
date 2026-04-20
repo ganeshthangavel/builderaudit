@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your dashboard — BuilderAudit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+.dash-wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
+.dash-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2.5rem; }
+.dash-hello { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--slate-text); font-weight: 600; margin-bottom: 4px; }
+.dash-name { font-size: 32px; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; }
+.dash-name em { font-style: normal; color: var(--coral); }
+.dash-actions { display: flex; gap: 10px; align-items: center; }
+.dash-cta { padding: 12px 20px; background: var(--coral); color: #fff; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 600; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; }
+.dash-cta:hover { background: var(--red-signal); transform: translateY(-1px); box-shadow: 0 8px 20px -6px rgba(255,92,51,.4); }
+.dash-ghost { padding: 12px 18px; background: #fff; color: var(--slate-deep); border: 1px solid var(--ice); border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font); }
+.dash-ghost:hover { background: var(--mist); }
+
+.section-h { font-size: 18px; font-weight: 700; margin-bottom: 1rem; letter-spacing: -.015em; }
+.section-h span { font-size: 13px; color: var(--slate-text); font-weight: 500; margin-left: 8px; }
+
+.audit-row { background: #fff; border: 1px solid var(--ice); border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 10px; display: flex; align-items: center; gap: 18px; text-decoration: none; color: inherit; transition: all .25s; }
+.audit-row:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -10px rgba(15,23,42,.12); border-color: rgba(47,107,255,.25); }
+.audit-score { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: -.02em; flex-shrink: 0; }
+.audit-score.g { background: var(--green-light); color: var(--green); }
+.audit-score.a { background: var(--amber-tint); color: var(--orange-deep); }
+.audit-score.r { background: var(--red-tint); color: var(--red-signal); }
+.audit-body { flex: 1; min-width: 0; }
+.audit-url { font-size: 15px; font-weight: 600; color: var(--ink); letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-meta { font-size: 12px; color: var(--slate-text); margin-top: 2px; }
+.audit-arrow { color: var(--slate); font-size: 18px; flex-shrink: 0; }
+
+.empty { text-align: center; padding: 3rem 1.5rem; background: #fff; border: 1px dashed var(--ice); border-radius: 16px; margin-bottom: 2rem; }
+.empty-icon { font-size: 40px; color: var(--slate); margin-bottom: 10px; }
+.empty-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.empty-sub { font-size: 14px; color: var(--slate-deep); margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" style="text-decoration:none"><div class="logo">Builder<em>Audit</em></div></a>
+  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+</header>
+
+<div class="dash-wrap">
+  <div class="dash-top">
+    <div>
+      <div class="dash-hello">Your dashboard</div>
+      <div class="dash-name" id="dashName">Welcome</div>
+    </div>
+    <div class="dash-actions">
+      <a href="/audit" class="dash-cta">Run new audit &rarr;</a>
+      <button class="dash-ghost" onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="section-h">Your audits <span id="auditCount"></span></div>
+  <div id="auditsList"></div>
+
+  <div class="my-enquiries" id="enquiriesSection" style="display:none">
+    <div class="section-h">Service enquiries <span id="enqCount"></span></div>
+    <div id="enquiriesList"></div>
+  </div>
+</div>
+
+<script>
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function sc(n){return n>=70?'g':n>=45?'a':'r'}
+
+(async function init(){
+  try{
+    var meRes=await fetch('/api/auth/me',{credentials:'include'});
+    var me=await meRes.json();
+    if(!me.user){window.location.href='/login';return;}
+    document.getElementById('dashName').innerHTML='Hi <em>'+esc(me.user.companyName||me.user.email.split('@')[0])+'</em>';
+
+    var [auditsRes,enqRes]=await Promise.all([
+      fetch('/api/my/audits',{credentials:'include'}),
+      fetch('/api/my/enquiries',{credentials:'include'}),
+    ]);
+    var audits=(await auditsRes.json()).audits||[];
+    var enquiries=(await enqRes.json()).enquiries||[];
+
+    renderAudits(audits);
+    renderEnquiries(enquiries);
+  }catch(e){
+    document.getElementById('auditsList').innerHTML='<div class="empty"><div class="empty-title">Could not load your dashboard</div><div class="empty-sub">'+esc(e.message)+'</div></div>';
+  }
+})();
+
+function renderAudits(audits){
+  var list=document.getElementById('auditsList');
+  document.getElementById('auditCount').textContent=audits.length?audits.length+' total':'';
+  if(audits.length===0){
+    list.innerHTML='<div class="empty"><div class="empty-icon">\u25CE</div><div class="empty-title">No audits yet</div><div class="empty-sub">Run your first forensic audit to see exactly what\'s costing you jobs.</div><a href="/audit" class="dash-cta">Run your first audit &rarr;</a></div>';
+    return;
+  }
+  var html='';
+  audits.forEach(function(a){
+    var domain='';try{domain=new URL(a.url).hostname.replace(/^www\./,'');}catch(e){domain=a.url;}
+    var date=new Date(a.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+    var score=a.score||0;
+    html+='<a href="/report/'+a.id+'" class="audit-row">';
+    html+='<div class="audit-score '+sc(score)+'">'+score+'</div>';
+    html+='<div class="audit-body"><div class="audit-url">'+esc(domain)+'</div><div class="audit-meta">Audited '+date+'</div></div>';
+    html+='<div class="audit-arrow">\u2192</div>';
+    html+='</a>';
+  });
+  list.innerHTML=html;
+}
+
+function renderEnquiries(enquiries){
+  if(enquiries.length===0)return;
+  document.getElementById('enquiriesSection').style.display='block';
+  document.getElementById('enqCount').textContent=enquiries.length+' total';
+
+  var labels={web_rebuild:'Web design / rebuild',seo:'SEO services',photography:'Professional photography',testimonials:'Testimonial & review gathering',managed_service:'Full done-for-you fix'};
+
+  var html='';
+  enquiries.forEach(function(e){
+    var date=new Date(e.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    var statusClass=e.status==='responded'?'responded':'new';
+    html+='<div class="enq-row">';
+    html+='<div><div class="enq-service">'+esc(labels[e.service]||e.service)+'</div><div class="enq-meta">Requested '+date+'</div></div>';
+    html+='<div style="margin-left:auto"><span class="enq-status '+statusClass+'">'+esc(e.status||'new')+'</span></div>';
+    html+='</div>';
+  });
+  document.getElementById('enquiriesList').innerHTML=html;
+}
+
+async function logout(){
+  await fetch('/api/auth/logout',{method:'POST',credentials:'include'});
+  window.location.href='/';
+}
+</script>
+</body>
+</html>

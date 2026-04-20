@@ -8,6 +8,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { customAlphabet } = require('nanoid');
 const db = require('./db');
 const auth = require('./auth');
+const email = require('./email');
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
@@ -41,6 +42,7 @@ app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC, 'login.html')));
 app.get('/dashboard', (req, res) => res.sendFile(path.join(PUBLIC, 'dashboard.html')));
 app.get('/report/:id', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
 app.get('/report/:id/:section', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
+app.get('/services', (req, res) => res.sendFile(path.join(PUBLIC, 'services.html')));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STOCK DOMAINS — instant flag
@@ -746,4 +748,3 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-        

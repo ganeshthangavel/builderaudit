@@ -600,6 +600,7 @@ app.post('/api/report/:id/override', async (req, res) => {
   if (req.cookies['audit_unlock_' + id] !== '1') return res.status(403).json({ error: 'Report not unlocked' });
 
   try {
+    console.log('Override request:', { id, imageSrc, decision });
     await db.setImageOverride(id, imageSrc, decision);
 
     /* Recalculate score based on remaining (non-overridden) flags */

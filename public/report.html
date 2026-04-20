@@ -623,41 +623,84 @@ async function toggleOverride(imageSrc, btn){
   if(card)card.classList.toggle('overridden');
   reportOverrides[imageSrc]=newDecision;
 
+  /* Immediately update counts from local data — no waiting for server */
+  updateImageCountsLocally();
+
   try{
     var res=await fetch('/api/report/'+REPORT_ID+'/override',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({imageSrc:imageSrc,decision:newDecision})
     });
-    if(!res.ok)throw new Error('Override failed');
+    if(!res.ok){
+      var errText=await res.text();
+      throw new Error('Server returned '+res.status+': '+errText.slice(0,100));
+    }
     var data=await res.json();
+    console.log('Override saved:',data);
 
-    /* Update score chip and counts */
-    updateScoreDisplay(data.adjustedScore, currentScore);
-    document.getElementById('ivStockCount').textContent=data.stockRemaining;
-    document.getElementById('ivDupCount').textContent=data.dupRemaining;
-    currentScore=data.adjustedScore;
+    /* Update score chip with server's calculation */
+    if(typeof data.adjustedScore==='number'){
+      updateScoreDisplay(data.adjustedScore, currentScore);
+      currentScore=data.adjustedScore;
+    }
   }catch(e){
+    console.error('Override error:',e);
     /* Revert on error */
     btn.classList.toggle('on');
     if(card)card.classList.toggle('overridden');
     reportOverrides[imageSrc]=wasOn?'rejected':null;
-    alert('Could not save override. Try again.');
+    updateImageCountsLocally();
+    alert('Could not save your change: '+e.message);
   }
 }
 
-function updateScoreDisplay(newScore, oldScore){
-  var chip=document.getElementById('navScoreNum');
-  if(!chip)return;
-  var delta=newScore-oldScore;
-  countUp(chip,oldScore,newScore,500);
-  chip.parentElement.classList.add('score-adjusting');
-  setTimeout(function(){chip.parentElement.classList.remove('score-adjusting');},600);
+/* Update the stock / duplicate counters by counting what is NOT overridden */
+function updateImageCountsLocally(){
+  if(!reportData||!reportData.imageVerification)return;
+  var iv=reportData.imageVerification;
+  var activeStock=(iv.stockImages||[]).filter(function(i){return reportOverrides[i.src]!=='rejected';}).length;
+  var activeDup=(iv.duplicatedImages||[]).filter(function(i){return reportOverrides[i.src]!=='rejected';}).length;
+  var stockEl=document.getElementById('ivStockCount');
+  var dupEl=document.getElementById('ivDupCount');
+  if(stockEl)stockEl.textContent=activeStock;
+  if(dupEl)dupEl.textContent=activeDup;
+}
 
-  /* Show a delta pill briefly */
-  var existing=document.querySelector('.score-chip-delta');
-  if(existing)existing.remove();
-  if(delta!==0){
+function updateScoreDisplay(newScore, oldScore){
+  /* Update top nav score chip if present */
+  var chip=document.getElementById('navScoreNum');
+  if(chip){
+    countUp(chip,oldScore,newScore,500);
+    var parent=chip.parentElement;
+    if(parent){
+      parent.classList.add('score-adjusting');
+      setTimeout(function(){parent.classList.remove('score-adjusting');},600);
+    }
+  }
+
+  /* Also update the big ring number if we are on the overview section */
+  var ringNum=document.querySelector('.ring-num');
+  if(ringNum){
+    countUp(ringNum,oldScore,newScore,800);
+  }
+
+  /* Also update the ring circle itself */
+  var ringCircle=document.querySelector('.ring-wrap svg circle:nth-child(2)');
+  if(ringCircle){
+    var r=parseFloat(ringCircle.getAttribute('r'))||45;
+    var circ=2*Math.PI*r;
+    var offset=circ*(1-newScore/100);
+    var col=newScore>=70?'#059669':newScore>=45?'#FFB020':'#FF2E2E';
+    ringCircle.setAttribute('stroke-dashoffset',offset.toFixed(1));
+    ringCircle.setAttribute('stroke',col);
+  }
+
+  /* Show delta pill */
+  var delta=newScore-oldScore;
+  if(chip&&chip.parentElement&&delta!==0){
+    var existing=document.querySelector('.score-chip-delta');
+    if(existing)existing.remove();
     var deltaEl=document.createElement('span');
     deltaEl.className='score-chip-delta';
     deltaEl.textContent=(delta>0?'+':'')+delta;

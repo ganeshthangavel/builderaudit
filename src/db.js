@@ -21,6 +21,7 @@ const pool = connectionString ? new Pool({
 async function initSchema() {
   if (!pool) return;
 
+  /* Step 1: ensure users table exists FIRST (audits references it) */
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -33,28 +34,46 @@ async function initSchema() {
       last_login_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+  `);
 
+  /* Step 2: ensure audits table exists (no foreign key constraints in CREATE) */
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS audits (
       id TEXT PRIMARY KEY,
-      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
       url TEXT NOT NULL,
       email TEXT,
       score INTEGER,
       report_json JSONB NOT NULL,
-      raw_data JSONB,
-      overrides JSONB DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ DEFAULT NOW(),
-      last_analyzed_at TIMESTAMPTZ,
       unlocked_at TIMESTAMPTZ
     );
-    CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id);
     CREATE INDEX IF NOT EXISTS idx_audits_email ON audits(email);
     CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC);
+  `);
 
-    ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb;
-    ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB;
-    ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ;
-    ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+  /* Step 3: add every optional column one-by-one. IF NOT EXISTS makes these safe to re-run. */
+  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb`);
+  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB`);
+  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
+
+  /* Step 4: add indexes that depend on the new columns */
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
+
+  /* Step 5: add the foreign key constraint ONLY if it does not already exist */
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'audits_user_id_fkey'
+          AND table_name = 'audits'
+      ) THEN
+        ALTER TABLE audits
+          ADD CONSTRAINT audits_user_id_fkey
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      END IF;
+    END $$;
   `);
 
   console.log('✓ Database schema ready');

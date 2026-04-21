@@ -548,34 +548,174 @@ app.post('/api/audit', async (req, res) => {
   res.end();
 });
 
-// Unlock report with email → set cookie
-app.post('/api/report/:id/unlock', async (req, res) => {
-  const { id } = req.params;
-  const { email } = req.body;
+/* ═══════════════════════════════════════════════════════════════════════════
+   AUTH ROUTES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const VALID_BUSINESS_TYPES = ['ltd', 'sole_trader', 'partnership', 'llp'];
+
+const VALID_REGIONS = [
+  'London','South East','South West','East of England','East Midlands',
+  'West Midlands','Yorkshire and the Humber','North West','North East',
+  'Scotland','Wales','Northern Ireland',
+];
+
+app.post('/api/auth/signup', async (req, res) => {
+  const { email, password, companyName, businessType, region, claimAuditId } = req.body;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'Please enter a valid email address' });
   }
-
-  if (!db.isEnabled()) {
-    return res.status(500).json({ error: 'Database not configured' });
+  if (!password || password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+  if (!companyName || companyName.trim().length < 2) {
+    return res.status(400).json({ error: 'Please enter your company name' });
+  }
+  if (!VALID_BUSINESS_TYPES.includes(businessType)) {
+    return res.status(400).json({ error: 'Please select a business type' });
+  }
+  if (!VALID_REGIONS.includes(region)) {
+    return res.status(400).json({ error: 'Please select your region' });
   }
 
-  const meta = await db.getAuditMeta(id);
-  if (!meta) {
-    return res.status(404).json({ error: 'Report not found' });
+  try {
+    const passwordHash = await auth.hashPassword(password);
+    const userId = 'usr_' + nanoid();
+    const user = await db.createUser({
+      id: userId,
+      email,
+      passwordHash,
+      companyName: companyName.trim(),
+      businessType,
+      region,
+    });
+
+    if (claimAuditId) {
+      try { await db.claimAudit(claimAuditId, userId); } catch (e) { console.warn('claim failed:', e.message); }
+    }
+
+    auth.setSessionCookie(res, userId);
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const user = await db.getUserByEmail(email);
+  if (!user) return res.status(401).json({ error: 'Incorrect email or password' });
+
+  const ok = await auth.verifyPassword(password, user.password_hash);
+  if (!ok) return res.status(401).json({ error: 'Incorrect email or password' });
+
+  await db.recordLogin(user.id);
+  auth.setSessionCookie(res, user.id);
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      companyName: user.company_name,
+      businessType: user.business_type,
+      region: user.region,
+    },
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  auth.clearSessionCookie(res);
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.user) return res.json({ user: null });
+  res.json({
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      companyName: req.user.company_name,
+      businessType: req.user.business_type,
+      region: req.user.region,
+    },
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DASHBOARD / MY AUDITS / ENQUIRIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+app.get('/api/my/audits', auth.requireAuth, async (req, res) => {
+  const audits = await db.listAuditsForUser(req.user.id);
+  res.json({ audits });
+});
+
+app.get('/api/my/enquiries', auth.requireAuth, async (req, res) => {
+  const enquiries = await db.listEnquiriesForUser(req.user.id);
+  res.json({ enquiries });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SERVICE ENQUIRIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const VALID_SERVICES = ['web_rebuild', 'seo', 'photography', 'testimonials', 'managed_service'];
+
+app.post('/api/enquiry', auth.requireAuth, async (req, res) => {
+  const { service, notes, auditId } = req.body;
+
+  if (!VALID_SERVICES.includes(service)) {
+    return res.status(400).json({ error: 'Invalid service' });
   }
 
-  await db.unlockAudit(id, email);
+  let audit = null;
+  if (auditId) {
+    audit = await db.getAudit(auditId);
+    if (!audit) return res.status(404).json({ error: 'Audit not found' });
+    if (audit.user_id !== req.user.id) return res.status(403).json({ error: 'Not your audit' });
+  }
 
-  res.cookie('audit_unlock_' + id, '1', {
-    maxAge: COOKIE_MAX_AGE,
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: true,
+  const enquiryId = 'enq_' + nanoid();
+  await db.createEnquiry({
+    id: enquiryId,
+    userId: req.user.id,
+    auditId: auditId || null,
+    service,
+    notes: notes?.trim() || null,
   });
 
-  res.json({ success: true });
+  const host = req.get('host') || 'builderaudit.co.uk';
+  const protocol = req.protocol || 'https';
+  const reportUrl = auditId ? `${protocol}://${host}/report/${auditId}` : `${protocol}://${host}/dashboard`;
+
+  const userForEmail = {
+    email: req.user.email,
+    companyName: req.user.company_name,
+    businessType: req.user.business_type,
+    region: req.user.region,
+  };
+
+  const emailResult = await email.sendEnquiryNotification({
+    service,
+    notes,
+    user: userForEmail,
+    auditUrl: audit?.url || null,
+    auditId,
+    reportUrl,
+  });
+
+  email.sendEnquiryConfirmationToUser({ service, user: userForEmail }).catch(err => {
+    console.warn('Confirmation email failed:', err.message);
+  });
+
+  res.json({
+    success: true,
+    enquiryId,
+    emailSent: emailResult?.success || false,
+  });
 });
 
 // Get full report data (requires login + ownership)
@@ -748,3 +888,4 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+    

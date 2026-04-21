@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Check a builder — BuilderAudit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo">Builder<em>Audit</em></a>
+  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+  <div class="user-menu" id="userMenu"></div>
+</header>
+<script>
+(async function(){
+  try{
+    var res=await fetch('/api/auth/me',{credentials:'include'});
+    var data=await res.json();
+    var menu=document.getElementById('userMenu');
+    if(!menu)return;
+    if(data.user){
+      var initial=(data.user.companyName||data.user.email||'?')[0].toUpperCase();
+      menu.innerHTML='<a href="/dashboard" class="user-menu-dashboard"><span class="user-avatar">'+initial+'</span>Dashboard</a>';
+    } else {
+      var nextParam=encodeURIComponent(window.location.pathname+window.location.search);
+      menu.innerHTML='<a href="/login?next='+nextParam+'" class="user-menu-login">Log in</a><a href="/signup" class="user-menu-signup">Sign up</a>';
+    }
+  }catch(e){}
+})();
+</script>
+
+<div class="hero">
+  <h1>Check <em>before</em> you sign</h1>
+  <p>Paste any UK builder's website URL. We'll examine it the way a trained professional would — spot red flags, identify what's missing, and give you the exact questions to ask before you commit.</p>
+  <div class="input-row">
+    <input type="url" id="urlInput" placeholder="https://builderwebsite.co.uk" autofocus />
+    <button id="auditBtn" onclick="startAudit()">Check this builder &rarr;</button>
+  </div>
+  <div style="max-width:600px;margin:1.25rem auto 0;font-size:12px;color:var(--fg3);text-align:center">
+    This is an independent forensic check. The builder is not contacted or notified.
+  </div>
+</div>
+
+<main>
+  <div class="scan-stage" id="scanStage">
+    <div class="scan-core">
+      <div class="scan-ring scan-ring-1"></div>
+      <div class="scan-ring scan-ring-2"></div>
+      <div class="scan-ring scan-ring-3"></div>
+      <div class="scan-center" id="scanIcon">&#9654;</div>
+    </div>
+    <div class="scan-phase" id="scanPhase">Phase 1 of 4</div>
+    <div class="scan-message" id="scanMessage">Starting check...</div>
+    <div class="scan-timeline">
+      <div class="scan-tl-step" id="tl1"></div>
+      <div class="scan-tl-step" id="tl2"></div>
+      <div class="scan-tl-step" id="tl3"></div>
+      <div class="scan-tl-step" id="tl4"></div>
+    </div>
+    <div class="scan-tl-labels">
+      <div class="scan-tl-label" id="tll1">Crawl</div>
+      <div class="scan-tl-label" id="tll2">Verify images</div>
+      <div class="scan-tl-label" id="tll3">Analyse</div>
+      <div class="scan-tl-label" id="tll4">Save report</div>
+    </div>
+  </div>
+
+  <div id="errorArea" style="max-width:600px;margin:2rem auto"></div>
+</main>
+
+<script>
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+async function startAudit(){
+  var url=document.getElementById('urlInput').value.trim();
+  if(!url||!url.startsWith('http')){alert('Please enter a full URL starting with https://');return;}
+  document.getElementById('auditBtn').disabled=true;
+  document.getElementById('errorArea').innerHTML='';
+  document.getElementById('scanStage').classList.add('active');
+  setStatus('Connecting...',1);
+  document.getElementById('scanStage').scrollIntoView({behavior:'smooth',block:'center'});
+  try{await runSSE(url);}catch(e){showError(e.message);}
+}
+
+async function runSSE(url){
+  var res=await fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,audience:'homeowner'})});
+  var reader=res.body.getReader(),dec=new TextDecoder(),buf='';
+  while(true){
+    var _ref=await reader.read(),done=_ref.done,value=_ref.value;
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    var lines=buf.split('\n');
+    buf=lines.pop();
+    var lastEvt=null;
+    for(var i=0;i<lines.length;i++){
+      var line=lines[i];
+      if(line.startsWith('event: ')){lastEvt=line.slice(7).trim();continue;}
+      if(line.startsWith('data: ')){
+        try{
+          var d=JSON.parse(line.slice(6));
+          var evt=lastEvt||(d.step?'status':d.id?'complete':d.message?'error':null);
+          if(evt)handle(evt,d);
+        }catch(e){}
+        lastEvt=null;
+      }
+    }
+  }
+}
+
+function handle(name,data){
+  if(name==='status')setStatus(data.message,data.step||0);
+  else if(name==='complete'){
+    setStatus('Done!',4);
+    setTimeout(function(){window.location.href='/report/'+data.id;},600);
+  }
+  else if(name==='error')showError(data.message);
+}
+
+function setStatus(msg,step){
+  document.getElementById('scanMessage').textContent=msg;
+  document.getElementById('scanPhase').textContent='Phase '+Math.max(1,step)+' of 4';
+  var icons=['','\u2315','\u25A3','\u2742','\u2713'];
+  document.getElementById('scanIcon').innerHTML=icons[step]||'\u2315';
+  for(var j=1;j<=4;j++){
+    var tl=document.getElementById('tl'+j);
+    var tll=document.getElementById('tll'+j);
+    tl.classList.remove('done','active');tll.classList.remove('done','active');
+    if(j<step){tl.classList.add('done');tll.classList.add('done');}
+    else if(j===step){tl.classList.add('active');tll.classList.add('active');}
+  }
+}
+
+function showError(msg){
+  document.getElementById('scanStage').classList.remove('active');
+  document.getElementById('auditBtn').disabled=false;
+  document.getElementById('errorArea').innerHTML='<div class="error-card">Check failed: '+esc(msg)+'</div>';
+}
+</script>
+</body>
+</html>

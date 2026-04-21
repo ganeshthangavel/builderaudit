@@ -100,6 +100,23 @@
   <div class="logo">Builder<em>Audit</em></div>
   <div class="tagline">Forensic trust analysis for UK construction websites</div>
 </header>
+<div class="user-menu" id="userMenu"></div>
+<script>
+(async function(){
+  try{
+    var res=await fetch('/api/auth/me',{credentials:'include'});
+    var data=await res.json();
+    var menu=document.getElementById('userMenu');
+    if(!menu)return;
+    if(data.user){
+      var initial=(data.user.companyName||data.user.email||'?')[0].toUpperCase();
+      menu.innerHTML='<a href="/dashboard" class="user-menu-dashboard"><span class="user-avatar">'+initial+'</span>Dashboard</a>';
+    } else {
+      menu.innerHTML='<a href="/login" class="user-menu-login">Log in</a><a href="/signup" class="user-menu-signup">Sign up</a>';
+    }
+  }catch(e){}
+})();
+</script>
 
 <section class="home-hero">
   <h1>Find out why your website is <em>losing you jobs</em></h1>

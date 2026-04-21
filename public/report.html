@@ -562,11 +562,16 @@ function renderIssues(r){
   html+='<div class="sp-header"><div class="sp-eyebrow">Trust issues</div><h1 class="sp-title">Where homeowners lose trust</h1><p class="sp-sub">'+bps.length+' moments where a homeowner would hesitate, pause, or decide to call someone else. Sorted by impact on your enquiry rate.</p></div>';
   html+='<div class="bp-list">';
   bps.forEach(function(bp){
+    var svc=inferServiceFromIssue(bp);
+    var svcLabel=SERVICE_LABELS[svc];
+    var contextNote='Regarding this finding from my audit: "'+(bp.title||'')+'". '+(bp.fix||'');
+    var contextAttr=contextNote.replace(/"/g,'&quot;').replace(/'/g,"\\'");
     html+='<div class="bp-card">';
     html+='<div class="bp-top"><div class="bp-dot dot-'+(bp.impact||'medium')+'"></div><div class="bp-title">'+esc(bp.title||'')+'</div>'+impactPill(bp.impact)+'</div>';
     html+='<div class="bp-reaction">'+esc(bp.homeowner_reaction||'')+'</div>';
     if(bp.evidence)html+='<div class="bp-evidence"><b>Evidence:</b> '+esc(bp.evidence)+'</div>';
     if(bp.fix)html+='<div class="bp-fix">'+esc(bp.fix)+'</div>';
+    html+='<button class="service-offer" onclick="openEnquiry(\''+svc+'\',\''+contextAttr+'\')">Let our team sort this \u2014 '+esc(svcLabel)+'</button>';
     html+='</div>';
   });
   html+='</div>';
@@ -643,6 +648,19 @@ function renderImages(r){
   html+='<div style="margin-top:12px;font-size:12px;color:var(--slate-text)">'+ivChecked+' project image'+(ivChecked===1?'':'s')+' reverse-searched';
   if(skipped>0)html+=' \u00B7 '+skipped+' non-project image'+(skipped===1?'':'s')+' skipped (logos, team photos, icons)';
   html+='</div>';
+
+  /* Photography service CTA — shown when there are 2+ flagged images that are not overridden */
+  if(ivFlagged>=2){
+    var photoNote='After reviewing my image verification, '+ivFlagged+' flagged images remain. Would like to discuss a professional photoshoot to replace them.';
+    var photoNoteEsc=photoNote.replace(/"/g,'&quot;').replace(/'/g,"\\'");
+    html+='<div style="margin-top:1.5rem;background:var(--ink);color:#fff;border-radius:16px;padding:1.5rem 1.75rem;display:flex;gap:18px;align-items:center;flex-wrap:wrap">';
+    html+='<div style="flex:1;min-width:240px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--coral);font-weight:700;margin-bottom:6px">We can fix this for you</div>';
+    html+='<div style="font-size:18px;font-weight:700;margin-bottom:4px">Replace flagged photos with real project shots</div>';
+    html+='<div style="font-size:14px;color:var(--slate);line-height:1.5">Our in-house photographers will shoot your actual work across a half or full day. Professional, UK-based, shots you can use on every page.</div></div>';
+    html+='<button class="service-card-btn" style="white-space:nowrap" onclick="openEnquiry(\'photography\',\''+photoNoteEsc+'\')">Enquire about a shoot \u2192</button>';
+    html+='</div>';
+  }
+
   return html;
 }
 
@@ -948,7 +966,126 @@ function renderActions(r){
     html+='<div class="action-row"><div class="a-num">'+(i+1)+'</div><div class="a-text">'+esc(a)+'</div></div>';
   });
   html+='</div>';
+
+  /* Managed service CTA at the bottom */
+  var actionsList=(r.top_actions||[]).map(function(a,i){return (i+1)+'. '+a;}).join(' | ');
+  var mNote='I would like your team to handle this action plan end-to-end. My audit flagged these fixes: '+actionsList;
+  var mNoteEsc=mNote.replace(/"/g,'&quot;').replace(/'/g,"\\'");
+  html+='<div style="margin-top:1.5rem;background:linear-gradient(135deg,var(--ink),#1E293B);color:#fff;border-radius:20px;padding:2rem 2.25rem;position:relative;overflow:hidden">';
+  html+='<div style="position:absolute;top:-50%;right:-20%;width:400px;height:400px;background:radial-gradient(circle,rgba(255,92,51,.18),transparent 70%);pointer-events:none"></div>';
+  html+='<div style="position:relative">';
+  html+='<div style="font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--coral);font-weight:700;margin-bottom:10px">Don\'t want to do this yourself?</div>';
+  html+='<div style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px;line-height:1.2">Our team can handle every fix on this list</div>';
+  html+='<div style="font-size:15px;color:var(--slate);line-height:1.6;max-width:520px;margin-bottom:1.25rem">Full done-for-you service. New site, real photography, SEO, testimonial gathering, accreditation support. You focus on building, we handle the trust signals.</div>';
+  html+='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="service-card-btn" style="background:var(--coral);font-size:14px;padding:12px 22px" onclick="openEnquiry(\'managed_service\',\''+mNoteEsc+'\')">Enquire about done-for-you \u2192</button>';
+  html+='<div style="font-size:13px;color:var(--slate)"><b style="color:#fff">\u00A33k\u201315k</b> depending on scope</div></div>';
+  html+='</div></div>';
+
   return html;
+}
+</script>
+
+<!-- ENQUIRY_MODAL -->
+<div class="enquiry-modal" id="enquiryModal" onclick="if(event.target===this)closeEnquiry()">
+  <div class="enquiry-box" id="enquiryBox"></div>
+</div>
+
+<script>
+var SERVICE_LABELS = {
+  web_rebuild: 'Web design / rebuild',
+  seo: 'SEO services',
+  photography: 'Professional photography',
+  testimonials: 'Testimonial & review gathering',
+  managed_service: 'Full done-for-you fix',
+};
+
+var SERVICE_PRICES = {
+  web_rebuild: '£1.5k–6k typical',
+  seo: '£400–1.2k per month',
+  photography: '£450–1.5k per shoot',
+  testimonials: '£600–1.8k project',
+  managed_service: '£3k–15k depending on scope',
+};
+
+var _currentEnquiryService = null;
+
+function openEnquiry(service, contextNote){
+  _currentEnquiryService = service;
+  var label = SERVICE_LABELS[service] || service;
+  var price = SERVICE_PRICES[service] || '';
+  var prefilled = contextNote ? contextNote : '';
+
+  /* Check if logged in before showing form */
+  fetch('/api/auth/me', {credentials:'include'}).then(function(r){return r.json();}).then(function(d){
+    var modal = document.getElementById('enquiryModal');
+    var box = document.getElementById('enquiryBox');
+    if (!d.user) {
+      box.innerHTML =
+        '<div class="enquiry-eyebrow">Quick account needed</div>'+
+        '<div class="enquiry-title">Create an account to enquire</div>'+
+        '<div class="enquiry-sub">We need a few details about your business so our team can prepare a proper quote and follow up properly.</div>'+
+        '<div class="enquiry-login-prompt">Have an account? <a href="/login?next='+encodeURIComponent(window.location.pathname)+'">Log in</a> or <a href="/signup">sign up</a>.</div>'+
+        '<div class="enquiry-actions"><button class="enquiry-cancel" onclick="closeEnquiry()">Cancel</button><a href="/signup" class="enquiry-submit" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">Create account →</a></div>';
+    } else {
+      box.innerHTML =
+        '<div class="enquiry-eyebrow">Service enquiry</div>'+
+        '<div class="enquiry-title">'+esc(label)+'</div>'+
+        '<div class="enquiry-sub">Tell us a bit about what you need. One of our forensics team will reply within 1 business day.</div>'+
+        (price ? '<div class="enquiry-price"><b>Typical range:</b> '+esc(price)+'. Final quote depends on scope after our discovery call.</div>' : '')+
+        '<label class="enquiry-label" for="enqNotes">Your notes</label>'+
+        '<textarea class="enquiry-textarea" id="enqNotes" placeholder="e.g. which issue in the report prompted this, your timeline, budget if known...">'+esc(prefilled)+'</textarea>'+
+        '<div class="enquiry-actions"><button class="enquiry-cancel" onclick="closeEnquiry()">Cancel</button><button class="enquiry-submit" id="enqSubmitBtn" onclick="submitEnquiry()">Send enquiry →</button></div>';
+    }
+    modal.classList.add('on');
+  }).catch(function(e){
+    alert('Could not load form: '+e.message);
+  });
+}
+
+async function submitEnquiry(){
+  var btn = document.getElementById('enqSubmitBtn');
+  var notes = document.getElementById('enqNotes').value.trim();
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    var res = await fetch('/api/enquiry', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      credentials: 'include',
+      body: JSON.stringify({
+        service: _currentEnquiryService,
+        notes: notes,
+        auditId: REPORT_ID,
+      })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Send failed');
+
+    document.getElementById('enquiryBox').innerHTML =
+      '<div class="enquiry-success">'+
+        '<div class="enquiry-success-icon">✓</div>'+
+        '<div class="enquiry-title">Enquiry sent</div>'+
+        '<div class="enquiry-sub">We have emailed you a confirmation. Our forensics team will be in touch within 1 business day.</div>'+
+        '<div class="enquiry-actions"><button class="enquiry-submit" onclick="closeEnquiry()">Close</button></div>'+
+      '</div>';
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Send enquiry →';
+    alert('Could not send: ' + e.message);
+  }
+}
+
+function closeEnquiry(){
+  document.getElementById('enquiryModal').classList.remove('on');
+}
+
+/* Infer which service best fits a trust-breakpoint title/evidence */
+function inferServiceFromIssue(issue){
+  var text = ((issue.title||'') + ' ' + (issue.evidence||'') + ' ' + (issue.fix||'')).toLowerCase();
+  if (/\bphot|image|stock|visual|gallery|picture\b/.test(text)) return 'photography';
+  if (/\breview|testimonial|google|trustpilot|checkatrade|houzz|recommend\b/.test(text)) return 'testimonials';
+  if (/\bseo|search|google rank|ranking|keyword|traffic|visibility|google business\b/.test(text)) return 'seo';
+  return 'web_rebuild';  /* default: site-wide trust/content issue */
 }
 </script>
 </body>

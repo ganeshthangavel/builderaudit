@@ -98,6 +98,7 @@
 <div class="report-nav" id="reportNav" style="display:none">
   <div class="report-nav-inner">
     <a href="/" class="report-back">&larr; Home</a>
+    <a href="/dashboard" class="report-back" id="reportDashLink" style="display:none">Dashboard</a>
     <div>
       <div class="report-domain" id="navDomain">—</div>
       <div class="report-domain-meta" id="navDate">—</div>
@@ -238,42 +239,19 @@ function showLockScreen(preview){
         '<div class="lock-url">'+esc(domain)+'</div>'+
       '</div>'+
       '<div class="lock-headline">'+esc(preview.headline||'Your audit is ready')+'</div>'+
-      '<div class="lock-sub">Enter your email to unlock the full forensic report, including every trust breakpoint, verified image analysis, and your personalised action plan.</div>'+
-      '<input type="email" class="lock-input" id="lockEmail" placeholder="you@example.co.uk" autofocus>'+
-      '<button class="lock-btn" id="lockBtn" onclick="unlock()">Unlock my report &rarr;</button>'+
-      '<div class="lock-fineprint">We will only use your email to send you this report and occasional relevant updates. You can unsubscribe at any time.</div>'+
+      '<div class="lock-sub">Create a free account to unlock your full forensic report, including every trust breakpoint, verified image analysis, and your personalised action plan. Takes 30 seconds.</div>'+
+      '<a href="/signup?claim='+encodeURIComponent(REPORT_ID)+'" class="lock-btn" style="text-decoration:none;display:block;box-sizing:border-box;text-align:center">Create account &amp; unlock &rarr;</a>'+
+      '<div class="lock-fineprint" style="margin-top:14px">Already have an account? <a href="/login?next=/report/'+encodeURIComponent(REPORT_ID)+'" style="color:var(--azure);font-weight:600;text-decoration:none">Log in</a></div>'+
     '</div>';
-
-  document.getElementById('lockEmail').addEventListener('keydown',function(e){
-    if(e.key==='Enter')unlock();
-  });
-}
-
-async function unlock(){
-  var email=document.getElementById('lockEmail').value.trim();
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
-    alert('Please enter a valid email address');return;
-  }
-  var btn=document.getElementById('lockBtn');
-  btn.disabled=true;btn.textContent='Unlocking...';
-  try{
-    var res=await fetch('/api/report/'+REPORT_ID+'/unlock',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email:email})
-    });
-    if(!res.ok)throw new Error((await res.json()).error||'Unlock failed');
-    /* Reload to show unlocked content */
-    window.location.reload();
-  }catch(e){
-    btn.disabled=false;btn.textContent='Unlock my report \u2192';
-    alert('Error: '+e.message);
-  }
 }
 
 function showTopNav(data){
   var nav=document.getElementById('reportNav');
   nav.style.display='block';
+  /* Show Dashboard link if user is logged in */
+  fetch('/api/auth/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){
+    if(d.user){var l=document.getElementById('reportDashLink');if(l)l.style.display='inline-flex';}
+  }).catch(function(){});
   var domain='';try{domain=new URL(data.url).hostname;}catch(e){domain=data.url;}
   document.getElementById('navDomain').textContent=domain;
   var date=new Date(data.scannedAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});

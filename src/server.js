@@ -718,7 +718,7 @@ app.post('/api/enquiry', auth.requireAuth, async (req, res) => {
   });
 });
 
-// Get full report data (requires login + ownership)
+// Get full report data (requires login + ownership, or auto-claim unowned)
 app.get('/api/report/:id/data', async (req, res) => {
   const { id } = req.params;
 
@@ -731,7 +731,18 @@ app.get('/api/report/:id/data', async (req, res) => {
     return res.status(404).json({ error: 'Report not found' });
   }
 
-  /* If user is not logged in OR this audit belongs to a different user → return locked preview */
+  /* AUTO-CLAIM: if logged-in user visits an audit with no owner, claim it for them.
+     This handles the case where someone ran an audit anonymously, then signed up. */
+  if (req.user && !audit.user_id) {
+    try {
+      await db.claimAudit(id, req.user.id);
+      audit.user_id = req.user.id;
+      console.log('Auto-claimed audit', id, 'for user', req.user.id);
+    } catch (e) {
+      console.warn('Auto-claim failed:', e.message);
+    }
+  }
+
   const isOwner = req.user && audit.user_id === req.user.id;
   const isUnclaimed = !audit.user_id && req.cookies['audit_unlock_' + id] === '1';
 
@@ -763,6 +774,14 @@ app.get('/api/report/:id/meta', async (req, res) => {
   if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
   const meta = await db.getAuditMeta(id);
   if (!meta) return res.status(404).json({ error: 'Not found' });
+
+  /* AUTO-CLAIM unowned audit for logged-in user */
+  if (req.user && !meta.user_id) {
+    try {
+      await db.claimAudit(id, req.user.id);
+      meta.user_id = req.user.id;
+    } catch (e) { /* swallow */ }
+  }
 
   const isOwner = req.user && meta.user_id === req.user.id;
   const isUnclaimed = !meta.user_id && req.cookies['audit_unlock_' + id] === '1';
@@ -888,4 +907,3 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-    

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Audit report — BuilderAudit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
 <style>
 /* Report-specific styles */
@@ -146,6 +146,7 @@ var SECTION = pathParts[2] || 'overview';
 var reportData = null;
 var reportOverrides = {};
 var currentScore = 0;
+var reportAudience = 'builder';
 
 function sc(n){return n>=70?'g':n>=45?'a':'r'}
 function cc(n){return 'c-'+sc(n)}
@@ -209,6 +210,7 @@ function setupReveal(root){
       reportData=data.report;
       reportOverrides=data.overrides||{};
       currentScore=(reportData&&reportData.hero&&reportData.hero.score)||0;
+      reportAudience=data.audience||'builder';
       showTopNav(data);
       renderSection(SECTION);
     }
@@ -571,7 +573,9 @@ function renderIssues(r){
     html+='<div class="bp-reaction">'+esc(bp.homeowner_reaction||'')+'</div>';
     if(bp.evidence)html+='<div class="bp-evidence"><b>Evidence:</b> '+esc(bp.evidence)+'</div>';
     if(bp.fix)html+='<div class="bp-fix">'+esc(bp.fix)+'</div>';
-    html+='<button class="service-offer" onclick="openEnquiry(\''+svc+'\',\''+contextAttr+'\')">Let our team sort this \u2014 '+esc(svcLabel)+'</button>';
+    if(reportAudience!=='homeowner'){
+      html+='<button class="service-offer" onclick="openEnquiry(\''+svc+'\',\''+contextAttr+'\')">Let our team sort this \u2014 '+esc(svcLabel)+'</button>';
+    }
     html+='</div>';
   });
   html+='</div>';
@@ -649,8 +653,8 @@ function renderImages(r){
   if(skipped>0)html+=' \u00B7 '+skipped+' non-project image'+(skipped===1?'':'s')+' skipped (logos, team photos, icons)';
   html+='</div>';
 
-  /* Photography service CTA — shown when there are 2+ flagged images that are not overridden */
-  if(ivFlagged>=2){
+  /* Photography service CTA — builders only */
+  if(ivFlagged>=2 && reportAudience!=='homeowner'){
     var photoNote='After reviewing my image verification, '+ivFlagged+' flagged images remain. Would like to discuss a professional photoshoot to replace them.';
     var photoNoteEsc=photoNote.replace(/"/g,'&quot;').replace(/'/g,"\\'");
     html+='<div style="margin-top:1.5rem;background:var(--ink);color:#fff;border-radius:16px;padding:1.5rem 1.75rem;display:flex;gap:18px;align-items:center;flex-wrap:wrap">';
@@ -967,7 +971,8 @@ function renderActions(r){
   });
   html+='</div>';
 
-  /* Managed service CTA at the bottom */
+  /* Managed service CTA at the bottom — builders only */
+  if(reportAudience==='homeowner'){return html;}
   var actionsList=(r.top_actions||[]).map(function(a,i){return (i+1)+'. '+a;}).join(' | ');
   var mNote='I would like your team to handle this action plan end-to-end. My audit flagged these fixes: '+actionsList;
   var mNoteEsc=mNote.replace(/"/g,'&quot;').replace(/'/g,"\\'");

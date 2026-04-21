@@ -56,6 +56,7 @@ async function initSchema() {
   await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB`);
   await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
+  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'builder'`);
 
   /* Step 4: add indexes that depend on the new columns */
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
@@ -174,15 +175,15 @@ async function recordLogin(userId) {
 // AUDITS
 // ═════════════════════════════════════════════════════════════════════════════
 
-async function saveAudit({ id, userId, url, report, rawData }) {
+async function saveAudit({ id, userId, url, report, rawData, audience }) {
   if (!pool) throw new Error('Database not configured');
 
   const score = report?.hero?.score || null;
 
   await pool.query(
-    `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, last_analyzed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [id, userId || null, url, score, report, rawData || null]
+    `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, audience, last_analyzed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+    [id, userId || null, url, score, report, rawData || null, audience || 'builder']
   );
 
   return { id, url, score };
@@ -203,7 +204,7 @@ async function updateAnalysis(id, report) {
 async function getAudit(id) {
   if (!pool) throw new Error('Database not configured');
   const { rows } = await pool.query(
-    `SELECT id, user_id, url, email, score, report_json, raw_data, overrides,
+    `SELECT id, user_id, url, email, score, report_json, raw_data, overrides, audience,
             created_at, last_analyzed_at, unlocked_at
      FROM audits WHERE id = $1`,
     [id]
@@ -214,7 +215,7 @@ async function getAudit(id) {
 async function getAuditMeta(id) {
   if (!pool) return null;
   const { rows } = await pool.query(
-    `SELECT id, user_id, url, email, score, created_at, last_analyzed_at, unlocked_at,
+    `SELECT id, user_id, url, email, score, audience, created_at, last_analyzed_at, unlocked_at,
             (raw_data IS NOT NULL) AS has_raw_data
      FROM audits WHERE id = $1`,
     [id]

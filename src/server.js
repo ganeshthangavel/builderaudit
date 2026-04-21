@@ -43,6 +43,7 @@ app.get('/dashboard', (req, res) => res.sendFile(path.join(PUBLIC, 'dashboard.ht
 app.get('/report/:id', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
 app.get('/report/:id/:section', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
 app.get('/services', (req, res) => res.sendFile(path.join(PUBLIC, 'services.html')));
+app.get('/check-builder', (req, res) => res.sendFile(path.join(PUBLIC, 'check-builder.html')));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STOCK DOMAINS — instant flag
@@ -373,7 +374,8 @@ function normaliseUrl(raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI SCORER
 // ─────────────────────────────────────────────────────────────────────────────
-async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext) {
+async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext, audience) {
+  audience = audience || 'builder';
   const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
@@ -436,7 +438,8 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     contextLine += '\nYour feedback MUST acknowledge this business type. For example: do not penalise a Sole Trader for not having a Companies House number. Do not expect regional Ltd accreditations if they are a Partnership. Tailor the trust_questions, trust_breakpoints, and scoring accordingly.';
   }
 
-  const systemPrompt = `You are a forensic conversion analyst for UK construction companies.
+  /* Pick the AI persona based on audience */
+  const builderPrompt = `You are a forensic conversion analyst for UK construction companies.
 Your job is NOT to produce a generic audit.
 Your job is to simulate:
 - how a homeowner experiences this website
@@ -454,10 +457,28 @@ CONTEXT: A homeowner is considering spending £10k-£250k on a project. They are
 
 Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + contextLine;
 
+  const homeownerPrompt = `You are a forensic consumer-protection analyst helping a UK homeowner decide whether to hire a specific builder. Your audience is NOT the builder — it is the homeowner about to spend £10k-£250k on building work.
+
+Your tone should be:
+- Protective of the homeowner (like a friend who is an expert)
+- Evidence-based — flag concrete red flags, don't speculate
+- Fair — acknowledge positive signs too
+- Practical — give questions they should ask before signing
+
+CONTEXT: A homeowner has typed in a builder's website to check whether the builder stands up to scrutiny. They want the truth before they write a cheque.
+
+Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
+
+  const systemPrompt = audience === 'homeowner' ? homeownerPrompt : builderPrompt;
+
   const userPrompt = 'Website being audited: ' + targetUrl + '\n\nEXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\nFULL PAGE TEXT (' + pages.length + ' pages crawled):\n' + allText.slice(0, 6000) + '\n\nI have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
   (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?
     'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n' : '') +
-  'Return this exact JSON structure:\n\n{\n  "business_snapshot": {\n    "company_name": "<the business name as shown>",\n    "one_liner": "<1 sentence describing what they do>",\n    "established": "<year founded if mentioned, or \\"not stated\\">",\n    "years_trading": "<e.g. \\"20+ years\\" if mentioned, else null>",\n    "location": "<where they are based>",\n    "service_area": "<where they cover>",\n    "work_types": ["<main project types>"],\n    "project_value_range": "<if mentioned e.g. \\"£20k-£500k\\" or null>",\n    "team": {\n      "owners": ["<names of owners/directors if mentioned>"],\n      "team_size": "<if mentioned else null>",\n      "key_people": ["<named team members and their role>"]\n    },\n    "accreditations": ["<every accreditation found>"],\n    "awards": ["<any awards or recognition>"],\n    "notable_clients": ["<notable clients or architects>"],\n    "unique_selling_points": ["<2-4 differentiators they emphasise>"],\n    "contact": {\n      "phone": "<phone if visible>",\n      "email": "<email if visible>",\n      "address": "<address if visible>"\n    },\n    "what_we_could_not_find": ["<expected info the site does not mention>"]\n  },\n  "hero": {\n    "score": <0-100 integer>,\n    "headline": "<confronting but fair>",\n    "subtext": "<1 sentence specific to what you found>",\n    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings>"\n  },\n  "homeowner_journey": [\n    {"stage": "first_impression", "thought": "<first person homeowner>"},\n    {"stage": "scrolling", "thought": "<doubt as they scroll>"},\n    {"stage": "decision_moment", "thought": "<the moment they decide>"}\n  ],\n  "live_audit_feed": [{"status": "success|warning|critical", "message": "<punchy finding>"}],\n  "trust_breakpoints": [\n    {\n      "title": "<trust failure title>",\n      "homeowner_reaction": "<inner monologue>",\n      "evidence": "<specific evidence>",\n      "impact": "critical|high|medium|low",\n      "fix": "<specific fix within days>"\n    }\n  ],\n  "photo_analysis": {\n    "summary": "<overall verdict>",\n    "strong_images": [{"description": "", "why_it_works": ""}],\n    "weak_images": [{"description": "", "issue": "", "impact": "", "confirmed_stock": true|false, "stock_source": "<if confirmed>"}]\n  },\n  "trust_questions": [\n    {"question": "Can I verify this is a legitimate registered business?", "score": <0-100>, "explanation": ""},\n    {"question": "Do I believe these are real projects by this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do other homeowners trust and recommend this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do they have credentials to handle my project safely?", "score": <0-100>, "explanation": ""},\n    {"question": "Will they be easy to contact and communicate with?", "score": <0-100>, "explanation": ""},\n    {"question": "Is this business actively trading right now?", "score": <0-100>, "explanation": ""}\n  ],\n  "competitor_gap": {\n    "summary": "<1-2 sentences>",\n    "they_have": ["<thing competitors have>"],\n    "you_have": ["<genuine strength>"]\n  },\n  "top_actions": [\n    "<action 1 most impactful>",\n    "<action 2>",\n    "<action 3>",\n    "<action 4>",\n    "<action 5>"\n  ]\n}';
+  (audience === 'homeowner'
+    ? 'Return this exact JSON structure (HOMEOWNER VIEW):\n\n{\n  "business_snapshot": {'
+    : 'Return this exact JSON structure:\n\n{\n  "business_snapshot": {'
+  ) + '\n    "company_name": "<the business name as shown>",\n    "one_liner": "<1 sentence describing what they do>",\n    "established": "<year founded if mentioned, or \\"not stated\\">",\n    "years_trading": "<e.g. \\"20+ years\\" if mentioned, else null>",\n    "location": "<where they are based>",\n    "service_area": "<where they cover>",\n    "work_types": ["<main project types>"],\n    "project_value_range": "<if mentioned e.g. \\"£20k-£500k\\" or null>",\n    "team": {\n      "owners": ["<names of owners/directors if mentioned>"],\n      "team_size": "<if mentioned else null>",\n      "key_people": ["<named team members and their role>"]\n    },\n    "accreditations": ["<every accreditation found>"],\n    "awards": ["<any awards or recognition>"],\n    "notable_clients": ["<notable clients or architects>"],\n    "unique_selling_points": ["<2-4 differentiators they emphasise>"],\n    "contact": {\n      "phone": "<phone if visible>",\n      "email": "<email if visible>",\n      "address": "<address if visible>"\n    },\n    "what_we_could_not_find": ["<expected info the site does not mention>"]\n  },\n  "hero": {\n    "score": <0-100 integer>,\n    "headline": "<confronting but fair>",\n    "subtext": "<1 sentence specific to what you found>",\n    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings>"\n  },\n  "homeowner_journey": [\n    {"stage": "first_impression", "thought": "<first person homeowner>"},\n    {"stage": "scrolling", "thought": "<doubt as they scroll>"},\n    {"stage": "decision_moment", "thought": "<the moment they decide>"}\n  ],\n  "live_audit_feed": [{"status": "success|warning|critical", "message": "<punchy finding>"}],\n  "trust_breakpoints": [\n    {\n      "title": "<trust failure title>",\n      "homeowner_reaction": "<inner monologue>",\n      "evidence": "<specific evidence>",\n      "impact": "critical|high|medium|low",\n      "fix": "<specific fix within days>"\n    }\n  ],\n  "photo_analysis": {\n    "summary": "<overall verdict>",\n    "strong_images": [{"description": "", "why_it_works": ""}],\n    "weak_images": [{"description": "", "issue": "", "impact": "", "confirmed_stock": true|false, "stock_source": "<if confirmed>"}]\n  },\n  "trust_questions": [\n    {"question": "Can I verify this is a legitimate registered business?", "score": <0-100>, "explanation": ""},\n    {"question": "Do I believe these are real projects by this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do other homeowners trust and recommend this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do they have credentials to handle my project safely?", "score": <0-100>, "explanation": ""},\n    {"question": "Will they be easy to contact and communicate with?", "score": <0-100>, "explanation": ""},\n    {"question": "Is this business actively trading right now?", "score": <0-100>, "explanation": ""}\n  ],\n  "competitor_gap": {\n    "summary": "<1-2 sentences>",\n    "they_have": ["<thing competitors have>"],\n    "you_have": ["<genuine strength>"]\n  },\n  "top_actions": [\n    "<action 1 most impactful>",\n    "<action 2>",\n    "<action 3>",\n    "<action 4>",\n    "<action 5>"\n  ]\n}' +
+  (audience === 'homeowner' ? '\n\nIMPORTANT: Frame every section from the HOMEOWNER point of view.\n- hero.headline should be a verdict on THIS BUILDER (e.g. "Proceed with caution — several red flags")\n- hero.ai_voice_intro speaks TO the homeowner, not the builder\n- homeowner_journey thoughts are what the homeowner thinks as they decide whether to hire\n- trust_breakpoints are red flags the homeowner should notice, with "fix" replaced by "question to ask the builder before signing"\n- top_actions are QUESTIONS the homeowner should ask the builder, not fixes\n- competitor_gap compares this builder to what a trustworthy builder would show\nDo NOT advise the homeowner to fix the builder\'s website. Advise them on what to ask, what to verify, and what should make them walk away.' : '');
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
@@ -530,7 +551,8 @@ app.post('/api/audit', async (req, res) => {
       region: req.user.region,
       companyName: req.user.company_name,
     } : null;
-    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext);
+    const audience = (req.body.audience === 'homeowner') ? 'homeowner' : 'builder';
+    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext, audience);
 
     send('status', { message: 'Saving your report...', step: 4, total: 4 });
 
@@ -764,6 +786,7 @@ app.get('/api/report/:id/data', async (req, res) => {
     url: audit.url,
     report: audit.report_json,
     overrides: audit.overrides || {},
+    audience: audit.audience || 'builder',
     scannedAt: audit.created_at,
   });
 });
@@ -844,7 +867,8 @@ app.post('/api/report/:id/reanalyze', async (req, res) => {
       audit.url,
       rawData.imageVerification || null,
       audit.overrides || {},
-      userContext
+      userContext,
+      audit.audience || 'builder'
     );
 
     await db.updateAnalysis(id, newReport);
@@ -907,3 +931,4 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+                   

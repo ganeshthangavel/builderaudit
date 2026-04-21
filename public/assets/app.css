@@ -848,3 +848,20 @@ h1, h2, h3, .score-hl, .bs-company, .sp-title, .score-title { font-feature-setti
 }
 .enq-status.new { background: var(--azure-tint); color: var(--azure-deep); }
 .enq-status.responded { background: var(--green-light); color: var(--green); }
+
+
+/* User menu in header — persists login state across pages */
+.user-menu { position: absolute; top: 1rem; right: 1.5rem; display: flex; align-items: center; gap: 10px; z-index: 20; }
+.user-menu a, .user-menu button { font-size: 13px; padding: 8px 14px; border-radius: 8px; text-decoration: none; font-family: var(--font); font-weight: 500; transition: all .2s; cursor: pointer; border: none; }
+.user-menu .user-menu-login { color: var(--slate-deep); background: transparent; }
+.user-menu .user-menu-login:hover { background: var(--mist); color: var(--ink); }
+.user-menu .user-menu-signup { background: var(--coral); color: #fff; font-weight: 600; }
+.user-menu .user-menu-signup:hover { background: var(--red-signal); transform: translateY(-1px); }
+.user-menu .user-menu-dashboard { background: var(--ink); color: #fff; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.user-menu .user-menu-dashboard:hover { background: #1E293B; }
+.user-menu .user-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--azure); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+header { position: relative; }
+
+@media (max-width: 600px) {
+  .user-menu { position: static; margin-top: 12px; justify-content: center; }
+}

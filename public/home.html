@@ -112,7 +112,8 @@
       var initial=(data.user.companyName||data.user.email||'?')[0].toUpperCase();
       menu.innerHTML='<a href="/dashboard" class="user-menu-dashboard"><span class="user-avatar">'+initial+'</span>Dashboard</a>';
     } else {
-      menu.innerHTML='<a href="/login" class="user-menu-login">Log in</a><a href="/signup" class="user-menu-signup">Sign up</a>';
+      var nextParam=encodeURIComponent(window.location.pathname+window.location.search);
+      menu.innerHTML='<a href="/login?next='+nextParam+'" class="user-menu-login">Log in</a><a href="/signup" class="user-menu-signup">Sign up</a>';
     }
   }catch(e){}
 })();

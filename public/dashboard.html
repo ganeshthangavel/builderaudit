@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Your dashboard — BuilderAudit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
 <style>
@@ -61,11 +62,92 @@
   <div class="section-h">Your audits <span id="auditCount"></span></div>
   <div id="auditsList"></div>
 
+  <!-- SETTINGS: weekly email opt-in -->
+  <div class="settings-card" id="settingsCard" style="display:none">
+    <div class="settings-row">
+      <div class="settings-text">
+        <div class="settings-title">Weekly check-in email</div>
+        <div class="settings-desc">Every Monday morning, we'll re-analyse your most recent audit and email you if anything has changed — score delta, new issues, resolved issues. Takes 30 seconds to read.</div>
+        <div class="settings-last" id="settingsLast"></div>
+      </div>
+      <button class="settings-toggle" id="weeklyToggle" onclick="toggleWeekly()" role="switch" aria-checked="false"></button>
+    </div>
+  </div>
+
   <div class="my-enquiries" id="enquiriesSection" style="display:none">
     <div class="section-h">Service enquiries <span id="enqCount"></span></div>
     <div id="enquiriesList"></div>
   </div>
 </div>
+
+<style>
+/* Settings panel */
+.settings-card {
+  background: #fff;
+  border: 1px solid var(--brd);
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  margin: 1.75rem 0 2rem;
+  box-shadow: 0 1px 2px rgba(58,46,51,.03);
+  transition: box-shadow .2s;
+}
+.settings-card:hover { box-shadow: var(--shadow); }
+.settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+.settings-text { flex: 1; }
+.settings-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+  margin-bottom: 4px;
+  letter-spacing: -.01em;
+}
+.settings-desc {
+  font-size: 13px;
+  color: var(--fg2);
+  line-height: 1.55;
+}
+.settings-last {
+  font-size: 11px;
+  color: var(--fg3);
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.settings-toggle {
+  flex-shrink: 0;
+  position: relative;
+  width: 52px;
+  height: 30px;
+  background: var(--fg3);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background .25s, box-shadow .2s;
+  border: none;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(58,46,51,.2) inset;
+}
+.settings-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px; height: 24px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
+  box-shadow: 0 2px 4px rgba(58,46,51,.3);
+}
+.settings-toggle.on {
+  background: var(--grn);
+  box-shadow: 0 1px 2px rgba(58,46,51,.15) inset, 0 0 0 3px var(--grn-b);
+}
+.settings-toggle.on::after { transform: translateX(22px); }
+.settings-toggle:disabled { opacity: .5; cursor: wait; }
+</style>
 
 <script>
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -77,6 +159,26 @@ function sc(n){return n>=70?'g':n>=45?'a':'r'}
     var me=await meRes.json();
     if(!me.user){window.location.href='/login';return;}
     document.getElementById('dashName').innerHTML='Hi <em>'+esc(me.user.companyName||me.user.email.split('@')[0])+'</em>';
+
+    /* Show settings card + initial toggle state */
+    var card = document.getElementById('settingsCard');
+    var toggle = document.getElementById('weeklyToggle');
+    card.style.display = 'block';
+    if (me.user.weeklyEmailOptIn) toggle.classList.add('on');
+    toggle.setAttribute('aria-checked', me.user.weeklyEmailOptIn ? 'true' : 'false');
+
+    var lastEl = document.getElementById('settingsLast');
+    if (me.user.lastWeeklyEmailAt) {
+      var d = new Date(me.user.lastWeeklyEmailAt);
+      lastEl.textContent = 'Last check-in sent: ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else if (me.user.weeklyEmailOptIn) {
+      lastEl.textContent = 'Your first check-in will arrive next Monday';
+    }
+
+    /* If the URL has ?setting=weekly_email, smooth-scroll the card into view (from email footer link) */
+    if (new URLSearchParams(window.location.search).get('setting') === 'weekly_email') {
+      setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
+    }
 
     var [auditsRes,enqRes]=await Promise.all([
       fetch('/api/my/audits',{credentials:'include'}),
@@ -91,6 +193,36 @@ function sc(n){return n>=70?'g':n>=45?'a':'r'}
     document.getElementById('auditsList').innerHTML='<div class="empty"><div class="empty-title">Could not load your dashboard</div><div class="empty-sub">'+esc(e.message)+'</div></div>';
   }
 })();
+
+async function toggleWeekly(){
+  var toggle = document.getElementById('weeklyToggle');
+  var willBeOn = !toggle.classList.contains('on');
+  toggle.disabled = true;
+  try {
+    var res = await fetch('/api/auth/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ weeklyEmailOptIn: willBeOn }),
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not update setting');
+
+    toggle.classList.toggle('on', willBeOn);
+    toggle.setAttribute('aria-checked', willBeOn ? 'true' : 'false');
+
+    var lastEl = document.getElementById('settingsLast');
+    if (willBeOn && !lastEl.textContent.startsWith('Last')) {
+      lastEl.textContent = 'Your first check-in will arrive next Monday';
+    } else if (!willBeOn && lastEl.textContent.startsWith('Your first')) {
+      lastEl.textContent = '';
+    }
+  } catch (err) {
+    alert('Could not save: ' + err.message);
+  } finally {
+    toggle.disabled = false;
+  }
+}
 
 function renderAudits(audits){
   var list=document.getElementById('auditsList');
@@ -137,5 +269,6 @@ async function logout(){
   window.location.href='/';
 }
 </script>
+<script src="/assets/text-effect.js" defer></script>
 </body>
 </html>

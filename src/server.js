@@ -654,47 +654,51 @@ app.get('/api/report/:id/data', async (req, res) => {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
-  const audit = await db.getAudit(id);
-  if (!audit) {
-    return res.status(404).json({ error: 'Report not found' });
-  }
-
-  /* AUTO-CLAIM: if logged-in user visits an audit with no owner, claim it for them.
-     This handles the case where someone ran an audit anonymously, then signed up. */
-  if (req.user && !audit.user_id) {
-    try {
-      await db.claimAudit(id, req.user.id);
-      audit.user_id = req.user.id;
-      console.log('Auto-claimed audit', id, 'for user', req.user.id);
-    } catch (e) {
-      console.warn('Auto-claim failed:', e.message);
+  try {
+    const audit = await db.getAudit(id);
+    if (!audit) {
+      return res.status(404).json({ error: 'Report not found' });
     }
-  }
 
-  const isOwner = req.user && audit.user_id === req.user.id;
-  const isUnclaimed = !audit.user_id && req.cookies['audit_unlock_' + id] === '1';
+    /* AUTO-CLAIM: if logged-in user visits an audit with no owner, claim it for them. */
+    if (req.user && !audit.user_id) {
+      try {
+        await db.claimAudit(id, req.user.id);
+        audit.user_id = req.user.id;
+        console.log('Auto-claimed audit', id, 'for user', req.user.id);
+      } catch (e) {
+        console.warn('Auto-claim failed:', e.message);
+      }
+    }
 
-  if (!isOwner && !isUnclaimed) {
-    return res.json({
-      locked: true,
-      needsAuth: !req.user,
+    const isOwner = req.user && audit.user_id === req.user.id;
+    const isUnclaimed = !audit.user_id && req.cookies['audit_unlock_' + id] === '1';
+
+    if (!isOwner && !isUnclaimed) {
+      return res.json({
+        locked: true,
+        needsAuth: !req.user,
+        url: audit.url,
+        score: audit.score,
+        companyName: audit.report_json?.business_snapshot?.company_name || null,
+        headline: audit.report_json?.hero?.headline || null,
+        scannedAt: audit.created_at,
+      });
+    }
+
+    res.json({
+      locked: false,
+      id: audit.id,
       url: audit.url,
-      score: audit.score,
-      companyName: audit.report_json?.business_snapshot?.company_name || null,
-      headline: audit.report_json?.hero?.headline || null,
+      report: audit.report_json,
+      overrides: audit.overrides || {},
+      audience: audit.audience || 'builder',
       scannedAt: audit.created_at,
     });
+  } catch (err) {
+    console.error('GET /api/report/' + id + '/data failed:', err);
+    res.status(500).json({ error: 'Could not load report: ' + err.message });
   }
-
-  res.json({
-    locked: false,
-    id: audit.id,
-    url: audit.url,
-    report: audit.report_json,
-    overrides: audit.overrides || {},
-    audience: audit.audience || 'builder',
-    scannedAt: audit.created_at,
-  });
 });
 
 // Meta check (for the report shell to show the right locked/unlocked UI)
@@ -837,4 +841,3 @@ app.post('/api/report/:id/override', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-    

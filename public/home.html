@@ -6,9 +6,12 @@
 <title>BuilderAudit — UK's first forensic trust platform for construction</title>
 <meta name="description" content="Forensic trust audits for UK builders and homeowners. Before you build your pipeline, fix your site. Before you hire a builder, check their site.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
 <style>
+/* Everything inherits Inter from app.css's universal * rule */
+
 body { background: var(--bg); }
 
 nav.home-nav {
@@ -21,54 +24,54 @@ nav.home-nav {
   border-bottom: 1px solid transparent;
 }
 nav.home-nav.scrolled {
-  background: rgba(238, 247, 241, 0.92);
+  background: rgba(242, 234, 217, 0.92);
   backdrop-filter: blur(24px);
   border-bottom-color: var(--brd);
-  box-shadow: 0 2px 20px rgba(22,16,46,0.07);
+  box-shadow: 0 2px 20px rgba(42,36,31,0.07);
 }
 .nav-logo { font-size: 15px; font-weight: 800; letter-spacing: -0.03em; color: var(--fg); text-decoration: none; }
-.nav-logo span { color: var(--purp); }
+.nav-logo span { color: var(--peach-d); }
 .nav-badge {
   display: inline-block;
   font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-  background: var(--purp-b); color: var(--purp);
+  background: var(--peach-b); color: var(--peach-d);
   padding: 2px 7px; border-radius: 4px;
   margin-left: 6px; vertical-align: middle;
-  border: 1px solid var(--purp-c);
+  border: 1px solid var(--peach-c);
 }
 .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
 .nav-links a { font-size: 13px; font-weight: 500; color: var(--fg2); text-decoration: none; transition: color 0.2s; }
 .nav-links a:hover { color: var(--fg); }
 .nav-cta {
-  background: var(--purp); color: #fff;
+  background: var(--peach); color: var(--fg);
   font-size: 13px; font-weight: 700;
   padding: 10px 22px; border: none; cursor: pointer;
   border-radius: 8px; text-decoration: none;
   transition: all 0.2s; letter-spacing: -0.01em;
-  box-shadow: 0 4px 18px oklch(0.52 0.24 292 / 0.35);
+  box-shadow: 0 4px 18px rgba(222,166,175,0.4);
 }
-.nav-cta:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 8px 28px oklch(0.52 0.24 292 / 0.45); }
+.nav-cta:hover { background: var(--peach-d); color: #fff; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(200,134,145,0.5); }
 
 .ticker-wrap {
-  background: var(--purp); padding: 10px 0;
+  background: var(--sky); padding: 10px 0;
   overflow: hidden; position: relative; z-index: 99;
   margin-top: 57px;
 }
 .ticker-inner { display: flex; gap: 0; animation: ticker 35s linear infinite; width: max-content; }
 @keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 .ticker-item {
-  color: #fff; font-size: 12px; font-weight: 500;
+  color: var(--fg); font-size: 12px; font-weight: 500;
   white-space: nowrap; padding: 0 32px;
   display: flex; align-items: center; gap: 10px;
 }
 .ticker-item strong { font-weight: 700; }
-.ticker-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.6); flex-shrink: 0; }
+.ticker-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(42,36,31,0.4); flex-shrink: 0; }
 
-.hero-home { padding: 3.5rem 52px 4rem; position: relative; }
+.hero-home { padding: 3.5rem 52px 4rem; position: relative; overflow: hidden; }
 .hero-kicker {
   display: inline-block;
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--purp); background: var(--purp-b);
+  color: var(--peach-d); background: var(--peach-b);
   padding: 6px 14px; border-radius: 99px;
   margin-bottom: 20px;
 }
@@ -80,20 +83,20 @@ nav.home-nav.scrolled {
   font-variation-settings: 'opsz' 32;
   margin-bottom: 1.25rem;
 }
-.hero-h1 em { font-style: normal; color: var(--purp); font-weight: 800; }
+.hero-h1 em { font-style: normal; color: var(--peach-d); font-weight: 800; }
 .hero-sub { font-size: 18px; line-height: 1.55; color: var(--fg2); margin-bottom: 10px; max-width: 540px; }
 .hero-sub strong { color: var(--fg); font-weight: 700; }
-.hero-tagline { font-size: 14px; color: var(--purp); font-weight: 700; letter-spacing: -0.01em; font-style: italic; margin-bottom: 2rem; }
+.hero-tagline { font-size: 14px; color: var(--peach-d); font-weight: 700; letter-spacing: -0.01em; font-style: italic; margin-bottom: 2rem; }
 .hero-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 2.5rem; }
 .hero-actions .primary {
-  background: var(--purp); color: #fff;
+  background: var(--peach); color: var(--fg);
   font-size: 15px; font-weight: 700;
   padding: 14px 26px; border: none; cursor: pointer;
   border-radius: 10px; text-decoration: none;
   transition: all 0.2s; letter-spacing: -0.01em;
-  box-shadow: 0 4px 18px oklch(0.52 0.24 292 / 0.35);
+  box-shadow: 0 4px 18px rgba(222,166,175,0.4);
 }
-.hero-actions .primary:hover { background: var(--purp-d); transform: translateY(-1px); box-shadow: 0 10px 28px oklch(0.52 0.24 292 / 0.45); }
+.hero-actions .primary:hover { background: var(--peach-d); color: #fff; transform: translateY(-1px); box-shadow: 0 10px 28px rgba(200,134,145,0.5); }
 .hero-actions .secondary {
   color: var(--fg); font-size: 14px; font-weight: 600;
   text-decoration: none; padding: 14px 20px;
@@ -103,7 +106,7 @@ nav.home-nav.scrolled {
 .hero-actions .secondary:hover { background: var(--bg2); border-color: var(--brd3); }
 .hero-nums { display: flex; gap: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--brd); }
 .hero-num-val { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--fg); line-height: 1; }
-.hero-num-val em { color: var(--purp); font-style: normal; }
+.hero-num-val em { color: var(--peach-d); font-style: normal; }
 .hero-num-lbl { font-size: 11px; font-weight: 600; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 6px; }
 
 .aud-toggle {
@@ -118,13 +121,14 @@ nav.home-nav.scrolled {
 .aud-opt {
   padding: 10px 20px; font-size: 13px; font-weight: 600;
   color: var(--fg2); background: transparent; border: none; cursor: pointer;
-  border-radius: 99px; font-family: var(--font); transition: all .2s; letter-spacing: -.005em;
+  border-radius: 99px; transition: all .2s; letter-spacing: -.005em;
 }
 .aud-opt.on {
   background: #fff; color: var(--fg); font-weight: 700;
-  box-shadow: 0 2px 6px rgba(22,16,46,.08);
+  box-shadow: 0 2px 6px rgba(42,36,31,.08);
 }
 
+/* ROTATING STAT CARD */
 .hero-right {
   background: #fff;
   border: 1px solid var(--brd);
@@ -133,54 +137,105 @@ nav.home-nav.scrolled {
   box-shadow: var(--shadow2);
   position: relative;
   overflow: hidden;
+  min-height: 450px;
 }
 .hero-right::before {
   content: '';
   position: absolute; top: 0; right: 0;
   width: 200px; height: 200px;
-  background: radial-gradient(circle, var(--purp-b), transparent 65%);
+  background: radial-gradient(circle, var(--peach-b), transparent 65%);
   pointer-events: none;
 }
-.stat-label { font-size: 11px; font-weight: 700; color: var(--purp); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
-.stat-big { font-size: 72px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; color: var(--fg); margin-bottom: 8px; }
-.stat-big em { color: var(--purp); font-style: normal; }
-.stat-headline { font-size: 18px; font-weight: 700; color: var(--fg); line-height: 1.3; margin-bottom: 12px; letter-spacing: -0.015em; }
-.stat-desc { font-size: 14px; color: var(--fg2); line-height: 1.55; margin-bottom: 1.25rem; }
-.stat-breakdown { display: flex; flex-direction: column; gap: 10px; padding-top: 1rem; border-top: 1px solid var(--brd); }
+
+/* Dots to show which stat is showing */
+.stat-dots {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+.stat-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--bg3);
+  cursor: pointer;
+  transition: all .3s;
+  border: none;
+  padding: 0;
+}
+.stat-dot.on { background: var(--peach); width: 22px; border-radius: 99px; }
+
+/* Stat card inner — animates between stats */
+.stat-content { transition: opacity .45s ease, transform .45s ease; position: relative; z-index: 1; }
+.stat-content.fading { opacity: 0; transform: translateY(-8px); }
+
+.stat-label {
+  font-size: 11px; font-weight: 700;
+  color: var(--peach-d);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+.stat-big {
+  font-size: 68px; font-weight: 800;
+  letter-spacing: -0.04em; line-height: 1;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+.stat-big em { color: var(--peach-d); font-style: normal; }
+.stat-headline {
+  font-size: 18px; font-weight: 700;
+  color: var(--fg);
+  line-height: 1.3;
+  margin-bottom: 12px;
+  letter-spacing: -0.015em;
+  min-height: 48px;
+}
+.stat-desc { font-size: 14px; color: var(--fg2); line-height: 1.55; margin-bottom: 1.25rem; min-height: 65px; }
+.stat-breakdown {
+  display: flex; flex-direction: column; gap: 10px;
+  padding-top: 1rem;
+  border-top: 1px solid var(--brd);
+  margin-bottom: 1.5rem;
+}
 .stat-bd-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 13px; }
 .stat-bd-label { color: var(--fg2); }
-.stat-bd-bar { flex: 1; height: 5px; background: var(--bg2); border-radius: 99px; overflow: hidden; }
-.stat-bd-fill { height: 100%; background: var(--purp); border-radius: 99px; }
+.stat-bd-bar { flex: 1; height: 6px; background: var(--bg2); border-radius: 99px; overflow: hidden; }
+.stat-bd-fill { height: 100%; border-radius: 99px; background: var(--peach); transition: width .9s cubic-bezier(.4,0,.2,1); }
 .stat-bd-fill.red { background: var(--red); }
 .stat-bd-fill.warn { background: var(--warn); }
+.stat-bd-fill.sky { background: var(--sky); }
+.stat-bd-fill.grn { background: var(--grn); }
 .stat-bd-pct { font-weight: 700; color: var(--fg); min-width: 32px; text-align: right; }
-.stat-source { margin-top: 14px; font-size: 11px; color: var(--fg3); }
+.stat-source { font-size: 11px; color: var(--fg3); }
 
 section { padding: 4rem 52px; }
-.sec-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--purp); margin-bottom: 12px; text-align: center; }
+.sec-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--peach-d); margin-bottom: 12px; text-align: center; }
 .sec-title { font-size: 44px; font-weight: 800; letter-spacing: -0.035em; text-align: center; line-height: 1.1; margin-bottom: 14px; max-width: 760px; margin-inline: auto; color: var(--fg); }
-.sec-title .ac { color: var(--purp); }
+.sec-title .ac { color: var(--peach-d); }
 .sec-desc { font-size: 17px; color: var(--fg2); text-align: center; max-width: 560px; margin: 0 auto 3rem; line-height: 1.55; }
 
 .prob-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1100px; margin: 0 auto; }
 .prob-card { background: #fff; border: 1px solid var(--brd); border-radius: 18px; padding: 1.75rem; transition: all .25s; }
 .prob-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
-.prob-num { font-size: 44px; font-weight: 800; color: var(--purp); line-height: 1; letter-spacing: -.03em; margin-bottom: 14px; display: block; }
+.prob-num { font-size: 44px; font-weight: 800; color: var(--peach-d); line-height: 1; letter-spacing: -.03em; margin-bottom: 14px; display: block; }
 .prob-h { font-size: 17px; font-weight: 700; color: var(--fg); margin-bottom: 8px; letter-spacing: -.01em; }
 .prob-body { font-size: 14px; color: var(--fg2); line-height: 1.55; }
 
 .how-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto; position: relative; }
 .how-step { background: #fff; border: 1px solid var(--brd); border-radius: 18px; padding: 2rem 1.75rem; position: relative; }
-.how-num { position: absolute; top: -16px; left: 28px; width: 32px; height: 32px; border-radius: 50%; background: var(--purp); color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px oklch(0.52 0.24 292 / 0.4); }
+.how-num { position: absolute; top: -16px; left: 28px; width: 32px; height: 32px; border-radius: 50%; background: var(--peach); color: var(--fg); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(222,166,175,0.5); }
 .how-title { font-size: 18px; font-weight: 700; color: var(--fg); margin-bottom: 10px; margin-top: 6px; letter-spacing: -.01em; }
 .how-body { font-size: 14px; color: var(--fg2); line-height: 1.55; margin-bottom: 12px; }
-.how-detail { font-size: 12px; color: var(--purp); font-weight: 600; }
+.how-detail { font-size: 12px; color: var(--sky-d); font-weight: 600; }
 
 .feat-section { background: var(--bg2); }
 .feat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 1000px; margin: 0 auto; }
 .feat { background: #fff; border: 1px solid var(--brd); border-radius: 16px; padding: 1.5rem 1.75rem; display: flex; gap: 16px; align-items: flex-start; transition: all .25s; }
 .feat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-.feat-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--purp-b); color: var(--purp); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+.feat-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--peach-b); color: var(--peach-d); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
 .feat-h { font-size: 16px; font-weight: 700; color: var(--fg); margin-bottom: 4px; letter-spacing: -.01em; }
 .feat-b { font-size: 13px; color: var(--fg2); line-height: 1.55; }
 
@@ -190,13 +245,13 @@ section { padding: 4rem 52px; }
 .services-note strong { color: var(--fg); font-weight: 700; }
 
 .cta-band { background: var(--fg); border-radius: 24px; padding: 4rem 3rem; max-width: 1000px; margin: 0 auto; text-align: center; position: relative; overflow: hidden; }
-.cta-band::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 100%, oklch(0.58 0.16 292 / 0.3), transparent 55%); pointer-events: none; }
+.cta-band::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 100%, rgba(222,166,175,0.35), transparent 55%); pointer-events: none; }
 .cta-band > * { position: relative; }
 .cta-band h2 { font-size: 42px; font-weight: 800; color: #fff; letter-spacing: -.035em; line-height: 1.1; margin-bottom: 14px; }
-.cta-band h2 em { color: var(--purp); font-style: normal; }
-.cta-band p { color: var(--fg4); font-size: 16px; margin-bottom: 2rem; max-width: 480px; margin-inline: auto; }
-.cta-band .primary { background: var(--purp); color: #fff; font-size: 15px; font-weight: 700; padding: 15px 32px; border: none; cursor: pointer; border-radius: 10px; text-decoration: none; transition: all 0.2s; letter-spacing: -0.005em; box-shadow: 0 8px 28px oklch(0.52 0.24 292 / 0.5); display: inline-block; }
-.cta-band .primary:hover { background: var(--purp-d); transform: translateY(-2px); box-shadow: 0 14px 36px oklch(0.52 0.24 292 / 0.6); }
+.cta-band h2 em { color: var(--peach); font-style: normal; }
+.cta-band p { color: var(--bg2); font-size: 16px; margin-bottom: 2rem; max-width: 480px; margin-inline: auto; }
+.cta-band .primary { background: var(--peach); color: var(--fg); font-size: 15px; font-weight: 700; padding: 15px 32px; border: none; cursor: pointer; border-radius: 10px; text-decoration: none; transition: all 0.2s; letter-spacing: -0.005em; box-shadow: 0 8px 28px rgba(222,166,175,0.5); display: inline-block; }
+.cta-band .primary:hover { background: #fff; transform: translateY(-2px); box-shadow: 0 14px 36px rgba(255,255,255,0.3); }
 
 .footer { padding: 3rem 52px 2rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--brd); margin-top: 2rem; }
 .fc { font-size: 12px; color: var(--fg3); }
@@ -246,8 +301,10 @@ section { padding: 4rem 52px; }
   </div>
 </div>
 
-<section class="hero-home">
-  <div class="hero-grid">
+<section class="hero-home" style="position:relative">
+  <div class="aurora-wrap" aria-hidden="true"></div>
+  <div class="aurora-mask" aria-hidden="true"></div>
+  <div class="hero-grid" style="position:relative;z-index:2">
     <div class="hero-left">
       <div class="aud-toggle">
         <button class="aud-opt on" data-aud="builder" onclick="setAudience('builder')">I'm a builder</button>
@@ -267,7 +324,7 @@ section { padding: 4rem 52px; }
       </div>
 
       <div id="heroHomeowner" style="display:none">
-        <h1 class="hero-h1">About to spend £30k? <em>Check your builder first.</em></h1>
+        <h1 class="hero-h1">About to spend &pound;30k? <em>Check your builder first.</em></h1>
         <p class="hero-sub">Before you sign anything — let us check whether this builder's website stands up to scrutiny. <strong>We'll tell you the red flags to watch for and the questions to ask.</strong></p>
         <div class="hero-tagline">Before you build, check your builder.</div>
         <div class="hero-actions">
@@ -283,17 +340,117 @@ section { padding: 4rem 52px; }
       </div>
     </div>
 
-    <div class="hero-right">
-      <div class="stat-label">Forensic findings &middot; Typical UK builder site</div>
-      <div class="stat-big"><em>62%</em></div>
-      <div class="stat-headline">of UK builder sites fail the "homeowner calls" test</div>
-      <div class="stat-desc">Based on forensic analysis across the platform, the top three reasons builders lose enquiries are the same ones homeowners never mention out loud.</div>
-      <div class="stat-breakdown">
-        <div class="stat-bd-row"><span class="stat-bd-label">Photos look like stock</span><div class="stat-bd-bar"><div class="stat-bd-fill red" style="width:74%"></div></div><span class="stat-bd-pct">74%</span></div>
-        <div class="stat-bd-row"><span class="stat-bd-label">Unverifiable business identity</span><div class="stat-bd-bar"><div class="stat-bd-fill red" style="width:68%"></div></div><span class="stat-bd-pct">68%</span></div>
-        <div class="stat-bd-row"><span class="stat-bd-label">Testimonials with no proof</span><div class="stat-bd-bar"><div class="stat-bd-fill warn" style="width:54%"></div></div><span class="stat-bd-pct">54%</span></div>
+    <!-- ROTATING STAT CARD -->
+    <div class="hero-right" id="statCard">
+      <div class="stat-content" id="statContent">
+        <div class="stat-label" id="statLabel">Forensic findings &middot; UK builders</div>
+        <div class="stat-big" id="statBig"><em>62%</em></div>
+        <div class="stat-headline" id="statHeadline">of UK builder sites fail the "homeowner calls" test</div>
+        <div class="stat-desc" id="statDesc">The top three reasons builders lose enquiries are the same ones homeowners never mention out loud.</div>
+        <div class="stat-breakdown" id="statBreakdown"></div>
+        <div class="stat-source" id="statSource">BuilderAudit Platform Data</div>
       </div>
-      <div class="stat-source">BuilderAudit Platform Data</div>
+      <div class="stat-dots" id="statDots"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ContainerScroll 3D reveal -->
+<section class="cs-wrap" id="csReveal">
+  <div class="cs-inner">
+    <div class="cs-title" id="csTitle">
+      <div class="sec-eyebrow">What you actually get</div>
+      <h2>Not just a score — a <em>forensic report</em> that reads your site the way a homeowner does.</h2>
+      <p>Every finding comes with the homeowner's reaction, the exact evidence, and a specific fix for this week. Scroll — see the report.</p>
+    </div>
+    <div class="cs-card" id="csCard">
+      <div class="cs-content" style="background:#f2ead9;padding:0;overflow:hidden">
+        <!-- Mini report mock — matches the real report look at smaller scale -->
+        <div style="display:flex;flex-direction:column;height:100%;font-family:'Inter',system-ui,sans-serif">
+          <!-- Top nav strip -->
+          <div style="background:rgba(242,234,217,0.95);border-bottom:1px solid rgba(42,36,31,0.1);padding:14px 22px;display:flex;align-items:center;gap:16px;flex-shrink:0">
+            <div style="font-size:12px;color:#5c5147;display:flex;align-items:center;gap:6px">&larr; Back</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700;color:#2a241f;letter-spacing:-.01em">hylandshomes.co.uk</div>
+              <div style="font-size:11px;color:#8a7e72">Audited 23 Apr 2026</div>
+            </div>
+            <div style="background:#2a241f;color:#fff;padding:6px 14px;border-radius:99px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600">
+              <span style="font-size:16px;font-weight:800;letter-spacing:-.02em">62</span>
+              <span style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;opacity:.7">Trust</span>
+            </div>
+            <div style="background:#dea6af;color:#2a241f;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700">Re-analyse</div>
+          </div>
+
+          <!-- Main area (two columns) -->
+          <div style="flex:1;display:grid;grid-template-columns:180px 1fr;gap:16px;padding:16px;overflow:hidden">
+            <!-- Sidebar -->
+            <div style="background:#fff;border:1px solid rgba(42,36,31,0.1);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:2px;font-size:11px">
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#8a7e72;font-weight:700;padding:6px 10px 4px">Report sections</div>
+              <div style="padding:8px 10px;border-radius:8px;color:#5c5147">&#9678; Overview</div>
+              <div style="padding:8px 10px;border-radius:8px;background:rgba(222,166,175,0.18);color:#2a241f;font-weight:700">&#9632; Business snapshot</div>
+              <div style="padding:8px 10px;border-radius:8px;color:#5c5147;display:flex;align-items:center;justify-content:space-between">
+                <span>&#9650; Trust breakpoints</span>
+                <span style="font-size:9px;padding:2px 6px;border-radius:99px;background:rgba(196,79,79,0.12);color:#c44f4f;font-weight:700">7</span>
+              </div>
+              <div style="padding:8px 10px;border-radius:8px;color:#5c5147">&#9660; Homeowner journey</div>
+              <div style="padding:8px 10px;border-radius:8px;color:#5c5147;display:flex;align-items:center;justify-content:space-between">
+                <span>&#10008; Image verification</span>
+                <span style="font-size:9px;padding:2px 6px;border-radius:99px;background:rgba(200,146,76,0.15);color:#c8924c;font-weight:700">3</span>
+              </div>
+              <div style="padding:8px 10px;border-radius:8px;color:#5c5147">&#10070; Trust questions</div>
+              <div style="padding:8px 10px;border-radius:8px;color:#5c5147">&#9654; Action plan</div>
+            </div>
+
+            <!-- Main content -->
+            <div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">
+              <!-- Score band -->
+              <div style="background:#2a241f;border-radius:14px;padding:18px 22px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;position:relative;overflow:hidden;flex-shrink:0">
+                <div style="position:absolute;inset:0;background:radial-gradient(ellipse 40% 50% at 20% 50%, rgba(222,166,175,.25), transparent 55%),radial-gradient(ellipse 40% 50% at 80% 50%, rgba(140,188,208,.15), transparent 55%);pointer-events:none"></div>
+                <div style="width:68px;height:68px;border-radius:50%;background:conic-gradient(#c44f4f 0deg 223deg, rgba(255,255,255,0.08) 223deg 360deg);display:flex;align-items:center;justify-content:center;position:relative;z-index:1">
+                  <div style="width:52px;height:52px;border-radius:50%;background:#2a241f;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;letter-spacing:-.02em">62</div>
+                </div>
+                <div style="position:relative;z-index:1">
+                  <div style="font-size:14px;font-weight:700;color:#fff;line-height:1.2;margin-bottom:4px;letter-spacing:-.015em">Solid process, but your trust credentials are hiding</div>
+                  <div style="font-size:11px;color:#e6dbc9;line-height:1.5">Homeowners see craft but can&rsquo;t verify the business. 7 breakpoints &middot; 3 flagged photos.</div>
+                </div>
+              </div>
+
+              <!-- Trust breakpoint card (one visible example) -->
+              <div style="background:#fff;border:1px solid rgba(42,36,31,0.1);border-radius:12px;padding:14px 16px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:7px;height:7px;border-radius:50%;background:#c44f4f;box-shadow:0 0 6px #c44f4f"></div>
+                  <div style="font-size:12px;font-weight:700;color:#2a241f;flex:1;letter-spacing:-.005em">No Companies House number visible anywhere</div>
+                  <div style="font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:99px;background:rgba(196,79,79,0.12);color:#c44f4f">Critical</div>
+                </div>
+                <div style="font-size:11px;line-height:1.45;padding:7px 10px;background:#f2ead9;border-left:2px solid #dea6af;border-radius:6px;font-style:italic;color:#5c5147;margin-bottom:6px">
+                  &ldquo;I can&rsquo;t find a registered company number&hellip; are they even a real business?&rdquo;
+                </div>
+                <div style="font-size:10px;color:#6b8e6f;font-weight:600"><b>Fix &rarr;</b> Add your Company No. to the footer + About page. Takes 5 min.</div>
+              </div>
+
+              <!-- Image verification mini-row -->
+              <div style="background:#fff;border:1px solid rgba(42,36,31,0.1);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px">
+                <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#d9ccb5,#b8ab9b);flex-shrink:0;position:relative;overflow:hidden">
+                  <div style="position:absolute;top:3px;left:3px;font-size:7px;font-weight:800;padding:2px 5px;border-radius:99px;background:#c44f4f;color:#fff;text-transform:uppercase;letter-spacing:.06em">Stock</div>
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:11px;font-weight:700;color:#2a241f;margin-bottom:2px">Stock photo used as project</div>
+                  <div style="font-size:10px;color:#5c5147;line-height:1.4">Matched: shutterstock.com, istockphoto.com &middot; +14 sites</div>
+                </div>
+                <div style="font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:99px;background:rgba(196,79,79,0.12);color:#c44f4f">Stock</div>
+              </div>
+
+              <!-- Trust question quick bar -->
+              <div style="background:#fff;border:1px solid rgba(42,36,31,0.1);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px">
+                <div style="flex:1;font-size:11px;font-weight:600;color:#2a241f;letter-spacing:-.005em">Can I verify this is a real business?</div>
+                <div style="width:60px;height:4px;background:#d9ccb5;border-radius:99px;overflow:hidden"><div style="width:35%;height:100%;background:#c44f4f;border-radius:99px"></div></div>
+                <div style="font-size:16px;font-weight:800;color:#c44f4f;letter-spacing:-.02em;min-width:28px;text-align:right">35</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -314,9 +471,9 @@ section { padding: 4rem 52px; }
   <h2 class="sec-title">A homeowner's eyes, <span class="ac">at scale</span></h2>
   <p class="sec-desc">We crawl every page, verify every image, and simulate the exact moment trust is lost.</p>
   <div class="how-steps">
-    <div class="how-step"><div class="how-num">1</div><div class="how-title">Crawl every page</div><div class="how-body">We visit up to 20 pages, extracting text, images, testimonials, accreditations — everything a homeowner would look for.</div><div class="how-detail">Typically 14–20 pages · 30–60 images</div></div>
+    <div class="how-step"><div class="how-num">1</div><div class="how-title">Crawl every page</div><div class="how-body">We visit up to 20 pages, extracting text, images, testimonials, accreditations — everything a homeowner would look for.</div><div class="how-detail">Typically 14&ndash;20 pages &middot; 30&ndash;60 images</div></div>
     <div class="how-step"><div class="how-num">2</div><div class="how-title">Verify every image</div><div class="how-body">Reverse image search flags every stock photo, every duplicate, every image used by another company's website.</div><div class="how-detail">Powered by Google Reverse Image Search</div></div>
-    <div class="how-step"><div class="how-num">3</div><div class="how-title">Simulate a homeowner</div><div class="how-body">Our AI reads the site through the eyes of someone about to spend £30k. It pinpoints the exact trust breakpoints.</div><div class="how-detail">Powered by Claude — not a generic SEO tool</div></div>
+    <div class="how-step"><div class="how-num">3</div><div class="how-title">Simulate a homeowner</div><div class="how-body">Our AI reads the site through the eyes of someone about to spend &pound;30k. It pinpoints the exact trust breakpoints.</div><div class="how-detail">Powered by Claude &mdash; not a generic SEO tool</div></div>
   </div>
 </section>
 
@@ -325,11 +482,11 @@ section { padding: 4rem 52px; }
   <h2 class="sec-title">Not a score.<br><span class="ac">A forensic report.</span></h2>
   <p class="sec-desc">Six sections designed to turn findings into specific, actionable fixes this week.</p>
   <div class="feat-grid">
-    <div class="feat"><div class="feat-icon">&#9678;</div><div><div class="feat-h">Business snapshot</div><div class="feat-b">What the site tells us about the company — what's there, what's missing, and what a homeowner is looking for first.</div></div></div>
-    <div class="feat"><div class="feat-icon">&#9632;</div><div><div class="feat-h">Homeowner journey</div><div class="feat-b">Three first-person thoughts at critical moments — first impression, mid-scroll, decision point.</div></div></div>
+    <div class="feat"><div class="feat-icon">&#9678;</div><div><div class="feat-h">Business snapshot</div><div class="feat-b">What the site tells us about the company &mdash; what's there, what's missing, and what a homeowner is looking for first.</div></div></div>
+    <div class="feat"><div class="feat-icon">&#9632;</div><div><div class="feat-h">Homeowner journey</div><div class="feat-b">Three first-person thoughts at critical moments &mdash; first impression, mid-scroll, decision point.</div></div></div>
     <div class="feat"><div class="feat-icon">&#9650;</div><div><div class="feat-h">Trust breakpoints</div><div class="feat-b">Every moment trust breaks, with evidence, the homeowner's reaction, and a specific fix for this week.</div></div></div>
-    <div class="feat"><div class="feat-icon">&#10008;</div><div><div class="feat-h">Image verification</div><div class="feat-b">Every project photo reverse-searched. Shows exactly which are stock or stolen — with sources.</div></div></div>
-    <div class="feat"><div class="feat-icon">&#10070;</div><div><div class="feat-h">Trust questions</div><div class="feat-b">Six questions every homeowner asks, scored 0–100. You know exactly what's weak.</div></div></div>
+    <div class="feat"><div class="feat-icon">&#10008;</div><div><div class="feat-h">Image verification</div><div class="feat-b">Every project photo reverse-searched. Shows exactly which are stock or stolen &mdash; with sources.</div></div></div>
+    <div class="feat"><div class="feat-icon">&#10070;</div><div><div class="feat-h">Trust questions</div><div class="feat-b">Six questions every homeowner asks, scored 0&ndash;100. You know exactly what's weak.</div></div></div>
     <div class="feat"><div class="feat-icon">&#9654;</div><div><div class="feat-h">Action plan</div><div class="feat-b">Top 5 specific, actionable fixes ranked by impact on your enquiry rate. Achievable this week.</div></div></div>
   </div>
 </section>
@@ -337,31 +494,31 @@ section { padding: 4rem 52px; }
 <section class="services-section" id="services">
   <div class="sec-eyebrow">If you'd rather hand it off</div>
   <h2 class="sec-title">Or let our team <span class="ac">handle it</span></h2>
-  <p class="services-desc">The report tells you exactly what to do — but if you'd rather hand it off, we're here for that too. Our forensics team offer hands-on support across everything that matters.</p>
+  <p class="services-desc">The report tells you exactly what to do &mdash; but if you'd rather hand it off, we're here for that too. Our forensics team offer hands-on support across everything that matters.</p>
   <div class="services-grid" style="max-width:1000px;margin-inline:auto">
     <div class="service-card">
       <div class="service-card-icon">&#9633;</div>
       <div class="service-card-title">Web design / rebuild</div>
-      <div class="service-card-body">Full rebuild engineered around trust signals — Companies House, verified testimonials, real photography, proper case studies.</div>
-      <div class="service-card-footer"><div class="service-card-price">£1.5k–6k <span>typical</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
+      <div class="service-card-body">Full rebuild engineered around trust signals &mdash; Companies House, verified testimonials, real photography, proper case studies.</div>
+      <div class="service-card-footer"><div class="service-card-price">&pound;1.5k&ndash;6k <span>typical</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
     </div>
     <div class="service-card">
       <div class="service-card-icon">&#9650;</div>
       <div class="service-card-title">SEO services</div>
-      <div class="service-card-body">Local SEO for builders — Google Business Profile, service-area pages, backlinks from builder directories, technical fixes.</div>
-      <div class="service-card-footer"><div class="service-card-price">£400–1.2k <span>/month</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
+      <div class="service-card-body">Local SEO for builders &mdash; Google Business Profile, service-area pages, backlinks from builder directories, technical fixes.</div>
+      <div class="service-card-footer"><div class="service-card-price">&pound;400&ndash;1.2k <span>/month</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
     </div>
     <div class="service-card">
       <div class="service-card-icon">&#9712;</div>
       <div class="service-card-title">Professional photography</div>
-      <div class="service-card-body">Real photos of your actual work — before, during, and after. Done professionally so your site stops looking like everyone else's.</div>
-      <div class="service-card-footer"><div class="service-card-price">£450–1.5k <span>per shoot</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
+      <div class="service-card-body">Real photos of your actual work &mdash; before, during, and after. Done professionally so your site stops looking like everyone else's.</div>
+      <div class="service-card-footer"><div class="service-card-price">&pound;450&ndash;1.5k <span>per shoot</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
     </div>
     <div class="service-card" style="grid-column:1/-1;background:var(--fg);color:#fff;border-color:rgba(255,255,255,.08)">
-      <div class="service-card-icon" style="background:rgba(139,92,246,.2);color:var(--purp)">&#10003;</div>
-      <div class="service-card-title" style="color:#fff">Full done-for-you fix <span style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--purp);padding:3px 8px;background:var(--purp-b);border-radius:99px;margin-left:8px;vertical-align:middle">Most popular</span></div>
-      <div class="service-card-body" style="color:var(--fg4)">We take your entire audit and handle every fix — new site, real photography, SEO, verified testimonials. You focus on building, we handle the rest.</div>
-      <div class="service-card-footer" style="border-color:rgba(255,255,255,.1)"><div class="service-card-price" style="color:#fff">£3k–15k <span style="color:var(--fg4)">depending on scope</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
+      <div class="service-card-icon" style="background:rgba(222,166,175,0.2);color:var(--peach)">&#10003;</div>
+      <div class="service-card-title" style="color:#fff">Full done-for-you fix <span style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--peach);padding:3px 8px;background:var(--peach-b);border-radius:99px;margin-left:8px;vertical-align:middle">Most popular</span></div>
+      <div class="service-card-body" style="color:var(--bg2)">We take your entire audit and handle every fix &mdash; new site, real photography, SEO, verified testimonials. You focus on building, we handle the rest.</div>
+      <div class="service-card-footer" style="border-color:rgba(255,255,255,.1)"><div class="service-card-price" style="color:#fff">&pound;3k&ndash;15k <span style="color:var(--bg2)">depending on scope</span></div><a href="/services" class="service-card-btn">Learn more</a></div>
     </div>
   </div>
   <div class="services-note">
@@ -379,16 +536,18 @@ section { padding: 4rem 52px; }
 
 <footer class="footer">
   <a href="/" class="nav-logo">Builder<span>Audit</span></a>
-  <div class="fc">© 2026 · The UK's first forensic trust platform for construction</div>
+  <div class="fc">&copy; 2026 &middot; The UK's first forensic trust platform for construction</div>
 </footer>
 
 <script>
+/* ─── Sticky nav scroll effect ─── */
 var nav = document.getElementById('homeNav');
 window.addEventListener('scroll', function() {
   if (window.scrollY > 20) nav.classList.add('scrolled');
   else nav.classList.remove('scrolled');
 });
 
+/* ─── Audience toggle ─── */
 function setAudience(aud) {
   document.querySelectorAll('.aud-opt').forEach(function(b) { b.classList.toggle('on', b.dataset.aud === aud); });
   document.getElementById('heroBuilder').style.display = (aud === 'builder') ? 'block' : 'none';
@@ -408,6 +567,7 @@ function setAudience(aud) {
   }
 }
 
+/* ─── Logged-in check ─── */
 (async function() {
   try {
     var res = await fetch('/api/auth/me', { credentials: 'include' });
@@ -416,6 +576,202 @@ function setAudience(aud) {
     if (data.user && navLogin) { navLogin.href = '/dashboard'; navLogin.textContent = 'Dashboard'; }
   } catch(e) {}
 })();
+
+/* ─── ROTATING STATS ─── */
+var STATS = [
+  {
+    label: 'Forensic findings \u00B7 UK builder sites',
+    big: '62%',
+    headline: 'of UK builder sites fail the "homeowner calls" test',
+    desc: 'The top three reasons builders lose enquiries are the same ones homeowners never mention out loud.',
+    bars: [
+      { label: 'Photos look like stock',          pct: 74, cls: 'red' },
+      { label: 'Unverifiable business identity',  pct: 68, cls: 'red' },
+      { label: 'Testimonials with no proof',      pct: 54, cls: 'warn' },
+    ],
+    source: 'BuilderAudit Platform Data'
+  },
+  {
+    label: 'Pipeline impact \u00B7 per dropped enquiry',
+    big: '\u00A318.4k',
+    headline: 'average job value lost when a homeowner doesn\u2019t call',
+    desc: 'When a trust signal fails, the homeowner quietly rings your competitor. Here\u2019s what typically drives it.',
+    bars: [
+      { label: 'Weak or confusing site',          pct: 42, cls: 'red' },
+      { label: 'Stock-looking photos',            pct: 31, cls: 'warn' },
+      { label: 'No verified reviews',             pct: 27, cls: 'sky' },
+    ],
+    source: 'Based on average UK renovation job values'
+  },
+  {
+    label: 'Homeowner behaviour',
+    big: '3 of 4',
+    headline: 'homeowners research a builder online before phoning',
+    desc: 'What they actually check before picking up the phone \u2014 and the signals they look for first.',
+    bars: [
+      { label: 'Checkatrade / Google reviews',    pct: 82, cls: 'grn' },
+      { label: 'Photos of real past work',        pct: 74, cls: 'sky' },
+      { label: 'Companies House registration',    pct: 68, cls: 'warn' },
+    ],
+    source: 'Consumer research \u00B7 UK home improvement buyers'
+  },
+  {
+    label: 'The 30-second verdict',
+    big: '47%',
+    headline: 'of homeowners decide within the first 30 seconds',
+    desc: 'First impression is half the battle. Most builder sites lose the job before a homeowner gets to the services page.',
+    bars: [
+      { label: 'First-impression bounce',         pct: 47, cls: 'red' },
+      { label: 'Missing trust signals above fold',pct: 38, cls: 'warn' },
+      { label: 'Poor mobile experience',          pct: 15, cls: 'sky' },
+    ],
+    source: 'BuilderAudit \u00B7 behavioural sampling'
+  },
+  {
+    label: 'Image verification \u00B7 reverse-search',
+    big: '1 in 5',
+    headline: 'builder sites use stock photos passed off as their own work',
+    desc: 'Reverse image search reveals portfolios that aren\u2019t what they appear \u2014 and modern homeowners know how to check.',
+    bars: [
+      { label: 'Reverse-search flagged matches',  pct: 19, cls: 'red' },
+      { label: 'Duplicated portfolios',           pct: 12, cls: 'warn' },
+      { label: 'Watermarked or sold stock',       pct: 8,  cls: 'sky' },
+    ],
+    source: 'BuilderAudit \u00B7 cross-site verification'
+  }
+];
+
+var currentStatIdx = 0;
+var statInterval = null;
+
+function renderStat(idx) {
+  var s = STATS[idx];
+  var bigEl = document.getElementById('statBig');
+  document.getElementById('statLabel').textContent = s.label;
+  /* Big number — wrap everything in <em> so it gets peach-d colour */
+  bigEl.innerHTML = '<em>' + s.big + '</em>';
+  document.getElementById('statHeadline').textContent = s.headline;
+  document.getElementById('statDesc').textContent = s.desc;
+  var bd = document.getElementById('statBreakdown');
+  bd.innerHTML = '';
+  s.bars.forEach(function(b, i) {
+    var row = document.createElement('div');
+    row.className = 'stat-bd-row';
+    row.innerHTML =
+      '<span class="stat-bd-label">' + b.label + '</span>' +
+      '<div class="stat-bd-bar"><div class="stat-bd-fill ' + b.cls + '" style="width:0%"></div></div>' +
+      '<span class="stat-bd-pct">' + b.pct + '%</span>';
+    bd.appendChild(row);
+    /* Defer the width so CSS transition fires */
+    setTimeout(function() {
+      row.querySelector('.stat-bd-fill').style.width = b.pct + '%';
+    }, 80 + i * 70);
+  });
+  document.getElementById('statSource').textContent = s.source;
+  /* Update dots */
+  document.querySelectorAll('.stat-dot').forEach(function(d, di) {
+    d.classList.toggle('on', di === idx);
+  });
+}
+
+function rotateStats() {
+  var content = document.getElementById('statContent');
+  content.classList.add('fading');
+  setTimeout(function() {
+    currentStatIdx = (currentStatIdx + 1) % STATS.length;
+    renderStat(currentStatIdx);
+    content.classList.remove('fading');
+  }, 420);
+}
+
+function jumpToStat(i) {
+  if (i === currentStatIdx) return;
+  var content = document.getElementById('statContent');
+  content.classList.add('fading');
+  setTimeout(function() {
+    currentStatIdx = i;
+    renderStat(i);
+    content.classList.remove('fading');
+  }, 420);
+  /* Reset timer so it doesn't rotate immediately after a manual jump */
+  clearInterval(statInterval);
+  statInterval = setInterval(rotateStats, 5500);
+}
+
+/* Initialise dots + first render */
+(function initStats() {
+  var dotsEl = document.getElementById('statDots');
+  STATS.forEach(function(_, i) {
+    var b = document.createElement('button');
+    b.className = 'stat-dot' + (i === 0 ? ' on' : '');
+    b.setAttribute('aria-label', 'Show stat ' + (i + 1));
+    b.onclick = function() { jumpToStat(i); };
+    dotsEl.appendChild(b);
+  });
+  renderStat(0);
+  statInterval = setInterval(rotateStats, 5500);
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONTAINERSCROLL EFFECT
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function() {
+  var wrap = document.getElementById('csReveal');
+  var card = document.getElementById('csCard');
+  var title = document.getElementById('csTitle');
+  if (!wrap || !card || !title) return;
+
+  /* Respect reduced motion */
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    card.style.setProperty('--cs-rotate', '0deg');
+    card.style.setProperty('--cs-scale', '1');
+    return;
+  }
+
+  var isMobile = window.innerWidth <= 768;
+  var ticking = false;
+
+  function updateCS() {
+    var rect = wrap.getBoundingClientRect();
+    var winH = window.innerHeight;
+    /* progress from 0 (wrap fully below viewport) to 1 (wrap fully above) */
+    var total = rect.height + winH;
+    var progress = (winH - rect.top) / total;
+    progress = Math.max(0, Math.min(1, progress));
+
+    /* Mirror the framer-motion useTransform: rotate 20→0deg, scale 1.05→1 (desktop) or 0.7→0.9 (mobile), translateY 0→-100px */
+    var rotate, scale;
+    if (isMobile) {
+      rotate = 20 * (1 - progress);
+      scale = 0.7 + (0.9 - 0.7) * progress;
+    } else {
+      rotate = 20 * (1 - progress);
+      scale = 1.05 - (1.05 - 1.0) * progress;
+    }
+    var translate = -100 * progress;
+
+    card.style.setProperty('--cs-rotate', rotate.toFixed(2) + 'deg');
+    card.style.setProperty('--cs-scale', scale.toFixed(3));
+    title.style.setProperty('--cs-translate', translate.toFixed(1) + 'px');
+
+    ticking = false;
+  }
+
+  function onScroll() {
+    if (!ticking) {
+      requestAnimationFrame(updateCS);
+      ticking = true;
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', function() {
+    isMobile = window.innerWidth <= 768;
+    updateCS();
+  });
+  updateCS();
+})();
+
 </script>
 </body>
 </html>

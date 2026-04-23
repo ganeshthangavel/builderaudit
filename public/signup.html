@@ -5,30 +5,114 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Create your account — BuilderAudit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
 <style>
-.auth-wrap { max-width: 480px; margin: 3rem auto; padding: 0 1.5rem 4rem; }
-.auth-card { background: #fff; border: 1px solid var(--ice); border-radius: 20px; padding: 2.5rem 2.25rem; box-shadow: 0 20px 60px -20px rgba(15,23,42,.15); }
-.auth-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--azure); font-weight: 700; margin-bottom: 6px; }
-.auth-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin-bottom: 8px; line-height: 1.15; }
-.auth-sub { font-size: 15px; color: var(--slate-deep); line-height: 1.55; margin-bottom: 1.75rem; }
+.auth-wrap { max-width: 520px; margin: 2rem auto 4rem; padding: 0 1.5rem; }
+.auth-card {
+  background: #fff;
+  border: 1px solid var(--brd);
+  border-radius: 24px;
+  padding: 2.5rem 2.25rem;
+  box-shadow: var(--shadow2);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top stepper area — dark plum banner so the white dots read well */
+.stepper-banner {
+  margin: -2.5rem -2.25rem 2rem;
+  padding: 2rem 2.25rem 1.5rem;
+  background: linear-gradient(165deg, #4a3d43 0%, #3a2e33 50%, #2e2327 100%);
+  border-radius: 24px 24px 0 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
+}
+.stepper-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 60% at 50% 100%, rgba(222,166,175,0.22), transparent 60%),
+    radial-gradient(ellipse 40% 50% at 15% 0%, rgba(140,188,208,0.16), transparent 55%);
+  pointer-events: none;
+}
+.stepper-banner > * { position: relative; z-index: 1; }
+.stepper-banner-title {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  opacity: .8;
+}
+
 .field { margin-bottom: 1rem; }
-.field label { font-size: 12px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 6px; }
-.field input, .field select { width: 100%; padding: 12px 14px; border: 1.5px solid var(--ice); border-radius: 10px; font-size: 15px; font-family: var(--font); outline: none; transition: border-color .2s; box-sizing: border-box; color: var(--ink); background: #fff; }
-.field input:focus, .field select:focus { border-color: var(--azure); }
-.field-hint { font-size: 12px; color: var(--slate-text); margin-top: 4px; }
+.field label { font-size: 12px; font-weight: 700; color: var(--fg); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 6px; }
+.field input, .field select {
+  width: 100%;
+  padding: 13px 16px;
+  border: 1.5px solid var(--brd2);
+  border-radius: 12px;
+  font-size: 15px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  box-sizing: border-box;
+  color: var(--fg);
+  background: #fff;
+}
+.field input:focus, .field select:focus {
+  border-color: var(--peach);
+  box-shadow: 0 0 0 4px var(--peach-b);
+}
+.field-hint { font-size: 12px; color: var(--fg3); margin-top: 6px; line-height: 1.5; }
+
 .radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .radio-opt { position: relative; }
 .radio-opt input { position: absolute; opacity: 0; pointer-events: none; }
-.radio-opt label { display: block; padding: 12px 14px; border: 1.5px solid var(--ice); border-radius: 10px; font-size: 13px; font-weight: 500; text-align: center; cursor: pointer; transition: all .2s; text-transform: none; letter-spacing: normal; color: var(--slate-deep); margin-bottom: 0; }
-.radio-opt input:checked + label { border-color: var(--azure); background: var(--azure-tint); color: var(--azure-deep); font-weight: 600; }
-.submit-btn { width: 100%; padding: 14px; background: var(--coral); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: all .2s; margin-top: 6px; }
-.submit-btn:hover { background: var(--red-signal); transform: translateY(-1px); box-shadow: 0 12px 28px -8px rgba(255,92,51,.4); }
-.submit-btn:disabled { opacity: .5; transform: none; }
-.auth-alt { text-align: center; margin-top: 1.5rem; font-size: 13px; color: var(--slate-deep); }
-.auth-alt a { color: var(--azure); font-weight: 600; text-decoration: none; }
-.err-box { background: var(--red-tint); color: var(--red-ink); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 1rem; display: none; }
+.radio-opt label {
+  display: block;
+  padding: 13px 14px;
+  border: 1.5px solid var(--brd2);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg2);
+  margin-bottom: 0;
+}
+.radio-opt input:checked + label {
+  border-color: var(--peach-d);
+  background: var(--peach-b);
+  color: var(--fg);
+  font-weight: 700;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(222,166,175,0.25);
+}
+
+.auth-alt { text-align: center; margin-top: 1.5rem; font-size: 13px; color: var(--fg2); }
+.auth-alt a { color: var(--peach-d); font-weight: 700; text-decoration: none; }
+
+.err-box {
+  background: var(--red-b);
+  color: var(--red);
+  border-left: 3px solid var(--red);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  display: none;
+}
 .err-box.on { display: block; }
 </style>
 </head>
@@ -41,132 +125,301 @@
 
 <div class="auth-wrap">
   <div class="auth-card">
-    <div class="auth-eyebrow">Create your account</div>
-    <div class="auth-title">Get started with BuilderAudit</div>
-    <div class="auth-sub">Save your audits, track improvements over time, and get feedback tailored to your business type and region.</div>
+
+    <!-- Stepper banner -->
+    <div class="stepper-banner">
+      <div class="stepper-banner-title" id="bannerTitle">Step 1 of 3</div>
+      <div class="stepper-wrap" style="margin-bottom:0;gap:1.25rem">
+        <div class="stepper-dots">
+          <div class="stepper-fill" id="stepFill" style="width:12px"></div>
+          <div class="stepper-dot reached" id="dot1"></div>
+          <div class="stepper-dot" id="dot2"></div>
+          <div class="stepper-dot" id="dot3"></div>
+        </div>
+      </div>
+    </div>
 
     <div class="err-box" id="errBox"></div>
 
-    <div class="field">
-      <label for="email">Your email</label>
-      <input type="email" id="email" autocomplete="email" required autofocus>
-    </div>
+    <!-- Step panels -->
+    <div class="step-panels" id="stepPanels">
 
-    <div class="field">
-      <label for="password">Password</label>
-      <input type="password" id="password" autocomplete="new-password" required minlength="8">
-      <div class="field-hint">Minimum 8 characters</div>
-    </div>
+      <!-- STEP 1: ACCOUNT -->
+      <div class="step-panel active" data-step="1">
+        <div class="step-heading">
+          <div class="step-eyebrow">Your account</div>
+          <h2 class="step-title">Let's get you set up</h2>
+          <p class="step-sub">All we need to start is your email and a password. Takes 15 seconds.</p>
+        </div>
 
-    <div class="field">
-      <label for="companyName">Company name</label>
-      <input type="text" id="companyName" required>
-    </div>
+        <div class="field">
+          <label for="email">Your email</label>
+          <input type="email" id="email" autocomplete="email" required autofocus placeholder="you@company.co.uk">
+        </div>
 
-    <div class="field">
-      <label>Business type</label>
-      <div class="radio-grid">
-        <div class="radio-opt">
-          <input type="radio" name="businessType" value="ltd" id="bt-ltd">
-          <label for="bt-ltd">Limited Company</label>
-        </div>
-        <div class="radio-opt">
-          <input type="radio" name="businessType" value="sole_trader" id="bt-sole">
-          <label for="bt-sole">Sole Trader</label>
-        </div>
-        <div class="radio-opt">
-          <input type="radio" name="businessType" value="partnership" id="bt-part">
-          <label for="bt-part">Partnership</label>
-        </div>
-        <div class="radio-opt">
-          <input type="radio" name="businessType" value="llp" id="bt-llp">
-          <label for="bt-llp">LLP</label>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
+          <div class="field-hint">Minimum 8 characters. Use a mix of letters and numbers for a strong password.</div>
         </div>
       </div>
-      <div class="field-hint">We use this to tailor your feedback — Sole Traders aren't penalised for lacking Companies House details, for example.</div>
+
+      <!-- STEP 2: BUSINESS -->
+      <div class="step-panel" data-step="2">
+        <div class="step-heading">
+          <div class="step-eyebrow">About your business</div>
+          <h2 class="step-title">Tell us what you do</h2>
+          <p class="step-sub">Helps us tailor your feedback. Sole Traders aren't penalised for lacking Companies House details.</p>
+        </div>
+
+        <div class="field">
+          <label for="companyName">Company name</label>
+          <input type="text" id="companyName" placeholder="e.g. Hylands Homes Ltd">
+        </div>
+
+        <div class="field">
+          <label>Business type</label>
+          <div class="radio-grid">
+            <div class="radio-opt">
+              <input type="radio" name="businessType" value="ltd" id="bt-ltd">
+              <label for="bt-ltd">Limited Company</label>
+            </div>
+            <div class="radio-opt">
+              <input type="radio" name="businessType" value="sole_trader" id="bt-sole">
+              <label for="bt-sole">Sole Trader</label>
+            </div>
+            <div class="radio-opt">
+              <input type="radio" name="businessType" value="partnership" id="bt-part">
+              <label for="bt-part">Partnership</label>
+            </div>
+            <div class="radio-opt">
+              <input type="radio" name="businessType" value="llp" id="bt-llp">
+              <label for="bt-llp">LLP</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: LOCATION + REVIEW -->
+      <div class="step-panel" data-step="3">
+        <div class="step-heading">
+          <div class="step-eyebrow">Almost there</div>
+          <h2 class="step-title">Where are you based?</h2>
+          <p class="step-sub">Used for local SEO context and regional benchmarking.</p>
+        </div>
+
+        <div class="field">
+          <label for="region">Region</label>
+          <select id="region">
+            <option value="">Choose your region...</option>
+            <option value="London">London</option>
+            <option value="South East">South East</option>
+            <option value="South West">South West</option>
+            <option value="East of England">East of England</option>
+            <option value="East Midlands">East Midlands</option>
+            <option value="West Midlands">West Midlands</option>
+            <option value="Yorkshire and the Humber">Yorkshire and the Humber</option>
+            <option value="North West">North West</option>
+            <option value="North East">North East</option>
+            <option value="Scotland">Scotland</option>
+            <option value="Wales">Wales</option>
+            <option value="Northern Ireland">Northern Ireland</option>
+          </select>
+        </div>
+
+        <!-- Review summary -->
+        <div class="field">
+          <label>Review your details</label>
+          <div class="review-list" id="reviewList"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="field">
-      <label for="region">Region</label>
-      <select id="region" required>
-        <option value="">Choose your region...</option>
-        <option value="London">London</option>
-        <option value="South East">South East</option>
-        <option value="South West">South West</option>
-        <option value="East of England">East of England</option>
-        <option value="East Midlands">East Midlands</option>
-        <option value="West Midlands">West Midlands</option>
-        <option value="Yorkshire and the Humber">Yorkshire and the Humber</option>
-        <option value="North West">North West</option>
-        <option value="North East">North East</option>
-        <option value="Scotland">Scotland</option>
-        <option value="Wales">Wales</option>
-        <option value="Northern Ireland">Northern Ireland</option>
-      </select>
+    <!-- Stepper buttons -->
+    <div class="stepper-buttons">
+      <button class="stepper-back" id="backBtn" onclick="goBack()">&larr; Back</button>
+      <button class="stepper-continue" id="continueBtn" onclick="goForward()">
+        <span id="continueLabel">Continue</span>
+        <span class="stepper-check" id="continueCheck" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="8 12 11 15 16 9"></polyline>
+          </svg>
+        </span>
+      </button>
     </div>
-
-    <button class="submit-btn" id="submitBtn" onclick="signup()">Create account &rarr;</button>
 
     <div class="auth-alt">Already have an account? <a href="/login">Log in</a></div>
   </div>
 </div>
 
 <script>
-/* If there's a ?claim=rpt_xxx param, capture it so we can link the audit to the new account */
+/* Handle ?claim param (from signup link in report lock screen) */
 var urlParams = new URLSearchParams(window.location.search);
 var claimAuditId = urlParams.get('claim');
 
+var step = 1;
+var MAX_STEP = 3;
+
 function showErr(msg){
   var box=document.getElementById('errBox');
-  box.textContent=msg;
+  box.textContent = msg;
   box.classList.add('on');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+function clearErr(){ document.getElementById('errBox').classList.remove('on'); }
 
-async function signup(){
-  var btn=document.getElementById('submitBtn');
-  var email=document.getElementById('email').value.trim();
-  var password=document.getElementById('password').value;
-  var companyName=document.getElementById('companyName').value.trim();
-  var businessTypeEl=document.querySelector('input[name="businessType"]:checked');
-  var region=document.getElementById('region').value;
+function setStepUi() {
+  /* Dots */
+  ['dot1','dot2','dot3'].forEach(function(id, i) {
+    document.getElementById(id).classList.toggle('reached', (i+1) <= step);
+  });
+  /* Fill width — centres on each dot */
+  /* dot positions: dot1=8, dot2=40, dot3=72 (gap 24 + dot 8) — fill needs to span from 0 to current dot */
+  var fillW = step === 1 ? 12 : step === 2 ? 44 : 76;
+  document.getElementById('stepFill').style.width = fillW + 'px';
 
-  if(!email||!password||!companyName||!businessTypeEl||!region){
-    showErr('Please fill in all fields');return;
+  /* Banner title */
+  document.getElementById('bannerTitle').textContent = 'Step ' + step + ' of ' + MAX_STEP;
+
+  /* Panels */
+  document.querySelectorAll('.step-panel').forEach(function(p) {
+    var pStep = parseInt(p.dataset.step, 10);
+    p.classList.remove('active', 'prev');
+    if (pStep === step) p.classList.add('active');
+    else if (pStep < step) p.classList.add('prev');
+  });
+
+  /* Back button — hidden on step 1 */
+  var back = document.getElementById('backBtn');
+  back.classList.toggle('show', step > 1);
+
+  /* Continue button label + check */
+  var label = document.getElementById('continueLabel');
+  var check = document.getElementById('continueCheck');
+  if (step === MAX_STEP) {
+    label.textContent = 'Create account';
+    check.classList.add('on');
+  } else {
+    label.textContent = 'Continue';
+    check.classList.remove('on');
   }
 
-  btn.disabled=true;btn.textContent='Creating account...';
-  document.getElementById('errBox').classList.remove('on');
+  /* Focus first field of step */
+  setTimeout(function() {
+    var active = document.querySelector('.step-panel.active');
+    if (!active) return;
+    var firstInput = active.querySelector('input, select');
+    if (firstInput && step !== MAX_STEP) firstInput.focus();
+    if (step === MAX_STEP) populateReview();
+  }, 250);
+}
 
-  try{
-    var res=await fetch('/api/auth/signup',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials:'include',
-      body:JSON.stringify({
-        email:email,password:password,
-        companyName:companyName,
-        businessType:businessTypeEl.value,
-        region:region,
-        claimAuditId:claimAuditId
+function validateStep() {
+  clearErr();
+  if (step === 1) {
+    var email = document.getElementById('email').value.trim();
+    var password = document.getElementById('password').value;
+    if (!email || !email.includes('@')) { showErr('Please enter a valid email address'); return false; }
+    if (!password || password.length < 8) { showErr('Password must be at least 8 characters'); return false; }
+  } else if (step === 2) {
+    var cn = document.getElementById('companyName').value.trim();
+    var btEl = document.querySelector('input[name="businessType"]:checked');
+    if (!cn) { showErr('Please enter your company name'); return false; }
+    if (!btEl) { showErr('Please select a business type'); return false; }
+  } else if (step === 3) {
+    var region = document.getElementById('region').value;
+    if (!region) { showErr('Please choose your region'); return false; }
+  }
+  return true;
+}
+
+function populateReview() {
+  var email = document.getElementById('email').value.trim();
+  var cn = document.getElementById('companyName').value.trim();
+  var btEl = document.querySelector('input[name="businessType"]:checked');
+  var btLabels = { ltd: 'Limited Company', sole_trader: 'Sole Trader', partnership: 'Partnership', llp: 'LLP' };
+  var bt = btEl ? btLabels[btEl.value] : '';
+  var region = document.getElementById('region').value;
+
+  var list = document.getElementById('reviewList');
+  list.innerHTML =
+    '<div class="review-row"><span class="review-key">Email</span><span class="review-val">' + esc(email) + '</span></div>' +
+    '<div class="review-row"><span class="review-key">Company</span><span class="review-val">' + esc(cn) + '</span></div>' +
+    '<div class="review-row"><span class="review-key">Type</span><span class="review-val">' + esc(bt) + '</span></div>' +
+    '<div class="review-row"><span class="review-key">Region</span><span class="review-val ' + (region?'':'empty') + '">' + (region ? esc(region) : 'Not selected') + '</span></div>';
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function goForward() {
+  if (!validateStep()) return;
+  if (step < MAX_STEP) {
+    step++;
+    setStepUi();
+  } else {
+    signup();
+  }
+}
+function goBack() {
+  if (step > 1) {
+    step--;
+    clearErr();
+    setStepUi();
+  }
+}
+
+async function signup() {
+  var btn = document.getElementById('continueBtn');
+  var label = document.getElementById('continueLabel');
+
+  var email = document.getElementById('email').value.trim();
+  var password = document.getElementById('password').value;
+  var companyName = document.getElementById('companyName').value.trim();
+  var btEl = document.querySelector('input[name="businessType"]:checked');
+  var region = document.getElementById('region').value;
+
+  btn.disabled = true;
+  label.textContent = 'Creating account...';
+
+  try {
+    var res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        email: email, password: password,
+        companyName: companyName,
+        businessType: btEl.value,
+        region: region,
+        claimAuditId: claimAuditId
       })
     });
-    var data=await res.json();
-    if(!res.ok)throw new Error(data.error||'Signup failed');
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Signup failed');
 
-    /* If they had an audit, go back to it. Otherwise dashboard */
-    window.location.href=claimAuditId?('/report/'+claimAuditId):'/dashboard';
-  }catch(e){
-    btn.disabled=false;btn.textContent='Create account \u2192';
+    window.location.href = claimAuditId ? ('/report/' + claimAuditId) : '/dashboard';
+  } catch(e) {
+    btn.disabled = false;
+    label.textContent = 'Create account';
     showErr(e.message);
   }
 }
 
-/* Enter key submits */
-['email','password','companyName'].forEach(function(id){
-  document.getElementById(id).addEventListener('keydown',function(e){
-    if(e.key==='Enter')signup();
-  });
+/* Enter key advances the step */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    var active = document.activeElement;
+    if (active && active.tagName === 'SELECT') return; /* let native select handle */
+    if (active && active.tagName === 'BUTTON' && active.id !== 'continueBtn' && active.id !== 'backBtn') return;
+    e.preventDefault();
+    goForward();
+  }
 });
+
+/* Init */
+setStepUi();
 </script>
+<script src="/assets/text-effect.js" defer></script>
 </body>
 </html>

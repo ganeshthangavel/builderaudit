@@ -130,8 +130,94 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   WEEKLY CHECK-IN EMAIL
+   Sent every Monday to users who opted in. Shows score delta + what changed.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function sendWeeklyCheckIn({ user, audit, previousScore, newScore, changeSummary, appBaseUrl }) {
+  if (!resend || !user?.email) return { skipped: true };
+
+  const base = appBaseUrl || 'https://builderaudit.co.uk';
+  const reportUrl = `${base}/report/${audit.id}`;
+  const dashboardUrl = `${base}/dashboard`;
+  const unsubUrl = `${base}/dashboard?setting=weekly_email`;
+
+  const delta = newScore - previousScore;
+  const deltaDisplay =
+    delta > 0 ? `<span style="color:#6b8e6f">&uarr; +${delta}</span>` :
+    delta < 0 ? `<span style="color:#c44f4f">&darr; ${delta}</span>` :
+    `<span style="color:#8a7e72">&middot; no change</span>`;
+
+  // Domain for subject line
+  let domain = '';
+  try { domain = new URL(audit.url).hostname.replace(/^www\./, ''); }
+  catch (e) { domain = audit.url; }
+
+  const subject = delta > 0
+    ? `Your trust score went up ${delta} points — ${domain}`
+    : delta < 0
+    ? `Heads up: your trust score dropped — ${domain}`
+    : `Your weekly BuilderAudit check-in — ${domain}`;
+
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#3a2e33;background:#f2ead9">
+      <div style="background:#fff;border-radius:18px;padding:28px 24px;border:1px solid rgba(58,46,51,0.1);box-shadow:0 4px 16px rgba(58,46,51,0.06)">
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#c88691;margin-bottom:10px">Your weekly check-in</div>
+        <h2 style="margin:0 0 10px;font-size:22px;letter-spacing:-0.02em;line-height:1.25">${escapeHtml(user.companyName || 'Your site')} &middot; ${escapeHtml(domain)}</h2>
+
+        <!-- Score row -->
+        <div style="display:flex;align-items:center;gap:20px;margin:22px 0 20px;padding:20px;background:#f2ead9;border-radius:14px">
+          <div style="font-size:48px;font-weight:800;letter-spacing:-0.03em;color:#3a2e33;line-height:1">${newScore}</div>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600;color:#5c5147;margin-bottom:4px">Current trust score</div>
+            <div style="font-size:18px;font-weight:700;letter-spacing:-0.01em">${deltaDisplay} ${delta !== 0 ? 'since last week' : ''}</div>
+            <div style="font-size:12px;color:#8a7e72;margin-top:4px">Previously: ${previousScore}</div>
+          </div>
+        </div>
+
+        ${changeSummary ? `
+        <div style="background:#f2ead9;border-left:3px solid #dea6af;padding:14px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;line-height:1.55">
+          <div style="font-size:11px;font-weight:700;color:#c88691;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">What changed</div>
+          ${escapeHtml(changeSummary)}
+        </div>
+        ` : ''}
+
+        <!-- Big CTA -->
+        <a href="${reportUrl}" style="display:block;padding:14px 20px;background:#dea6af;color:#3a2e33;text-align:center;border-radius:12px;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:-0.005em;margin-bottom:14px">
+          Open your full report &rarr;
+        </a>
+
+        <div style="font-size:12px;color:#8a7e72;line-height:1.6;text-align:center">
+          Based on re-analysis of your stored audit data. For a full re-crawl of your site, run a fresh audit from your dashboard.
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="text-align:center;padding:20px;font-size:11px;color:#8a7e72;line-height:1.6">
+        You're receiving this because you opted into weekly check-ins.<br>
+        <a href="${unsubUrl}" style="color:#6b5a5f">Manage email preferences</a> &middot; <a href="${dashboardUrl}" style="color:#6b5a5f">Dashboard</a>
+      </div>
+    </div>
+  `;
+
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: user.email,
+      subject,
+      html,
+    });
+    return { success: true, id: result?.data?.id };
+  } catch (err) {
+    console.error('Weekly email failed for', user.email, ':', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   isEnabled,
   sendEnquiryNotification,
   sendEnquiryConfirmationToUser,
+  sendWeeklyCheckIn,
 };

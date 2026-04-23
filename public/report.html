@@ -345,25 +345,63 @@ function sideNav(current){
   var imgsFlagged=((r.imageVerification||{}).stockImages||[]).length+((r.imageVerification||{}).duplicatedImages||[]).length;
 
   var items=[
-    {id:'overview',label:'Overview',icon:'\u25CE'},
-    {id:'snapshot',label:'Business snapshot',icon:'\u25A3'},
-    {id:'issues',label:'Trust issues',icon:'\u25B2',badge:issuesCount},
-    {id:'journey',label:'Homeowner journey',icon:'\u25B6'},
-    {id:'images',label:'Image verification',icon:'\u25A0',badge:imgsFlagged},
-    {id:'competitors',label:'Vs competitors',icon:'\u25C6'},
-    {id:'actions',label:'Action plan',icon:'\u2713'},
+    {id:'overview',label:'Overview'},
+    {id:'snapshot',label:'Snapshot'},
+    {id:'issues',label:'Issues',badge:issuesCount,badgeClass:issuesCount>0?'bad':''},
+    {id:'journey',label:'Journey'},
+    {id:'images',label:'Images',badge:imgsFlagged,badgeClass:imgsFlagged>0?'warn':''},
+    {id:'competitors',label:'Competitors'},
+    {id:'actions',label:'Actions'},
   ];
 
-  var html='<nav class="side-nav"><div class="side-nav-title">Report sections</div>';
-  items.forEach(function(i){
+  var html='<div class="slide-tabs-wrap" id="slideTabsWrap"><ul class="slide-tabs" id="slideTabs">';
+  items.forEach(function(i,idx){
     var badge='';
-    if(i.badge!==undefined&&i.badge>0)badge='<span class="side-nav-badge">'+i.badge+'</span>';
-    html+='<a href="/report/'+REPORT_ID+'/'+(i.id==='overview'?'':i.id)+'" class="'+(i.id===current?'active':'')+'" onclick="return navigate(event,\''+i.id+'\')">'+
-      '<span class="side-nav-icon">'+i.icon+'</span>'+esc(i.label)+badge+
-    '</a>';
+    if(i.badge!==undefined&&i.badge>0)badge='<span class="slide-tab-badge '+(i.badgeClass||'')+'">'+i.badge+'</span>';
+    html+='<li class="slide-tab" data-tab-id="'+i.id+'" data-tab-idx="'+idx+'" onclick="return navigate(event,\''+i.id+'\')">'+esc(i.label)+badge+'</li>';
   });
-  html+='</nav>';
+  html+='<li class="slide-cursor" id="slideCursor"></li>';
+  html+='</ul></div>';
   return html;
+}
+
+/* Reposition the SlideTabs cursor behind the active tab */
+function positionSlideCursor(activeId) {
+  var wrap = document.getElementById('slideTabs');
+  if (!wrap) return;
+  var active = wrap.querySelector('[data-tab-id="'+activeId+'"]');
+  var cursor = document.getElementById('slideCursor');
+  if (!active || !cursor) return;
+  var rect = active.getBoundingClientRect();
+  var wrapRect = wrap.getBoundingClientRect();
+  cursor.style.left = (active.offsetLeft) + 'px';
+  cursor.style.width = rect.width + 'px';
+  cursor.classList.add('visible');
+
+  /* Scroll tab into view horizontally on smaller screens */
+  var outer = document.getElementById('slideTabsWrap');
+  if (outer && outer.scrollWidth > outer.clientWidth) {
+    var targetScroll = active.offsetLeft - (outer.clientWidth / 2) + (rect.width / 2);
+    outer.scrollTo({ left: Math.max(0, targetScroll), behavior: 'smooth' });
+  }
+}
+
+/* Hover = slide to hovered tab; on leave, slide back to active */
+function setupSlideTabsHover(activeId) {
+  var wrap = document.getElementById('slideTabs');
+  if (!wrap) return;
+  var cursor = document.getElementById('slideCursor');
+  var tabs = wrap.querySelectorAll('.slide-tab[data-tab-id]');
+  tabs.forEach(function(t) {
+    t.addEventListener('mouseenter', function() {
+      var r = t.getBoundingClientRect();
+      cursor.style.left = t.offsetLeft + 'px';
+      cursor.style.width = r.width + 'px';
+    });
+  });
+  wrap.addEventListener('mouseleave', function() {
+    positionSlideCursor(activeId);
+  });
 }
 
 function navigate(e,id){
@@ -380,9 +418,21 @@ window.addEventListener('popstate',function(){
   renderSection(parts[2]||'overview');
 });
 
+/* Keep the SlideTabs cursor aligned on window resize */
+(function(){
+  var resizeTimer;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function() {
+      var parts = window.location.pathname.split('/').filter(Boolean);
+      positionSlideCursor(parts[2] || 'overview');
+    }, 100);
+  });
+})();
+
 function renderSection(section){
   var main=document.getElementById('mainArea');
-  var layout='<div class="report-layout">'+sideNav(section)+'<div class="report-main" id="sectionBody"></div></div>';
+  var layout='<div class="report-layout-tabs">'+sideNav(section)+'<div class="report-main" id="sectionBody"></div></div>';
   main.innerHTML=layout;
 
   var body=document.getElementById('sectionBody');
@@ -400,6 +450,15 @@ function renderSection(section){
 
   setupReveal(body);
   animateScores(body);
+
+  /* Position the SlideTabs cursor + wire up hover, after DOM is in place */
+  setTimeout(function() {
+    positionSlideCursor(section);
+    setupSlideTabsHover(section);
+  }, 20);
+
+  /* Re-scan new headings for blur-in effect (since content was injected dynamically) */
+  if (window.rescanTextEffect) window.rescanTextEffect();
 }
 
 function animateScores(root){
@@ -1099,5 +1158,6 @@ function inferServiceFromIssue(issue){
   return 'web_rebuild';  /* default: site-wide trust/content issue */
 }
 </script>
+<script src="/assets/text-effect.js" defer></script>
 </body>
 </html>

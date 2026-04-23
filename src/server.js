@@ -839,5 +839,34 @@ app.post('/api/report/:id/override', async (req, res) => {
   }
 });
 
+/* Diagnostic endpoint — shows what columns exist in the DB.
+   Visit /api/_diag/schema to confirm migrations ran. Safe to leave in prod — read-only. */
+app.get('/api/_diag/schema', async (req, res) => {
+  if (!db.isEnabled()) return res.json({ error: 'DB not configured' });
+  try {
+    const result = {};
+    const { rows: auditCols } = await db.pool().query(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'audits' ORDER BY ordinal_position`
+    );
+    result.audits = auditCols.map(c => c.column_name);
+
+    const { rows: userCols } = await db.pool().query(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'users' ORDER BY ordinal_position`
+    );
+    result.users = userCols.map(c => c.column_name);
+
+    const { rows: tables } = await db.pool().query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`
+    );
+    result.tables = tables.map(t => t.tablename);
+
+    res.json(result);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));

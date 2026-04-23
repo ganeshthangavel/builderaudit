@@ -58,6 +58,10 @@ async function initSchema() {
   await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
   await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'builder'`);
 
+  /* User preferences for retention emails */
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_opt_in BOOLEAN DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_email_at TIMESTAMPTZ`);
+
   /* Step 4: add indexes that depend on the new columns */
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
 
@@ -75,6 +79,18 @@ async function initSchema() {
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
       END IF;
     END $$;
+  `);
+
+  /* Step 6a: audit_snapshots table — for score history + delta detection */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audit_snapshots (
+      id SERIAL PRIMARY KEY,
+      audit_id TEXT NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+      score INTEGER,
+      summary JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapshots_audit ON audit_snapshots(audit_id, created_at DESC);
   `);
 
   /* Step 6: enquiries table — services the user has requested help with */
@@ -149,7 +165,8 @@ async function createUser({ id, email, passwordHash, companyName, businessType, 
 async function getUserByEmail(email) {
   if (!pool) return null;
   const { rows } = await pool.query(
-    `SELECT id, email, password_hash, company_name, business_type, region, created_at
+    `SELECT id, email, password_hash, company_name, business_type, region, created_at,
+            weekly_email_opt_in, last_weekly_email_at
      FROM users WHERE email = $1`,
     [email.toLowerCase().trim()]
   );
@@ -159,7 +176,8 @@ async function getUserByEmail(email) {
 async function getUserById(id) {
   if (!pool) return null;
   const { rows } = await pool.query(
-    `SELECT id, email, company_name, business_type, region, created_at
+    `SELECT id, email, company_name, business_type, region, created_at,
+            weekly_email_opt_in, last_weekly_email_at
      FROM users WHERE id = $1`,
     [id]
   );
@@ -272,6 +290,111 @@ async function setImageOverride(auditId, imageSrc, decision) {
   return current;
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// USER PREFERENCES (weekly email opt-in, etc.)
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function updateUserSettings(userId, settings) {
+  if (!pool) throw new Error('Database not configured');
+  var fields = [];
+  var values = [];
+  var idx = 1;
+  if (typeof settings.weeklyEmailOptIn === 'boolean') {
+    fields.push(`weekly_email_opt_in = $${idx++}`);
+    values.push(settings.weeklyEmailOptIn);
+  }
+  if (fields.length === 0) return;
+  values.push(userId);
+  await pool.query(
+    `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`,
+    values
+  );
+}
+
+async function markWeeklyEmailSent(userId) {
+  if (!pool) return;
+  await pool.query(`UPDATE users SET last_weekly_email_at = NOW() WHERE id = $1`, [userId]);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AUDIT SNAPSHOTS (score history)
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function createSnapshot({ auditId, score, summary }) {
+  if (!pool) return;
+  await pool.query(
+    `INSERT INTO audit_snapshots (audit_id, score, summary) VALUES ($1, $2, $3)`,
+    [auditId, score, summary || null]
+  );
+}
+
+async function getLatestSnapshot(auditId) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `SELECT id, audit_id, score, summary, created_at
+     FROM audit_snapshots
+     WHERE audit_id = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [auditId]
+  );
+  return rows[0] || null;
+}
+
+async function listSnapshots(auditId, limit) {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT id, audit_id, score, summary, created_at
+     FROM audit_snapshots
+     WHERE audit_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [auditId, limit || 20]
+  );
+  return rows;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// BATCH: fetch users due for weekly email
+// ═════════════════════════════════════════════════════════════════════════════
+
+/* Returns users who:
+   - have weekly_email_opt_in = true
+   - have at least one saved audit with raw_data (so we can re-analyse)
+   - have not received a weekly email in the last 6 days (to avoid duplicates on manual runs)
+*/
+async function getUsersDueForWeeklyEmail() {
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT DISTINCT u.id, u.email, u.company_name, u.business_type, u.region, u.last_weekly_email_at
+     FROM users u
+     WHERE u.weekly_email_opt_in = TRUE
+       AND EXISTS (
+         SELECT 1 FROM audits a
+         WHERE a.user_id = u.id AND a.raw_data IS NOT NULL
+       )
+       AND (u.last_weekly_email_at IS NULL
+            OR u.last_weekly_email_at < NOW() - INTERVAL '6 days')
+     ORDER BY u.id`
+  );
+  return rows;
+}
+
+/* For a given user, returns their most-recent audit that has raw_data */
+async function getPrimaryAuditForUser(userId) {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `SELECT id, user_id, url, score, report_json, raw_data, overrides, audience,
+            created_at, last_analyzed_at
+     FROM audits
+     WHERE user_id = $1 AND raw_data IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   initSchema,
   // users
@@ -279,6 +402,8 @@ module.exports = {
   getUserByEmail,
   getUserById,
   recordLogin,
+  updateUserSettings,
+  markWeeklyEmailSent,
   // audits
   saveAudit,
   updateAnalysis,
@@ -288,6 +413,13 @@ module.exports = {
   unlockAudit,
   claimAudit,
   setImageOverride,
+  // snapshots (score history)
+  createSnapshot,
+  getLatestSnapshot,
+  listSnapshots,
+  // weekly email batch helpers
+  getUsersDueForWeeklyEmail,
+  getPrimaryAuditForUser,
   // enquiries
   createEnquiry,
   listEnquiriesForUser,

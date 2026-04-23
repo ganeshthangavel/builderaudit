@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Audit report — BuilderAudit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
 <style>
@@ -234,6 +235,10 @@ function showLockScreen(preview){
   var domain='';try{domain=new URL(preview.url).hostname;}catch(e){domain=preview.url;}
 
   main.innerHTML=
+    '<div style="position:relative;min-height:70vh;overflow:hidden">'+
+      '<div class="aurora-wrap" aria-hidden="true"></div>'+
+      '<div class="aurora-mask" aria-hidden="true"></div>'+
+      '<div style="position:relative;z-index:2">'+
     '<div class="lock-screen">'+
       '<div class="lock-preview">'+
         '<div class="lock-score c-'+color+'">'+score+'</div>'+
@@ -244,7 +249,8 @@ function showLockScreen(preview){
       '<div class="lock-sub">Create a free account to unlock your full forensic report, including every trust breakpoint, verified image analysis, and your personalised action plan. Takes 30 seconds.</div>'+
       '<a href="/signup?claim='+encodeURIComponent(REPORT_ID)+'" class="lock-btn" style="text-decoration:none;display:block;box-sizing:border-box;text-align:center">Create account &amp; unlock &rarr;</a>'+
       '<div class="lock-fineprint" style="margin-top:14px">Already have an account? <a href="/login?next=/report/'+encodeURIComponent(REPORT_ID)+'" style="color:var(--azure);font-weight:600;text-decoration:none">Log in</a></div>'+
-    '</div>';
+    '</div>'+
+    '</div></div>';
 }
 
 function showTopNav(data){

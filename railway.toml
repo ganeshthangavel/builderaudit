@@ -9,3 +9,15 @@ restartPolicyMaxRetries = 3
 
 [[services]]
 name = "builderaudit"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Weekly cron — runs every Monday at 09:00 UK time (08:00 UTC winter / 08:00 UTC summer is BST 09:00)
+# Note: Railway cron schedules are in UTC. In winter (GMT=UTC): 09:00 UTC. In summer (BST=UTC+1): 08:00 UTC.
+# We compromise with 08:30 UTC — in winter users get 08:30 local, in summer 09:30 local.
+# If you want exact 9am UK year-round, you need separate cron jobs or logic that checks day-of-year.
+# ──────────────────────────────────────────────────────────────────────────
+[[services]]
+name = "weekly-cron"
+[services.cron]
+schedule = "30 8 * * 1"
+command = "node src/weekly-cron.js"

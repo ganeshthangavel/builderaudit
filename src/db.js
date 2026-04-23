@@ -21,8 +21,20 @@ const pool = connectionString ? new Pool({
 async function initSchema() {
   if (!pool) return;
 
-  /* Step 1: ensure users table exists FIRST (audits references it) */
-  await pool.query(`
+  /* Each migration step is wrapped independently. If one fails, the others still run.
+     This prevents a single quirk (e.g. a pre-existing constraint with a different name)
+     from leaving the DB partially migrated — which is what caused the 500 errors. */
+  async function step(label, sql) {
+    try {
+      await pool.query(sql);
+      // console.log('✓ migration:', label);
+    } catch (err) {
+      console.warn('⚠ migration skipped [' + label + ']:', err.message);
+    }
+  }
+
+  /* Step 1: users table (referenced by audits FK) */
+  await step('create users table', `
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -32,12 +44,12 @@ async function initSchema() {
       region TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       last_login_at TIMESTAMPTZ
-    );
-    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    )
   `);
+  await step('index users.email', `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
 
-  /* Step 2: ensure audits table exists (no foreign key constraints in CREATE) */
-  await pool.query(`
+  /* Step 2: audits table (no FK at create time — we add it later defensively) */
+  await step('create audits table', `
     CREATE TABLE IF NOT EXISTS audits (
       id TEXT PRIMARY KEY,
       url TEXT NOT NULL,
@@ -46,27 +58,27 @@ async function initSchema() {
       report_json JSONB NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       unlocked_at TIMESTAMPTZ
-    );
-    CREATE INDEX IF NOT EXISTS idx_audits_email ON audits(email);
-    CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC);
+    )
   `);
+  await step('index audits.email',      `CREATE INDEX IF NOT EXISTS idx_audits_email ON audits(email)`);
+  await step('index audits.created_at', `CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC)`);
 
-  /* Step 3: add every optional column one-by-one. IF NOT EXISTS makes these safe to re-run. */
-  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb`);
-  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB`);
-  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
-  await pool.query(`ALTER TABLE audits ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'builder'`);
+  /* Step 3: add every optional column individually. One failure cannot block another. */
+  await step('audits.overrides',         `ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb`);
+  await step('audits.raw_data',          `ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB`);
+  await step('audits.last_analyzed_at',  `ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ`);
+  await step('audits.user_id',           `ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
+  await step('audits.audience',          `ALTER TABLE audits ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'builder'`);
 
   /* User preferences for retention emails */
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_opt_in BOOLEAN DEFAULT FALSE`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_email_at TIMESTAMPTZ`);
+  await step('users.weekly_email_opt_in',  `ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_opt_in BOOLEAN DEFAULT FALSE`);
+  await step('users.last_weekly_email_at', `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_email_at TIMESTAMPTZ`);
 
-  /* Step 4: add indexes that depend on the new columns */
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
+  /* Step 4: indexes on new columns */
+  await step('index audits.user_id', `CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
 
-  /* Step 5: add the foreign key constraint ONLY if it does not already exist */
-  await pool.query(`
+  /* Step 5: FK constraint — wrapped in DO $$ to be idempotent + failure-tolerant */
+  await step('audits FK to users', `
     DO $$
     BEGIN
       IF NOT EXISTS (
@@ -82,19 +94,19 @@ async function initSchema() {
   `);
 
   /* Step 6a: audit_snapshots table — for score history + delta detection */
-  await pool.query(`
+  await step('create audit_snapshots table', `
     CREATE TABLE IF NOT EXISTS audit_snapshots (
       id SERIAL PRIMARY KEY,
       audit_id TEXT NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
       score INTEGER,
       summary JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_snapshots_audit ON audit_snapshots(audit_id, created_at DESC);
+    )
   `);
+  await step('index audit_snapshots', `CREATE INDEX IF NOT EXISTS idx_snapshots_audit ON audit_snapshots(audit_id, created_at DESC)`);
 
-  /* Step 6: enquiries table — services the user has requested help with */
-  await pool.query(`
+  /* Step 6: enquiries table */
+  await step('create enquiries table', `
     CREATE TABLE IF NOT EXISTS enquiries (
       id TEXT PRIMARY KEY,
       user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -104,11 +116,11 @@ async function initSchema() {
       status TEXT DEFAULT 'new',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       responded_at TIMESTAMPTZ
-    );
-    CREATE INDEX IF NOT EXISTS idx_enquiries_user ON enquiries(user_id);
-    CREATE INDEX IF NOT EXISTS idx_enquiries_audit ON enquiries(audit_id);
-    CREATE INDEX IF NOT EXISTS idx_enquiries_created_at ON enquiries(created_at DESC);
+    )
   `);
+  await step('index enquiries.user',       `CREATE INDEX IF NOT EXISTS idx_enquiries_user ON enquiries(user_id)`);
+  await step('index enquiries.audit',      `CREATE INDEX IF NOT EXISTS idx_enquiries_audit ON enquiries(audit_id)`);
+  await step('index enquiries.created_at', `CREATE INDEX IF NOT EXISTS idx_enquiries_created_at ON enquiries(created_at DESC)`);
 
   console.log('✓ Database schema ready');
 }
@@ -164,24 +176,50 @@ async function createUser({ id, email, passwordHash, companyName, businessType, 
 
 async function getUserByEmail(email) {
   if (!pool) return null;
-  const { rows } = await pool.query(
-    `SELECT id, email, password_hash, company_name, business_type, region, created_at,
-            weekly_email_opt_in, last_weekly_email_at
-     FROM users WHERE email = $1`,
-    [email.toLowerCase().trim()]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, email, password_hash, company_name, business_type, region, created_at,
+              weekly_email_opt_in, last_weekly_email_at
+       FROM users WHERE email = $1`,
+      [email.toLowerCase().trim()]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    if (err.code === '42703') {
+      console.warn('getUserByEmail fallback: retention columns missing');
+      const { rows } = await pool.query(
+        `SELECT id, email, password_hash, company_name, business_type, region, created_at
+         FROM users WHERE email = $1`,
+        [email.toLowerCase().trim()]
+      );
+      return rows[0] || null;
+    }
+    throw err;
+  }
 }
 
 async function getUserById(id) {
   if (!pool) return null;
-  const { rows } = await pool.query(
-    `SELECT id, email, company_name, business_type, region, created_at,
-            weekly_email_opt_in, last_weekly_email_at
-     FROM users WHERE id = $1`,
-    [id]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, email, company_name, business_type, region, created_at,
+              weekly_email_opt_in, last_weekly_email_at
+       FROM users WHERE id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    if (err.code === '42703') {
+      console.warn('getUserById fallback: retention columns missing');
+      const { rows } = await pool.query(
+        `SELECT id, email, company_name, business_type, region, created_at
+         FROM users WHERE id = $1`,
+        [id]
+      );
+      return rows[0] || null;
+    }
+    throw err;
+  }
 }
 
 async function recordLogin(userId) {
@@ -221,24 +259,56 @@ async function updateAnalysis(id, report) {
 
 async function getAudit(id) {
   if (!pool) throw new Error('Database not configured');
-  const { rows } = await pool.query(
-    `SELECT id, user_id, url, email, score, report_json, raw_data, overrides, audience,
-            created_at, last_analyzed_at, unlocked_at
-     FROM audits WHERE id = $1`,
-    [id]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, user_id, url, email, score, report_json, raw_data, overrides, audience,
+              created_at, last_analyzed_at, unlocked_at
+       FROM audits WHERE id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    /* If a new column (e.g. audience) is missing from the DB, fall back to legacy columns
+       so we don't return 500s to users with old databases. Logs the problem for ops. */
+    if (err.code === '42703' /* undefined_column */) {
+      console.warn('getAudit fallback: column missing, retrying without new columns —', err.message);
+      const { rows } = await pool.query(
+        `SELECT id, user_id, url, email, score, report_json, raw_data, overrides,
+                created_at, last_analyzed_at, unlocked_at
+         FROM audits WHERE id = $1`,
+        [id]
+      );
+      if (rows[0]) rows[0].audience = 'builder'; /* default for old audits */
+      return rows[0] || null;
+    }
+    throw err;
+  }
 }
 
 async function getAuditMeta(id) {
   if (!pool) return null;
-  const { rows } = await pool.query(
-    `SELECT id, user_id, url, email, score, audience, created_at, last_analyzed_at, unlocked_at,
-            (raw_data IS NOT NULL) AS has_raw_data
-     FROM audits WHERE id = $1`,
-    [id]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, user_id, url, email, score, audience, created_at, last_analyzed_at, unlocked_at,
+              (raw_data IS NOT NULL) AS has_raw_data
+       FROM audits WHERE id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    if (err.code === '42703' /* undefined_column */) {
+      console.warn('getAuditMeta fallback: column missing —', err.message);
+      const { rows } = await pool.query(
+        `SELECT id, user_id, url, email, score, created_at, last_analyzed_at, unlocked_at,
+                (raw_data IS NOT NULL) AS has_raw_data
+         FROM audits WHERE id = $1`,
+        [id]
+      );
+      if (rows[0]) rows[0].audience = 'builder';
+      return rows[0] || null;
+    }
+    throw err;
+  }
 }
 
 // List all audits for a user — newest first

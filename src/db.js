@@ -236,11 +236,26 @@ async function saveAudit({ id, userId, url, report, rawData, audience }) {
 
   const score = report?.hero?.score || null;
 
-  await pool.query(
-    `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, audience, last_analyzed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-    [id, userId || null, url, score, report, rawData || null, audience || 'builder']
-  );
+  try {
+    await pool.query(
+      `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, audience, last_analyzed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [id, userId || null, url, score, report, rawData || null, audience || 'builder']
+    );
+  } catch (err) {
+    /* If a new column is missing in the DB (e.g. audience, raw_data, or last_analyzed_at),
+       fall back to the minimum viable INSERT so the audit is at least saved. */
+    if (err.code === '42703' /* undefined_column */) {
+      console.warn('saveAudit fallback — new column missing, inserting minimal row:', err.message);
+      await pool.query(
+        `INSERT INTO audits (id, user_id, url, score, report_json)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, userId || null, url, score, report]
+      );
+    } else {
+      throw err;
+    }
+  }
 
   return { id, url, score };
 }
@@ -494,4 +509,6 @@ module.exports = {
   createEnquiry,
   listEnquiriesForUser,
   isEnabled: () => !!pool,
+  pool: () => pool,
 };
+

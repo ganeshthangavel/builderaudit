@@ -839,12 +839,31 @@ app.post('/api/report/:id/override', async (req, res) => {
   }
 });
 
-/* Diagnostic endpoint — shows what columns exist in the DB.
-   Visit /api/_diag/schema to confirm migrations ran. Safe to leave in prod — read-only. */
+/* Diagnostic endpoint — shows DB schema + env var visibility.
+   Visit /api/_diag/schema to confirm migrations ran. Safe to leave in prod — no secrets exposed. */
 app.get('/api/_diag/schema', async (req, res) => {
-  if (!db.isEnabled()) return res.json({ error: 'DB not configured' });
+  const result = {
+    env: {
+      DATABASE_URL_present: !!process.env.DATABASE_URL,
+      DATABASE_URL_length: process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0,
+      DATABASE_URL_prefix: process.env.DATABASE_URL ? process.env.DATABASE_URL.slice(0, 15) + '…' : null,
+      ANTHROPIC_API_KEY_present: !!process.env.ANTHROPIC_API_KEY,
+      NODE_ENV: process.env.NODE_ENV || null,
+      PORT: process.env.PORT || null,
+      /* List every env var name that starts with a relevant prefix — without values */
+      env_names: Object.keys(process.env).filter(k =>
+        /^(DATABASE|POSTGRES|PG|ANTHROPIC|SERPAPI|RESEND|JWT|FROM)/.test(k)
+      ),
+    },
+    db_enabled: db.isEnabled(),
+  };
+
+  if (!db.isEnabled()) {
+    result.error = 'DB not configured — db.isEnabled() returned false. DATABASE_URL not reaching db.js module.';
+    return res.json(result);
+  }
+
   try {
-    const result = {};
     const { rows: auditCols } = await db.pool().query(
       `SELECT column_name, data_type FROM information_schema.columns
        WHERE table_name = 'audits' ORDER BY ordinal_position`
@@ -864,9 +883,11 @@ app.get('/api/_diag/schema', async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    res.json({ error: err.message });
+    result.db_error = err.message;
+    res.json(result);
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+              

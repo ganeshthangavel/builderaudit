@@ -91,6 +91,23 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
 
+  /* Pull out the FULL text of team and testimonials pages as dedicated fields.
+     Without this, the AI was treating "team page exists" as enough info and
+     not actually extracting the named individuals. By giving the team page text
+     its own labelled field in the signals object, we force the AI to read it. */
+  const teamPage = pages.find(p => {
+    const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return ''; } })();
+    return /team|staff|people|meet|who-?we-?are/.test(path);
+  });
+  const testimonialsPage = pages.find(p => {
+    const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return ''; } })();
+    return /testimonial|review/.test(path);
+  });
+  const aboutPage = pages.find(p => {
+    const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return ''; } })();
+    return /about|our-story|who-we-are/.test(path);
+  });
+
   /* Apply overrides — user has said these flagged images are actually theirs, so remove them from evidence */
   overrides = overrides || {};
   const filteredVerification = imageVerification ? {
@@ -134,6 +151,24 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
        so it can verify claims like "they don't have a team page" against actual data. */
     pagesCrawled: pageMap.map(p => ({ url: p.url, kind: p.kind })),
     pageKindsPresent: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
+
+    /* Dedicated FULL text from the most important pages. These bypass the
+       12K char text budget below — the AI ALWAYS sees them in full. Without this,
+       team-page content was getting truncated and the AI was reporting "team page
+       exists" without actually reading the names. */
+    teamPageContent: teamPage ? {
+      url: teamPage.url,
+      fullText: teamPage.textContent,
+    } : null,
+    testimonialsPageContent: testimonialsPage ? {
+      url: testimonialsPage.url,
+      fullText: testimonialsPage.textContent,
+    } : null,
+    aboutPageContent: aboutPage ? {
+      url: aboutPage.url,
+      fullText: aboutPage.textContent,
+    } : null,
+
     totalImages: allImages.length,
     pagesWithPhone: allMeta.filter(m => m.hasPhone).length,
     pagesWithAddress: allMeta.filter(m => m.hasAddress).length,
@@ -200,8 +235,12 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
 
   const userPrompt = 'Website being audited: ' + targetUrl + '\n\n' +
     'EXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\n' +
-    'CRITICAL: Before stating that the site lacks any kind of page (e.g. "no team page", "no about page"), CHECK the `pagesCrawled` list above. ' +
-    'If a URL like /our-team or /about exists in that list, the page DOES exist on the site even if its content is truncated below — do not claim it is missing.\n\n' +
+    'CRITICAL FACT-EXTRACTION RULES — FOLLOW THESE EXACTLY:\n' +
+    '1. If `teamPageContent` is non-null, you MUST read its `fullText` field carefully and extract every named individual (founders, directors, team members) into business_snapshot.team.key_people. Format each as "Full Name — Role". Do NOT say the business is "anonymous" or that there are "no named individuals" if teamPageContent contains names.\n' +
+    '2. If `testimonialsPageContent` is non-null with substantial content, the business HAS testimonials. Do NOT report "no testimonials" or "anonymous testimonials" without quoting evidence from this content.\n' +
+    '3. If `aboutPageContent` is non-null, use it to identify the company story, year founded, and key milestones for business_snapshot.\n' +
+    '4. Before claiming the site lacks any kind of page (e.g. "no team page"), CHECK the `pagesCrawled` list. If a relevant URL exists in that list, the page DOES exist — do not claim it is missing.\n' +
+    '5. The fullText fields above are the AUTHORITATIVE source for team and testimonial information. They take precedence over the truncated FULL PAGE TEXT below.\n\n' +
     'FULL PAGE TEXT (' + pages.length + ' pages crawled, prioritising about/team/services/contact):\n' + allText.slice(0, 12000) + '\n\n' +
     'I have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
   (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?

@@ -1955,4 +1955,275 @@ header .user-menu button {
 .report-layout-tabs .report-main {
   min-width: 0;
 }
-               
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOCK SCREEN — blurred fake report behind, signup modal in front
+   ═══════════════════════════════════════════════════════════════════════════ */
+.lock-stage {
+  position: relative;
+  min-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The blurred background "report" — gives a sense of value behind the gate */
+.lock-fakereport {
+  position: absolute;
+  inset: 0;
+  padding: 2rem 1.5rem 4rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  filter: blur(7px);
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+.fake-tabs {
+  display: inline-flex;
+  margin: 0 auto 2rem;
+  background: #fff;
+  border: 2px solid var(--fg);
+  border-radius: 99px;
+  padding: 4px;
+  gap: 4px;
+  box-shadow: var(--shadow);
+}
+.fake-tab {
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--fg2);
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.fake-tab.fake-active { background: var(--fg); color: #fff; }
+.fake-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(196,79,79,0.4);
+  color: #fff;
+}
+.fake-hero {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  background: #fff;
+  border: 1px solid var(--brd);
+  border-radius: 20px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow);
+}
+.fake-score-ring {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: conic-gradient(currentColor 60%, var(--bg3) 0);
+  position: relative;
+}
+.fake-score-ring::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  background: #fff;
+  border-radius: 50%;
+}
+.fake-score-num {
+  position: relative;
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: var(--fg);
+  z-index: 1;
+}
+.fake-score-ring.c-bad { color: var(--red); }
+.fake-score-ring.c-warn { color: var(--peach-d); }
+.fake-score-ring.c-ok { color: var(--grn); }
+.fake-hero-text { flex: 1; }
+.fake-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--peach-d);
+  margin-bottom: 6px;
+}
+.fake-h1 {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--fg);
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+.fake-h-sub {
+  font-size: 15px;
+  color: var(--fg2);
+  letter-spacing: .12em;
+  font-family: monospace;
+  /* Block-character look so it's clearly placeholder rather than real text */
+}
+.fake-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+.fake-card {
+  background: #fff;
+  border: 1px solid var(--brd);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgba(58,46,51,.04);
+}
+.fake-card-h {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--peach-d);
+  margin-bottom: 10px;
+}
+.fake-row {
+  height: 9px;
+  background: var(--bg3);
+  border-radius: 99px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+.fake-row:last-child { margin-bottom: 0; }
+
+/* The signup overlay floats above */
+.lock-overlay {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 4rem 1.5rem;
+}
+.lock-modal {
+  background: #fff;
+  border-radius: 24px;
+  border: 1px solid var(--brd);
+  padding: 2rem 2.25rem 2.25rem;
+  max-width: 460px;
+  width: 100%;
+  box-shadow:
+    0 1px 3px rgba(58,46,51,.05),
+    0 8px 32px rgba(58,46,51,.18),
+    0 24px 64px rgba(58,46,51,.12);
+  text-align: left;
+  position: relative;
+  /* Scale-in entrance animation */
+  animation: lockModalIn .6s cubic-bezier(.34, 1.56, .64, 1);
+}
+@keyframes lockModalIn {
+  from { opacity: 0; transform: translateY(20px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.lock-modal-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--peach-d);
+  margin-bottom: 14px;
+}
+.lock-modal-score-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border-radius: 14px;
+  margin-bottom: 1.25rem;
+}
+.lock-modal-score {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1;
+}
+.lock-modal-score.c-bad { color: var(--red); }
+.lock-modal-score.c-warn { color: var(--peach-d); }
+.lock-modal-score.c-ok { color: var(--grn); }
+.lock-modal-score-label { flex: 1; min-width: 0; }
+.lock-modal-domain {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--fg);
+  margin-bottom: 2px;
+  letter-spacing: -.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock-modal-url {
+  font-size: 12px;
+  color: var(--fg3);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock-modal-h {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--fg);
+  margin-bottom: 14px;
+  line-height: 1.25;
+}
+.lock-modal-list {
+  list-style: none;
+  margin: 0 0 1.5rem 0;
+  padding: 0;
+}
+.lock-modal-list li {
+  font-size: 14px;
+  color: var(--fg2);
+  line-height: 1.5;
+  padding-left: 24px;
+  position: relative;
+  margin-bottom: 8px;
+}
+.lock-modal-list li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--peach-d);
+}
+
+/* The CTA — already styled via .lock-btn from earlier rebrand */
+.lock-modal .lock-fineprint {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--fg3);
+}
+.lock-modal .lock-fineprint a { color: var(--peach-d); font-weight: 700; text-decoration: none; }
+
+@media (max-width: 640px) {
+  .lock-fakereport { display: none; }   /* on mobile just show the overlay clean */
+  .lock-overlay { padding: 2rem 1rem; }
+  .lock-modal { padding: 1.5rem 1.5rem 1.75rem; }
+  .lock-modal-h { font-size: 19px; }
+}
+   

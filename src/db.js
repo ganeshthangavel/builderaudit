@@ -7,9 +7,12 @@
  * env var references AFTER module load. Reading process.env.DATABASE_URL at
  * module load returns undefined; reading it at first use returns the resolved
  * connection string. See: Railway Agent diagnosis, Apr 2026.
+ *
+ * Now uses config.js snapshot to bypass Railway Runtime V2 env stripping.
  */
 
 const { Pool } = require('pg');
+const config = require('./config');
 
 let _pool = null;
 let _initLogged = false;
@@ -17,7 +20,7 @@ let _initLogged = false;
 function getPool() {
   if (_pool) return _pool;
 
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = config.DATABASE_URL;
   if (!connectionString) {
     if (!_initLogged) {
       console.warn('⚠  DATABASE_URL not set — database features disabled.');

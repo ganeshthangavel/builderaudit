@@ -6,12 +6,13 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
+const config = require('./config');
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.ANTHROPIC_API_KEY || 'dev-fallback-secret-please-set-JWT_SECRET';
+const JWT_SECRET = config.JWT_SECRET || config.ANTHROPIC_API_KEY || 'dev-fallback-secret-please-set-JWT_SECRET';
 const SESSION_COOKIE = 'ba_session';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-if (!process.env.JWT_SECRET) {
+if (!config.JWT_SECRET) {
   console.warn('⚠  JWT_SECRET not set in env — using fallback. Set JWT_SECRET in Railway for production.');
 }
 

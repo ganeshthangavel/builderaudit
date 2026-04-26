@@ -62,15 +62,34 @@
   <div class="section-h">Your audits <span id="auditCount"></span></div>
   <div id="auditsList"></div>
 
-  <!-- SETTINGS: weekly email opt-in -->
-  <div class="settings-card" id="settingsCard" style="display:none">
-    <div class="settings-row">
-      <div class="settings-text">
-        <div class="settings-title">Weekly check-in email</div>
-        <div class="settings-desc">Every Monday morning, we'll re-analyse your most recent audit and email you if anything has changed — score delta, new issues, resolved issues. Takes 30 seconds to read.</div>
-        <div class="settings-last" id="settingsLast"></div>
+  <!-- SETTINGS: weekly email + agency partner consent -->
+  <div class="settings-section" id="settingsSection" style="display:none">
+    <div class="section-h">Email &amp; data preferences</div>
+
+    <div class="settings-card" id="settingsCard">
+      <div class="settings-row">
+        <div class="settings-text">
+          <div class="settings-title">Weekly check-in email</div>
+          <div class="settings-desc">Every Monday morning, we'll re-analyse your most recent audit and email you if anything has changed — score delta, new issues, resolved issues. Takes 30 seconds to read.</div>
+          <div class="settings-last" id="settingsLast"></div>
+        </div>
+        <button class="settings-toggle" id="weeklyToggle" onclick="toggleWeekly()" role="switch" aria-checked="false"></button>
       </div>
-      <button class="settings-toggle" id="weeklyToggle" onclick="toggleWeekly()" role="switch" aria-checked="false"></button>
+    </div>
+
+    <div class="settings-card" id="agencyCard">
+      <div class="settings-row">
+        <div class="settings-text">
+          <div class="settings-title">Agency partner introductions</div>
+          <div class="settings-desc">Allow us to share your contact details with vetted agency partners (web design, SEO, photography, branding, CRM) when relevant to issues found in your reports. You can withdraw this at any time.</div>
+          <div class="settings-last" id="agencyLast"></div>
+        </div>
+        <button class="settings-toggle" id="agencyToggle" onclick="toggleAgency()" role="switch" aria-checked="false"></button>
+      </div>
+    </div>
+
+    <div class="settings-fineprint">
+      Want a copy of your data, or want to delete your account? Email <a href="mailto:gthangavel1@gmail.com">gthangavel1@gmail.com</a> and we'll handle it within 30 days as required by UK GDPR.
     </div>
   </div>
 
@@ -82,12 +101,26 @@
 
 <style>
 /* Settings panel */
+/* Settings section (wraps multiple cards) */
+.settings-section {
+  margin: 2.5rem 0;
+}
+.settings-fineprint {
+  font-size: 12px;
+  color: var(--fg3);
+  line-height: 1.6;
+  text-align: center;
+  margin-top: 1rem;
+  padding: 0 1rem;
+}
+.settings-fineprint a { color: var(--peach-d); font-weight: 600; text-decoration: underline; }
+
 .settings-card {
   background: #fff;
   border: 1px solid var(--brd);
   border-radius: 16px;
   padding: 1.5rem 1.75rem;
-  margin: 1.75rem 0 2rem;
+  margin: 0 0 .75rem;
   box-shadow: 0 1px 2px rgba(58,46,51,.03);
   transition: box-shadow .2s;
 }
@@ -160,24 +193,37 @@ function sc(n){return n>=70?'g':n>=45?'a':'r'}
     if(!me.user){window.location.href='/login';return;}
     document.getElementById('dashName').innerHTML='Hi <em>'+esc(me.user.companyName||me.user.email.split('@')[0])+'</em>';
 
-    /* Show settings card + initial toggle state */
-    var card = document.getElementById('settingsCard');
-    var toggle = document.getElementById('weeklyToggle');
-    card.style.display = 'block';
-    if (me.user.weeklyEmailOptIn) toggle.classList.add('on');
-    toggle.setAttribute('aria-checked', me.user.weeklyEmailOptIn ? 'true' : 'false');
+    /* Show settings section (wraps both cards) */
+    var section = document.getElementById('settingsSection');
+    section.style.display = 'block';
 
-    var lastEl = document.getElementById('settingsLast');
+    /* Weekly email toggle initial state */
+    var weeklyToggle = document.getElementById('weeklyToggle');
+    if (me.user.weeklyEmailOptIn) weeklyToggle.classList.add('on');
+    weeklyToggle.setAttribute('aria-checked', me.user.weeklyEmailOptIn ? 'true' : 'false');
+
+    var weeklyLast = document.getElementById('settingsLast');
     if (me.user.lastWeeklyEmailAt) {
       var d = new Date(me.user.lastWeeklyEmailAt);
-      lastEl.textContent = 'Last check-in sent: ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      weeklyLast.textContent = 'Last check-in sent: ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     } else if (me.user.weeklyEmailOptIn) {
-      lastEl.textContent = 'Your first check-in will arrive next Monday';
+      weeklyLast.textContent = 'Your first check-in will arrive next Monday';
     }
 
-    /* If the URL has ?setting=weekly_email, smooth-scroll the card into view (from email footer link) */
-    if (new URLSearchParams(window.location.search).get('setting') === 'weekly_email') {
-      setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
+    /* Agency partner consent initial state */
+    var agencyToggle = document.getElementById('agencyToggle');
+    if (me.user.consentAgency) agencyToggle.classList.add('on');
+    agencyToggle.setAttribute('aria-checked', me.user.consentAgency ? 'true' : 'false');
+    var agencyLast = document.getElementById('agencyLast');
+    if (me.user.consentAgencyAt) {
+      var ad = new Date(me.user.consentAgencyAt);
+      agencyLast.textContent = 'Consent given: ' + ad.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    /* If the URL has ?setting=weekly_email, smooth-scroll into view (from email footer link) */
+    var settingParam = new URLSearchParams(window.location.search).get('setting');
+    if (settingParam === 'weekly_email' || settingParam === 'agency') {
+      setTimeout(function() { section.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
     }
 
     var [auditsRes,enqRes]=await Promise.all([
@@ -216,6 +262,36 @@ async function toggleWeekly(){
       lastEl.textContent = 'Your first check-in will arrive next Monday';
     } else if (!willBeOn && lastEl.textContent.startsWith('Your first')) {
       lastEl.textContent = '';
+    }
+  } catch (err) {
+    alert('Could not save: ' + err.message);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+async function toggleAgency(){
+  var toggle = document.getElementById('agencyToggle');
+  var willBeOn = !toggle.classList.contains('on');
+  toggle.disabled = true;
+  try {
+    var res = await fetch('/api/auth/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ consentAgency: willBeOn }),
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not update setting');
+
+    toggle.classList.toggle('on', willBeOn);
+    toggle.setAttribute('aria-checked', willBeOn ? 'true' : 'false');
+
+    var lastEl = document.getElementById('agencyLast');
+    if (willBeOn) {
+      lastEl.textContent = 'Consent given: ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else {
+      lastEl.textContent = 'Consent withdrawn — we will stop sharing immediately';
     }
   } catch (err) {
     alert('Could not save: ' + err.message);

@@ -538,8 +538,30 @@ app.post('/api/audit', async (req, res) => {
     send('status', { message: 'Crawling website...', step: 1, total: 4 });
     const pages = await smartCrawl(url);
 
-    if (pages.length === 0) {
-      send('error', { message: 'Could not reach the website. It may be blocking automated access.' });
+    /* Blocked-site detection. We bail out early in three cases:
+       1. Zero pages crawled (hard block, DNS failure, total timeout)
+       2. Only 1 page crawled — likely the homepage came back but no internal links
+          could be reached. Almost always indicates anti-bot protection.
+       3. Pages came back but their text content is below 200 chars total — that means
+          we got challenge pages (e.g. Cloudflare "Just a moment...") rather than real content.
+       In all three cases the AI would hallucinate, so we'd rather refuse than fake it. */
+    const totalTextLength = pages.reduce((sum, p) => sum + (p.textContent || '').length, 0);
+    const isBlocked =
+      pages.length === 0 ||
+      (pages.length === 1 && totalTextLength < 500) ||
+      totalTextLength < 200;
+
+    if (isBlocked) {
+      const reason = pages.length === 0 ? 'no_pages_reached'
+        : pages.length === 1 ? 'only_homepage_no_links'
+        : 'empty_content';
+      console.warn('[audit] Site blocked or empty:', url, { reason, pages: pages.length, totalTextLength });
+      send('blocked', {
+        reason,
+        pagesAttempted: pages.length,
+        message: 'We could not audit this website. It appears to be using bot protection (e.g. Cloudflare, custom WAF) that blocks automated analysis tools.',
+        suggestion: 'This is unusual for legitimate UK construction websites. If you own this site, check your anti-bot settings or contact us at gthangavel1@gmail.com so we can review your case.',
+      });
       return res.end();
     }
 
@@ -1166,3 +1188,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+         

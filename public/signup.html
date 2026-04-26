@@ -114,6 +114,63 @@
   display: none;
 }
 .err-box.on { display: block; }
+
+/* Consent block */
+.consent-block {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  background: var(--bg);
+  border: 1px solid var(--brd);
+  border-radius: 14px;
+}
+.consent-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+.consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+.consent-row + .consent-row { border-top: 1px dashed var(--brd); }
+.consent-row input[type="checkbox"] {
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--peach-d);
+  cursor: pointer;
+}
+.consent-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.consent-text a { color: var(--peach-d); font-weight: 600; text-decoration: underline; }
+.consent-required-tag,
+.consent-optional-tag {
+  display: inline-block;
+  width: fit-content;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  margin-top: 2px;
+}
+.consent-required-tag { background: var(--red-b); color: var(--red); }
+.consent-optional-tag { background: var(--bg3); color: var(--fg3); }
 </style>
 </head>
 <body>
@@ -149,12 +206,18 @@
         <div class="step-heading">
           <div class="step-eyebrow">Your account</div>
           <h2 class="step-title">Let's get you set up</h2>
-          <p class="step-sub">All we need to start is your email and a password. Takes 15 seconds.</p>
+          <p class="step-sub">A few details so we can secure your account and follow up if needed. Takes 30 seconds.</p>
         </div>
 
         <div class="field">
           <label for="email">Your email</label>
           <input type="email" id="email" autocomplete="email" required autofocus placeholder="you@company.co.uk">
+        </div>
+
+        <div class="field">
+          <label for="phone">Mobile number</label>
+          <input type="tel" id="phone" autocomplete="tel" required placeholder="07xxx xxx xxx">
+          <div class="field-hint">UK mobile or landline. Used only for support contact and important updates about your account.</div>
         </div>
 
         <div class="field">
@@ -200,7 +263,7 @@
         </div>
       </div>
 
-      <!-- STEP 3: LOCATION + REVIEW -->
+      <!-- STEP 3: LOCATION + CONSENT + REVIEW -->
       <div class="step-panel" data-step="3">
         <div class="step-heading">
           <div class="step-eyebrow">Almost there</div>
@@ -225,6 +288,43 @@
             <option value="Wales">Wales</option>
             <option value="Northern Ireland">Northern Ireland</option>
           </select>
+        </div>
+
+        <!-- GDPR consent block -->
+        <div class="consent-block">
+          <div class="consent-title">Permissions &amp; preferences</div>
+
+          <label class="consent-row required">
+            <input type="checkbox" id="consentTos" required>
+            <div class="consent-text">
+              <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</span>
+              <span class="consent-required-tag">Required</span>
+            </div>
+          </label>
+
+          <label class="consent-row required">
+            <input type="checkbox" id="consentAuth" required>
+            <div class="consent-text">
+              <span>I confirm I'm authorised to use this service on behalf of the business named above.</span>
+              <span class="consent-required-tag">Required</span>
+            </div>
+          </label>
+
+          <label class="consent-row">
+            <input type="checkbox" id="consentAgency">
+            <div class="consent-text">
+              <span>I'd like introductions to vetted agency partners (web design, SEO, photography, branding, CRM) when relevant to issues found in my reports.</span>
+              <span class="consent-optional-tag">Optional</span>
+            </div>
+          </label>
+
+          <label class="consent-row">
+            <input type="checkbox" id="consentWeekly">
+            <div class="consent-text">
+              <span>Send me a weekly check-in email with score changes and what's improved on my site.</span>
+              <span class="consent-optional-tag">Optional</span>
+            </div>
+          </label>
         </div>
 
         <!-- Review summary -->
@@ -319,8 +419,10 @@ function validateStep() {
   clearErr();
   if (step === 1) {
     var email = document.getElementById('email').value.trim();
+    var phone = document.getElementById('phone').value.trim();
     var password = document.getElementById('password').value;
     if (!email || !email.includes('@')) { showErr('Please enter a valid email address'); return false; }
+    if (!phone || phone.replace(/\D/g, '').length < 10) { showErr('Please enter a valid UK phone number'); return false; }
     if (!password || password.length < 8) { showErr('Password must be at least 8 characters'); return false; }
   } else if (step === 2) {
     var cn = document.getElementById('companyName').value.trim();
@@ -329,13 +431,18 @@ function validateStep() {
     if (!btEl) { showErr('Please select a business type'); return false; }
   } else if (step === 3) {
     var region = document.getElementById('region').value;
+    var consentTos = document.getElementById('consentTos').checked;
+    var consentAuth = document.getElementById('consentAuth').checked;
     if (!region) { showErr('Please choose your region'); return false; }
+    if (!consentTos) { showErr('You need to agree to the Terms of Service and Privacy Policy to continue'); return false; }
+    if (!consentAuth) { showErr('You need to confirm you\'re authorised to use this service'); return false; }
   }
   return true;
 }
 
 function populateReview() {
   var email = document.getElementById('email').value.trim();
+  var phone = document.getElementById('phone').value.trim();
   var cn = document.getElementById('companyName').value.trim();
   var btEl = document.querySelector('input[name="businessType"]:checked');
   var btLabels = { ltd: 'Limited Company', sole_trader: 'Sole Trader', partnership: 'Partnership', llp: 'LLP' };
@@ -345,6 +452,7 @@ function populateReview() {
   var list = document.getElementById('reviewList');
   list.innerHTML =
     '<div class="review-row"><span class="review-key">Email</span><span class="review-val">' + esc(email) + '</span></div>' +
+    '<div class="review-row"><span class="review-key">Phone</span><span class="review-val">' + esc(phone) + '</span></div>' +
     '<div class="review-row"><span class="review-key">Company</span><span class="review-val">' + esc(cn) + '</span></div>' +
     '<div class="review-row"><span class="review-key">Type</span><span class="review-val">' + esc(bt) + '</span></div>' +
     '<div class="review-row"><span class="review-key">Region</span><span class="review-val ' + (region?'':'empty') + '">' + (region ? esc(region) : 'Not selected') + '</span></div>';
@@ -374,10 +482,16 @@ async function signup() {
   var label = document.getElementById('continueLabel');
 
   var email = document.getElementById('email').value.trim();
+  var phone = document.getElementById('phone').value.trim();
   var password = document.getElementById('password').value;
   var companyName = document.getElementById('companyName').value.trim();
   var btEl = document.querySelector('input[name="businessType"]:checked');
   var region = document.getElementById('region').value;
+
+  var consentTos = document.getElementById('consentTos').checked;
+  var consentAuth = document.getElementById('consentAuth').checked;
+  var consentAgency = document.getElementById('consentAgency').checked;
+  var consentWeekly = document.getElementById('consentWeekly').checked;
 
   btn.disabled = true;
   label.textContent = 'Creating account...';
@@ -388,10 +502,14 @@ async function signup() {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        email: email, password: password,
+        email: email, password: password, phone: phone,
         companyName: companyName,
         businessType: btEl.value,
         region: region,
+        consentTos: consentTos,
+        consentAuth: consentAuth,
+        consentAgency: consentAgency,
+        consentWeekly: consentWeekly,
         claimAuditId: claimAuditId
       })
     });

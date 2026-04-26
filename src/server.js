@@ -1109,6 +1109,7 @@ app.get('/api/_diag/crawl', async (req, res) => {
     res.json({
       target: targetUrl,
       engine_used: engineUsed,
+      crawler_version: require('./crawler-scrapfly').version || 'unknown',
       elapsed_ms: elapsed,
       total_pages_crawled: pages.length,
       total_cost_credits: totalCost,

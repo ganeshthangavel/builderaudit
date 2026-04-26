@@ -1,0 +1,78 @@
+# Render Blueprint — auto-configures the BuilderAudit deployment
+# https://render.com/docs/blueprint-spec
+#
+# When you create a new Blueprint on Render and point it at this repo,
+# Render reads this file and sets up everything automatically.
+
+databases:
+  - name: builderaudit-db
+    plan: free                # 256MB Postgres, free for 90 days then $7/mo
+    databaseName: builderaudit
+    user: builderaudit
+
+services:
+  # ── Main web service ──────────────────────────────────────────────────
+  - type: web
+    name: builderaudit
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter             # $7/mo — needed because Playwright requires more RAM than free tier allows
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: builderaudit-db
+          property: connectionString
+      # ── These four you'll set manually in the Render UI ──
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SERPAPI_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true   # Render generates a strong random value
+      - key: ENQUIRY_TO_EMAIL
+        value: gthangavel1@gmail.com
+
+  # ── Weekly cron for retention emails ──────────────────────────────────
+  # Runs every Monday at 08:30 UTC (≈ 09:30 BST in summer, 08:30 GMT in winter)
+  - type: cron
+    name: builderaudit-weekly-cron
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "30 8 * * 1"
+    dockerCommand: node src/weekly-cron.js
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: builderaudit-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        fromService:
+          type: web
+          name: builderaudit
+          envVarKey: ANTHROPIC_API_KEY
+      - key: SERPAPI_KEY
+        fromService:
+          type: web
+          name: builderaudit
+          envVarKey: SERPAPI_KEY
+      - key: RESEND_API_KEY
+        fromService:
+          type: web
+          name: builderaudit
+          envVarKey: RESEND_API_KEY
+      - key: ENQUIRY_TO_EMAIL
+        value: gthangavel1@gmail.com
+      - key: APP_BASE_URL
+        fromService:
+          type: web
+          name: builderaudit
+          envVarKey: RENDER_EXTERNAL_URL
+          

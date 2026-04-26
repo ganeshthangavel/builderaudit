@@ -64,6 +64,8 @@ app.get('/report/:id', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html
 app.get('/report/:id/:section', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
 app.get('/services', (req, res) => res.sendFile(path.join(PUBLIC, 'services.html')));
 app.get('/check-builder', (req, res) => res.sendFile(path.join(PUBLIC, 'check-builder.html')));
+app.get('/privacy', (req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STOCK DOMAINS — instant flag
@@ -473,13 +475,20 @@ const VALID_REGIONS = [
 ];
 
 app.post('/api/auth/signup', async (req, res) => {
-  const { email, password, companyName, businessType, region, claimAuditId } = req.body;
+  const {
+    email, password, phone, companyName, businessType, region,
+    consentTos, consentAuth, consentAgency, consentWeekly,
+    claimAuditId,
+  } = req.body;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'Please enter a valid email address' });
   }
   if (!password || password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+  if (!phone || phone.replace(/\D/g, '').length < 10) {
+    return res.status(400).json({ error: 'Please enter a valid UK phone number' });
   }
   if (!companyName || companyName.trim().length < 2) {
     return res.status(400).json({ error: 'Please enter your company name' });
@@ -490,10 +499,19 @@ app.post('/api/auth/signup', async (req, res) => {
   if (!VALID_REGIONS.includes(region)) {
     return res.status(400).json({ error: 'Please select your region' });
   }
+  /* Required GDPR consents — refuse signup if not given */
+  if (!consentTos) {
+    return res.status(400).json({ error: 'You must agree to the Terms of Service and Privacy Policy' });
+  }
+  if (!consentAuth) {
+    return res.status(400).json({ error: 'You must confirm you are authorised to use this service for the business' });
+  }
 
   try {
     const passwordHash = await auth.hashPassword(password);
     const userId = 'usr_' + nanoid();
+
+    /* Create the user with consent state. createUser writes the booleans + timestamps. */
     const user = await db.createUser({
       id: userId,
       email,
@@ -501,7 +519,25 @@ app.post('/api/auth/signup', async (req, res) => {
       companyName: companyName.trim(),
       businessType,
       region,
+      phone: phone.trim(),
+      consentTos: !!consentTos,
+      consentAuth: !!consentAuth,
+      consentAgency: !!consentAgency,
+      consentWeekly: !!consentWeekly,
     });
+
+    /* Append consent events to the immutable audit log. Required by GDPR Art 7(1).
+       We capture IP and user-agent at consent time so we can defend against later challenges. */
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    const ua = req.headers['user-agent'] || null;
+    await db.logConsent({ userId, consentType: 'tos_and_privacy', granted: true, ipAddress: ip, userAgent: ua });
+    await db.logConsent({ userId, consentType: 'authorised_to_use', granted: true, ipAddress: ip, userAgent: ua });
+    if (consentAgency) {
+      await db.logConsent({ userId, consentType: 'agency_partners', granted: true, ipAddress: ip, userAgent: ua });
+    }
+    if (consentWeekly) {
+      await db.logConsent({ userId, consentType: 'weekly_emails', granted: true, ipAddress: ip, userAgent: ua });
+    }
 
     if (claimAuditId) {
       try { await db.claimAudit(claimAuditId, userId); } catch (e) { console.warn('claim failed:', e.message); }
@@ -549,24 +585,41 @@ app.get('/api/auth/me', (req, res) => {
     user: {
       id: req.user.id,
       email: req.user.email,
+      phone: req.user.phone || null,
       companyName: req.user.company_name,
       businessType: req.user.business_type,
       region: req.user.region,
       weeklyEmailOptIn: !!req.user.weekly_email_opt_in,
       lastWeeklyEmailAt: req.user.last_weekly_email_at,
+      consentAgency: !!req.user.consent_agency,
+      consentAgencyAt: req.user.consent_agency_at,
     },
   });
 });
 
-/* Update user settings — currently just the weekly-email toggle */
+/* Update user settings — weekly-email toggle and agency-consent toggle */
 app.post('/api/auth/settings', auth.requireAuth, async (req, res) => {
-  const { weeklyEmailOptIn } = req.body || {};
-  if (typeof weeklyEmailOptIn !== 'boolean') {
-    return res.status(400).json({ error: 'Expected { weeklyEmailOptIn: boolean }' });
+  const { weeklyEmailOptIn, consentAgency } = req.body || {};
+
+  /* Accept any subset; reject if neither specified */
+  if (typeof weeklyEmailOptIn !== 'boolean' && typeof consentAgency !== 'boolean') {
+    return res.status(400).json({ error: 'Provide weeklyEmailOptIn and/or consentAgency as booleans' });
   }
+
   try {
-    await db.updateUserSettings(req.user.id, { weeklyEmailOptIn });
-    res.json({ success: true, weeklyEmailOptIn });
+    await db.updateUserSettings(req.user.id, { weeklyEmailOptIn, consentAgency });
+
+    /* Log consent changes to the immutable audit trail */
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    const ua = req.headers['user-agent'] || null;
+    if (typeof consentAgency === 'boolean') {
+      await db.logConsent({ userId: req.user.id, consentType: 'agency_partners', granted: consentAgency, ipAddress: ip, userAgent: ua });
+    }
+    if (typeof weeklyEmailOptIn === 'boolean') {
+      await db.logConsent({ userId: req.user.id, consentType: 'weekly_emails', granted: weeklyEmailOptIn, ipAddress: ip, userAgent: ua });
+    }
+
+    res.json({ success: true, weeklyEmailOptIn, consentAgency });
   } catch (err) {
     console.error('Settings update failed:', err);
     res.status(500).json({ error: err.message });
@@ -799,9 +852,27 @@ app.post('/api/report/:id/override', async (req, res) => {
 
   if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
   if (!imageSrc) return res.status(400).json({ error: 'Missing imageSrc' });
-  if (req.cookies['audit_unlock_' + id] !== '1') return res.status(403).json({ error: 'Report not unlocked' });
 
+  /* Authorisation: allow if the user is the audit's owner OR has the legacy unlock cookie */
   try {
+    const auditMeta = await db.getAuditMeta(id);
+    if (!auditMeta) return res.status(404).json({ error: 'Report not found' });
+
+    const isOwner = req.user && auditMeta.user_id === req.user.id;
+    const hasUnlockCookie = req.cookies['audit_unlock_' + id] === '1';
+    /* Auto-claim the audit if logged-in user visits an unowned report */
+    if (req.user && !auditMeta.user_id && !isOwner) {
+      try {
+        await db.claimAudit(id, req.user.id);
+        console.log('Auto-claimed during override:', id, 'by', req.user.id);
+      } catch (e) { console.warn('Override auto-claim failed:', e.message); }
+    }
+    const isOwnerAfterClaim = req.user && (isOwner || !auditMeta.user_id);
+
+    if (!isOwnerAfterClaim && !hasUnlockCookie) {
+      return res.status(403).json({ error: 'Report not unlocked' });
+    }
+
     console.log('Override request:', { id, imageSrc, decision });
     await db.setImageOverride(id, imageSrc, decision);
 
@@ -900,3 +971,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+       

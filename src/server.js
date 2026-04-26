@@ -292,22 +292,56 @@ async function verifyImages(allImages) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CRAWLER
 // ─────────────────────────────────────────────────────────────────────────────
-async function crawlWebsite(startUrl) {
+async function crawlWebsite(startUrl, opts = {}) {
+  const debug = opts.debug || false;
+  const debugLog = [];
   const browser = await chromium.launch({
     headless: true,
-    args: ['--disable-blink-features=AutomationControlled','--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-web-security',
+      '--disable-infobars',
+      '--window-size=1920,1080',
+    ],
   });
   const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    viewport: { width: 1280, height: 800 },
+    /* Modern Chrome on macOS user-agent — better blends in than the previous Windows one */
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-GB',
+    timezoneId: 'Europe/London',
     extraHTTPHeaders: {
       'Accept-Language': 'en-GB,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"macOS"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
     },
   });
+  /* Stealth shims — undo Playwright fingerprints that bot detectors look for */
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    window.chrome = { runtime: {} };
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-GB', 'en'] });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    window.chrome = { runtime: {}, app: {}, csi: () => {}, loadTimes: () => {} };
+    /* Spoof permissions API */
+    const origQuery = window.navigator.permissions && window.navigator.permissions.query;
+    if (origQuery) {
+      window.navigator.permissions.query = (parameters) =>
+        parameters.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission })
+          : origQuery(parameters);
+    }
   });
 
   const visited = new Set();
@@ -322,13 +356,55 @@ async function crawlWebsite(startUrl) {
 
     try {
       const page = await context.newPage();
-      await page.waitForTimeout(500 + Math.random() * 1000);
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      if (response && (response.status() === 403 || response.status() === 429)) {
+      /* Random pause between requests so we don't look like a scraper */
+      await page.waitForTimeout(800 + Math.random() * 1500);
+
+      let response;
+      try {
+        /* First try with networkidle — slower but more reliable for JS-heavy sites */
+        response = await page.goto(url, { waitUntil: 'networkidle', timeout: 35000 });
+      } catch (err) {
+        /* Fall back to domcontentloaded if networkidle times out */
+        if (debug) debugLog.push({ url, stage: 'goto-fallback', message: err.message });
+        try {
+          response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        } catch (err2) {
+          if (debug) debugLog.push({ url, stage: 'goto-failed', message: err2.message });
+          await page.close();
+          continue;
+        }
+      }
+
+      const status = response ? response.status() : null;
+      if (status && (status === 403 || status === 429 || status >= 500)) {
+        if (debug) debugLog.push({ url, stage: 'blocked', status });
         await page.close();
         continue;
       }
-      await page.waitForTimeout(1500);
+
+      /* Extra wait — gives Cloudflare's "Checking your browser" challenge time to clear */
+      await page.waitForTimeout(2500);
+
+      /* Check if Cloudflare is challenging us — title/URL clues */
+      const challengeCheck = await page.evaluate(() => {
+        const title = document.title || '';
+        const bodyText = (document.body && document.body.innerText) ? document.body.innerText.slice(0, 500) : '';
+        return {
+          title,
+          bodyLen: (document.body && document.body.innerText) ? document.body.innerText.length : 0,
+          looksLikeChallenge: /just a moment|verifying|cloudflare|attention required|checking your browser/i.test(title + ' ' + bodyText),
+        };
+      });
+
+      if (challengeCheck.looksLikeChallenge) {
+        if (debug) debugLog.push({ url, stage: 'cloudflare-challenge', title: challengeCheck.title });
+        /* Wait longer — sometimes the challenge clears itself */
+        await page.waitForTimeout(8000);
+      }
+
+      if (challengeCheck.bodyLen < 200) {
+        if (debug) debugLog.push({ url, stage: 'empty-body', status, title: challengeCheck.title, bodyLen: challengeCheck.bodyLen });
+      }
 
       const screenshot = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 75 });
       const screenshotB64 = screenshot.toString('base64');
@@ -382,14 +458,17 @@ async function crawlWebsite(startUrl) {
         }
       });
 
+      if (debug) debugLog.push({ url, stage: 'success', status, textLen: textContent.length, imageCount: images.length, linksFound: links.length });
       pages.push({ url, textContent, images, meta, screenshotB64 });
       await page.close();
     } catch (err) {
-      console.warn('Failed:', url, err.message);
+      console.warn('Crawl failed:', url, err.message);
+      if (debug) debugLog.push({ url, stage: 'exception', message: err.message });
     }
   }
 
   await browser.close();
+  if (debug) return { pages, debugLog };
   return pages;
 }
 
@@ -931,7 +1010,9 @@ app.get('/api/_diag/crawl', async (req, res) => {
   console.log('[crawl-test] Starting crawl of', targetUrl);
   try {
     const t0 = Date.now();
-    const pages = await crawlWebsite(targetUrl);
+    const result = await crawlWebsite(targetUrl, { debug: true });
+    const pages = result.pages || result;
+    const debugLog = result.debugLog || [];
     const elapsed = Date.now() - t0;
 
     /* Classify pages the same way scorer-ai.js does */
@@ -959,7 +1040,7 @@ app.get('/api/_diag/crawl', async (req, res) => {
       page_kinds_present: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
       max_pages_cap: MAX_PAGES,
       hit_cap: pages.length >= MAX_PAGES,
-      /* For the team-classified page (if any), include first 800 chars of text */
+      debug: debugLog,
       team_page_text_sample: (() => {
         const teamPage = pages.find(p => /team|staff|people|meet|who-?we-?are/.test(new URL(p.url).pathname.toLowerCase()));
         return teamPage ? (teamPage.textContent || '').slice(0, 800) : null;
@@ -967,7 +1048,7 @@ app.get('/api/_diag/crawl', async (req, res) => {
     });
   } catch (err) {
     console.error('[crawl-test] failed:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 

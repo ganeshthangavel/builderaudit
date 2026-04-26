@@ -69,9 +69,12 @@ async function scrapflyFetch(url, { withScreenshot = false, debug = false } = {}
   });
 
   if (withScreenshot) {
-    /* fullpage screenshot of the rendered page (jpeg, optimised for AI analysis) */
-    params.set('screenshots[main]', 'fullpage');
-    params.set('screenshot_flags', 'load_images,dark_mode');
+    /* Viewport-only screenshot (1920x1080 max) — full-page screenshots of long
+       WordPress sites can exceed Claude's 8000px dimension limit and cause API errors.
+       The visible viewport gives the AI hero/nav/above-the-fold which is what matters
+       most for trust-signal analysis; below-the-fold content is captured in page text. */
+    params.set('screenshots[main]', 'viewport');
+    params.set('screenshot_flags', 'load_images');
   }
 
   const requestUrl = `${SCRAPFLY_API_BASE}?${params.toString()}`;
@@ -160,14 +163,26 @@ function parsePageContent(html, pageUrl, origin) {
     images.push({ src: abs, alt, width: 0, height: 0 });
   }
 
-  /* Extract internal links for the crawl queue */
+  /* Extract internal links for the crawl queue.
+     We compare hostnames after stripping `www.` so links to the bare domain
+     get queued too. We also resolve protocol-relative URLs (//host/path) and
+     fragment-only links (#anchor). */
   const links = [];
   const linkRegex = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi;
   let linkMatch;
+  const originHost = (() => { try { return new URL(origin).hostname.replace(/^www\./, ''); } catch (e) { return ''; } })();
   while ((linkMatch = linkRegex.exec(html)) !== null) {
-    let abs = linkMatch[1];
-    try { abs = new URL(abs, pageUrl).toString(); } catch (e) { continue; }
-    if (abs.startsWith(origin)) links.push(abs);
+    let raw = linkMatch[1].trim();
+    if (!raw || raw.startsWith('#') || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+    /* Resolve relative + protocol-relative URLs against the page URL */
+    let abs;
+    try { abs = new URL(raw, pageUrl).toString(); } catch (e) { continue; }
+    if (!abs.startsWith('http')) continue;
+    /* Same-host match ignoring www. */
+    let absHost;
+    try { absHost = new URL(abs).hostname.replace(/^www\./, ''); } catch (e) { continue; }
+    if (absHost !== originHost) continue;
+    links.push(abs);
   }
 
   /* Build the meta signals object the same way the Playwright crawler did */
@@ -247,7 +262,16 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
       });
 
       pages.push({ url, textContent, images, meta, screenshotB64 });
-      if (debug) debugLog.push({ url, stage: 'success', textLen: textContent.length, imageCount: images.length, linksFound: links.length, hadScreenshot: !!screenshotB64, cost: result.cost });
+      if (debug) debugLog.push({
+        url,
+        stage: 'success',
+        textLen: textContent.length,
+        imageCount: images.length,
+        linksFound: links.length,
+        linksSample: links.slice(0, 5),
+        hadScreenshot: !!screenshotB64,
+        cost: result.cost,
+      });
     } catch (err) {
       console.warn('ScrapFly crawl failed:', url, err.message);
       if (debug) debugLog.push({ url, stage: 'exception', message: err.message });
@@ -263,4 +287,6 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
+  /* Version stamp — bump when this file changes so we can see which build is live */
+  version: '2026-04-26-link-fix',
 };

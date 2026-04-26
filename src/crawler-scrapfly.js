@@ -266,6 +266,9 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
         url,
         stage: 'success',
         textLen: textContent.length,
+        htmlLen: result.html.length,
+        htmlSample: result.html.slice(0, 1500),
+        anchorTagCount: (result.html.match(/<a\s/gi) || []).length,
         imageCount: images.length,
         linksFound: links.length,
         linksSample: links.slice(0, 5),
@@ -288,5 +291,5 @@ module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
   /* Version stamp — bump when this file changes so we can see which build is live */
-  version: '2026-04-26-link-fix',
+  version: '2026-04-26-html-debug',
 };

@@ -2,31 +2,74 @@
  * db.js
  * Postgres connection + schema + query helpers.
  * Tables: users, audits (linked by user_id)
+ *
+ * IMPORTANT: pool is initialised lazily via getPool() because Railway injects
+ * env var references AFTER module load. Reading process.env.DATABASE_URL at
+ * module load returns undefined; reading it at first use returns the resolved
+ * connection string. See: Railway Agent diagnosis, Apr 2026.
  */
 
 const { Pool } = require('pg');
 
-const connectionString = process.env.DATABASE_URL;
+let _pool = null;
+let _initLogged = false;
 
-if (!connectionString) {
-  console.warn('⚠  DATABASE_URL not set — database features disabled.');
+function getPool() {
+  if (_pool) return _pool;
+
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    if (!_initLogged) {
+      console.warn('⚠  DATABASE_URL not set — database features disabled.');
+      _initLogged = true;
+    }
+    return null;
+  }
+
+  _pool = new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+  });
+
+  if (!_initLogged) {
+    console.log('✓ Postgres pool initialised (DATABASE_URL length: ' + connectionString.length + ')');
+    _initLogged = true;
+  }
+
+  /* Kick off schema migration once the pool exists. This handles the Railway
+     case where DATABASE_URL is injected after module load — the startup
+     initSchema() call no-op'd, so we trigger migration on first real DB use.
+     Don't await here; just fire-and-forget so callers don't hang. */
+  ensureSchema();
+
+  return _pool;
 }
 
-const pool = connectionString ? new Pool({
-  connectionString,
-  ssl: { rejectUnauthorized: false },
-}) : null;
+/* Ensure the schema has been migrated. Runs once per process. Triggered
+   automatically on first DB access via the helpers below — so we self-heal
+   the case where Railway hadn't injected DATABASE_URL yet at module load
+   and the startup initSchema() call silently no-op'd. */
+let _schemaPromise = null;
+function ensureSchema() {
+  if (_schemaPromise) return _schemaPromise;
+  if (!getPool()) return Promise.resolve(); /* no DB anyway */
+  _schemaPromise = initSchema().catch(err => {
+    console.error('Lazy schema init failed:', err.message);
+    _schemaPromise = null; /* allow retry on next call */
+  });
+  return _schemaPromise;
+}
 
 // ── Schema setup ──────────────────────────────────────────────────────────────
 async function initSchema() {
-  if (!pool) return;
+  if (!getPool()) return;
 
   /* Each migration step is wrapped independently. If one fails, the others still run.
      This prevents a single quirk (e.g. a pre-existing constraint with a different name)
      from leaving the DB partially migrated — which is what caused the 500 errors. */
   async function step(label, sql) {
     try {
-      await pool.query(sql);
+      await getPool().query(sql);
       // console.log('✓ migration:', label);
     } catch (err) {
       console.warn('⚠ migration skipped [' + label + ']:', err.message);
@@ -130,9 +173,9 @@ async function initSchema() {
 // ═════════════════════════════════════════════════════════════════════════════
 
 async function createEnquiry({ id, userId, auditId, service, notes }) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
 
-  await pool.query(
+  await getPool().query(
     `INSERT INTO enquiries (id, user_id, audit_id, service, notes)
      VALUES ($1, $2, $3, $4, $5)`,
     [id, userId, auditId || null, service, notes || null]
@@ -141,8 +184,8 @@ async function createEnquiry({ id, userId, auditId, service, notes }) {
 }
 
 async function listEnquiriesForUser(userId) {
-  if (!pool) return [];
-  const { rows } = await pool.query(
+  if (!getPool()) return [];
+  const { rows } = await getPool().query(
     `SELECT id, audit_id, service, notes, status, created_at, responded_at
      FROM enquiries
      WHERE user_id = $1
@@ -157,10 +200,10 @@ async function listEnquiriesForUser(userId) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 async function createUser({ id, email, passwordHash, companyName, businessType, region }) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
 
   try {
-    await pool.query(
+    await getPool().query(
       `INSERT INTO users (id, email, password_hash, company_name, business_type, region)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region]
@@ -175,9 +218,9 @@ async function createUser({ id, email, passwordHash, companyName, businessType, 
 }
 
 async function getUserByEmail(email) {
-  if (!pool) return null;
+  if (!getPool()) return null;
   try {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `SELECT id, email, password_hash, company_name, business_type, region, created_at,
               weekly_email_opt_in, last_weekly_email_at
        FROM users WHERE email = $1`,
@@ -187,7 +230,7 @@ async function getUserByEmail(email) {
   } catch (err) {
     if (err.code === '42703') {
       console.warn('getUserByEmail fallback: retention columns missing');
-      const { rows } = await pool.query(
+      const { rows } = await getPool().query(
         `SELECT id, email, password_hash, company_name, business_type, region, created_at
          FROM users WHERE email = $1`,
         [email.toLowerCase().trim()]
@@ -199,9 +242,9 @@ async function getUserByEmail(email) {
 }
 
 async function getUserById(id) {
-  if (!pool) return null;
+  if (!getPool()) return null;
   try {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `SELECT id, email, company_name, business_type, region, created_at,
               weekly_email_opt_in, last_weekly_email_at
        FROM users WHERE id = $1`,
@@ -211,7 +254,7 @@ async function getUserById(id) {
   } catch (err) {
     if (err.code === '42703') {
       console.warn('getUserById fallback: retention columns missing');
-      const { rows } = await pool.query(
+      const { rows } = await getPool().query(
         `SELECT id, email, company_name, business_type, region, created_at
          FROM users WHERE id = $1`,
         [id]
@@ -223,8 +266,8 @@ async function getUserById(id) {
 }
 
 async function recordLogin(userId) {
-  if (!pool) return;
-  await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userId]);
+  if (!getPool()) return;
+  await getPool().query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userId]);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -232,12 +275,12 @@ async function recordLogin(userId) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 async function saveAudit({ id, userId, url, report, rawData, audience }) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
 
   const score = report?.hero?.score || null;
 
   try {
-    await pool.query(
+    await getPool().query(
       `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, audience, last_analyzed_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
       [id, userId || null, url, score, report, rawData || null, audience || 'builder']
@@ -247,7 +290,7 @@ async function saveAudit({ id, userId, url, report, rawData, audience }) {
        fall back to the minimum viable INSERT so the audit is at least saved. */
     if (err.code === '42703' /* undefined_column */) {
       console.warn('saveAudit fallback — new column missing, inserting minimal row:', err.message);
-      await pool.query(
+      await getPool().query(
         `INSERT INTO audits (id, user_id, url, score, report_json)
          VALUES ($1, $2, $3, $4, $5)`,
         [id, userId || null, url, score, report]
@@ -261,9 +304,9 @@ async function saveAudit({ id, userId, url, report, rawData, audience }) {
 }
 
 async function updateAnalysis(id, report) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
   const score = report?.hero?.score || null;
-  await pool.query(
+  await getPool().query(
     `UPDATE audits
      SET report_json = $1, score = $2, last_analyzed_at = NOW()
      WHERE id = $3`,
@@ -273,9 +316,9 @@ async function updateAnalysis(id, report) {
 }
 
 async function getAudit(id) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
   try {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `SELECT id, user_id, url, email, score, report_json, raw_data, overrides, audience,
               created_at, last_analyzed_at, unlocked_at
        FROM audits WHERE id = $1`,
@@ -287,7 +330,7 @@ async function getAudit(id) {
        so we don't return 500s to users with old databases. Logs the problem for ops. */
     if (err.code === '42703' /* undefined_column */) {
       console.warn('getAudit fallback: column missing, retrying without new columns —', err.message);
-      const { rows } = await pool.query(
+      const { rows } = await getPool().query(
         `SELECT id, user_id, url, email, score, report_json, raw_data, overrides,
                 created_at, last_analyzed_at, unlocked_at
          FROM audits WHERE id = $1`,
@@ -301,9 +344,9 @@ async function getAudit(id) {
 }
 
 async function getAuditMeta(id) {
-  if (!pool) return null;
+  if (!getPool()) return null;
   try {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `SELECT id, user_id, url, email, score, audience, created_at, last_analyzed_at, unlocked_at,
               (raw_data IS NOT NULL) AS has_raw_data
        FROM audits WHERE id = $1`,
@@ -313,7 +356,7 @@ async function getAuditMeta(id) {
   } catch (err) {
     if (err.code === '42703' /* undefined_column */) {
       console.warn('getAuditMeta fallback: column missing —', err.message);
-      const { rows } = await pool.query(
+      const { rows } = await getPool().query(
         `SELECT id, user_id, url, email, score, created_at, last_analyzed_at, unlocked_at,
                 (raw_data IS NOT NULL) AS has_raw_data
          FROM audits WHERE id = $1`,
@@ -328,8 +371,8 @@ async function getAuditMeta(id) {
 
 // List all audits for a user — newest first
 async function listAuditsForUser(userId) {
-  if (!pool) return [];
-  const { rows } = await pool.query(
+  if (!getPool()) return [];
+  const { rows } = await getPool().query(
     `SELECT id, url, score, created_at, last_analyzed_at
      FROM audits
      WHERE user_id = $1
@@ -340,8 +383,8 @@ async function listAuditsForUser(userId) {
 }
 
 async function unlockAudit(id, email) {
-  if (!pool) throw new Error('Database not configured');
-  await pool.query(
+  if (!getPool()) throw new Error('Database not configured');
+  await getPool().query(
     `UPDATE audits SET email = $1, unlocked_at = NOW() WHERE id = $2`,
     [email.toLowerCase().trim(), id]
   );
@@ -349,26 +392,26 @@ async function unlockAudit(id, email) {
 
 // Link an existing anonymous audit to a user (when they sign up after running an audit)
 async function claimAudit(auditId, userId) {
-  if (!pool) throw new Error('Database not configured');
-  await pool.query(
+  if (!getPool()) throw new Error('Database not configured');
+  await getPool().query(
     `UPDATE audits SET user_id = $1 WHERE id = $2 AND user_id IS NULL`,
     [userId, auditId]
   );
 }
 
 async function setImageOverride(auditId, imageSrc, decision) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
   const validDecisions = ['accepted', 'rejected', null];
   if (!validDecisions.includes(decision)) throw new Error('Invalid decision');
 
-  const { rows } = await pool.query(`SELECT overrides FROM audits WHERE id = $1`, [auditId]);
+  const { rows } = await getPool().query(`SELECT overrides FROM audits WHERE id = $1`, [auditId]);
   if (rows.length === 0) throw new Error('Audit not found');
 
   const current = rows[0].overrides || {};
   if (decision === null) delete current[imageSrc];
   else current[imageSrc] = decision;
 
-  await pool.query(
+  await getPool().query(
     `UPDATE audits SET overrides = $1::jsonb WHERE id = $2`,
     [JSON.stringify(current), auditId]
   );
@@ -380,7 +423,7 @@ async function setImageOverride(auditId, imageSrc, decision) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 async function updateUserSettings(userId, settings) {
-  if (!pool) throw new Error('Database not configured');
+  if (!getPool()) throw new Error('Database not configured');
   var fields = [];
   var values = [];
   var idx = 1;
@@ -390,15 +433,15 @@ async function updateUserSettings(userId, settings) {
   }
   if (fields.length === 0) return;
   values.push(userId);
-  await pool.query(
+  await getPool().query(
     `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`,
     values
   );
 }
 
 async function markWeeklyEmailSent(userId) {
-  if (!pool) return;
-  await pool.query(`UPDATE users SET last_weekly_email_at = NOW() WHERE id = $1`, [userId]);
+  if (!getPool()) return;
+  await getPool().query(`UPDATE users SET last_weekly_email_at = NOW() WHERE id = $1`, [userId]);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -406,16 +449,16 @@ async function markWeeklyEmailSent(userId) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 async function createSnapshot({ auditId, score, summary }) {
-  if (!pool) return;
-  await pool.query(
+  if (!getPool()) return;
+  await getPool().query(
     `INSERT INTO audit_snapshots (audit_id, score, summary) VALUES ($1, $2, $3)`,
     [auditId, score, summary || null]
   );
 }
 
 async function getLatestSnapshot(auditId) {
-  if (!pool) return null;
-  const { rows } = await pool.query(
+  if (!getPool()) return null;
+  const { rows } = await getPool().query(
     `SELECT id, audit_id, score, summary, created_at
      FROM audit_snapshots
      WHERE audit_id = $1
@@ -427,8 +470,8 @@ async function getLatestSnapshot(auditId) {
 }
 
 async function listSnapshots(auditId, limit) {
-  if (!pool) return [];
-  const { rows } = await pool.query(
+  if (!getPool()) return [];
+  const { rows } = await getPool().query(
     `SELECT id, audit_id, score, summary, created_at
      FROM audit_snapshots
      WHERE audit_id = $1
@@ -449,8 +492,8 @@ async function listSnapshots(auditId, limit) {
    - have not received a weekly email in the last 6 days (to avoid duplicates on manual runs)
 */
 async function getUsersDueForWeeklyEmail() {
-  if (!pool) return [];
-  const { rows } = await pool.query(
+  if (!getPool()) return [];
+  const { rows } = await getPool().query(
     `SELECT DISTINCT u.id, u.email, u.company_name, u.business_type, u.region, u.last_weekly_email_at
      FROM users u
      WHERE u.weekly_email_opt_in = TRUE
@@ -467,8 +510,8 @@ async function getUsersDueForWeeklyEmail() {
 
 /* For a given user, returns their most-recent audit that has raw_data */
 async function getPrimaryAuditForUser(userId) {
-  if (!pool) return null;
-  const { rows } = await pool.query(
+  if (!getPool()) return null;
+  const { rows } = await getPool().query(
     `SELECT id, user_id, url, score, report_json, raw_data, overrides, audience,
             created_at, last_analyzed_at
      FROM audits
@@ -508,7 +551,6 @@ module.exports = {
   // enquiries
   createEnquiry,
   listEnquiriesForUser,
-  isEnabled: () => !!pool,
-  pool: () => pool,
+  isEnabled: () => !!getPool(),
+  pool: () => getPool(),
 };
-

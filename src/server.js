@@ -11,6 +11,7 @@ const db = require('./db');
 const auth = require('./auth');
 const email = require('./email');
 const { scoreWebsite } = require('./scorer-ai');
+const { crawlWebsiteScrapFly, isAvailable: isScrapFlyAvailable } = require('./crawler-scrapfly');
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
@@ -472,6 +473,35 @@ async function crawlWebsite(startUrl, opts = {}) {
   return pages;
 }
 
+/**
+ * Smart crawler wrapper. Prefers ScrapFly (handles Cloudflare, JS rendering,
+ * residential proxies). Falls back to local Playwright if ScrapFly isn't
+ * configured or fails entirely.
+ *
+ * Both crawlers return the same shape so callers don't need to know which one ran.
+ */
+async function smartCrawl(startUrl, opts = {}) {
+  if (isScrapFlyAvailable()) {
+    try {
+      console.log('[smart-crawl] Using ScrapFly for', startUrl);
+      const result = await crawlWebsiteScrapFly(startUrl, opts);
+      const pages = opts.debug ? result.pages : result;
+      /* If ScrapFly returns zero pages, treat as failure and fall back. */
+      if (pages.length === 0) {
+        console.warn('[smart-crawl] ScrapFly returned 0 pages, falling back to Playwright');
+      } else {
+        return result;
+      }
+    } catch (err) {
+      console.warn('[smart-crawl] ScrapFly failed, falling back to Playwright:', err.message);
+    }
+  } else {
+    console.log('[smart-crawl] SCRAPFLY_API_KEY not set, using Playwright');
+  }
+
+  return crawlWebsite(startUrl, opts);
+}
+
 function normaliseUrl(raw) {
   try {
     const u = new URL(raw);
@@ -506,7 +536,7 @@ app.post('/api/audit', async (req, res) => {
 
   try {
     send('status', { message: 'Crawling website...', step: 1, total: 4 });
-    const pages = await crawlWebsite(url);
+    const pages = await smartCrawl(url);
 
     if (pages.length === 0) {
       send('error', { message: 'Could not reach the website. It may be blocking automated access.' });
@@ -1004,15 +1034,37 @@ app.post('/api/report/:id/override', async (req, res) => {
    GET /api/_diag/crawl?url=https://example.com  */
 app.get('/api/_diag/crawl', async (req, res) => {
   const targetUrl = req.query.url;
+  const engineRequested = (req.query.engine || 'auto').toLowerCase();
   if (!targetUrl || !/^https?:\/\//.test(targetUrl)) {
-    return res.status(400).json({ error: 'Provide ?url=https://...' });
+    return res.status(400).json({ error: 'Provide ?url=https://...  Optional: &engine=scrapfly|playwright|auto' });
   }
-  console.log('[crawl-test] Starting crawl of', targetUrl);
+  console.log(`[crawl-test] Starting crawl of ${targetUrl} (engine: ${engineRequested})`);
   try {
     const t0 = Date.now();
-    const result = await crawlWebsite(targetUrl, { debug: true });
+    let result;
+    let engineUsed;
+    if (engineRequested === 'scrapfly') {
+      if (!isScrapFlyAvailable()) {
+        return res.status(400).json({ error: 'SCRAPFLY_API_KEY not configured. Add it as an env var on Render.' });
+      }
+      result = await crawlWebsiteScrapFly(targetUrl, { debug: true });
+      engineUsed = 'scrapfly';
+    } else if (engineRequested === 'playwright') {
+      result = await crawlWebsite(targetUrl, { debug: true });
+      engineUsed = 'playwright';
+    } else {
+      /* Auto: ScrapFly if configured, fallback Playwright */
+      if (isScrapFlyAvailable()) {
+        result = await crawlWebsiteScrapFly(targetUrl, { debug: true });
+        engineUsed = 'scrapfly';
+      } else {
+        result = await crawlWebsite(targetUrl, { debug: true });
+        engineUsed = 'playwright';
+      }
+    }
     const pages = result.pages || result;
     const debugLog = result.debugLog || [];
+    const totalCost = result.totalCost || null;
     const elapsed = Date.now() - t0;
 
     /* Classify pages the same way scorer-ai.js does */
@@ -1034,8 +1086,10 @@ app.get('/api/_diag/crawl', async (req, res) => {
 
     res.json({
       target: targetUrl,
+      engine_used: engineUsed,
       elapsed_ms: elapsed,
       total_pages_crawled: pages.length,
+      total_cost_credits: totalCost,
       pages: pageMap,
       page_kinds_present: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
       max_pages_cap: MAX_PAGES,

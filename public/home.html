@@ -668,7 +668,10 @@ section { padding: 4rem 52px; }
 
 <footer class="footer">
   <a href="/" class="nav-logo">Builder<span>Audit</span></a>
-  <div class="fc">&copy; 2026 &middot; The UK's first forensic trust platform for construction</div>
+  <div class="fc">&copy; 2026 &middot; The UK's first forensic trust platform for construction
+    &nbsp;&middot;&nbsp; <a href="/privacy" style="color:var(--fg2);text-decoration:none">Privacy</a>
+    &nbsp;&middot;&nbsp; <a href="/terms" style="color:var(--fg2);text-decoration:none">Terms</a>
+  </div>
 </footer>
 
 <script>
@@ -682,8 +685,19 @@ window.addEventListener('scroll', function() {
 /* ─── Audience toggle ─── */
 function setAudience(aud) {
   document.querySelectorAll('.aud-opt').forEach(function(b) { b.classList.toggle('on', b.dataset.aud === aud); });
-  document.getElementById('heroBuilder').style.display = (aud === 'builder') ? 'block' : 'none';
-  document.getElementById('heroHomeowner').style.display = (aud === 'homeowner') ? 'block' : 'none';
+  var builderEl = document.getElementById('heroBuilder');
+  var homeEl = document.getElementById('heroHomeowner');
+  builderEl.style.display = (aud === 'builder') ? 'block' : 'none';
+  homeEl.style.display = (aud === 'homeowner') ? 'block' : 'none';
+
+  /* Re-trigger blur-in on the now-visible H1 */
+  var visibleH1 = (aud === 'homeowner') ? homeEl.querySelector('.hero-h1') : builderEl.querySelector('.hero-h1');
+  if (visibleH1) {
+    visibleH1.classList.remove('te-in');
+    /* Double rAF so the browser acknowledges the removal before we add it back */
+    requestAnimationFrame(function() { requestAnimationFrame(function() { visibleH1.classList.add('te-in'); }); });
+  }
+
   var navCta = document.getElementById('navCta');
   var finalCta = document.getElementById('finalCta');
   if (aud === 'homeowner') {
@@ -905,5 +919,6 @@ function jumpToStat(i) {
 })();
 
 </script>
+<script src="/assets/text-effect.js" defer></script>
 </body>
 </html>

@@ -73,8 +73,24 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
   } : null;
 
   /* Only include image blocks for pages that have screenshots (fresh audits).
-     Replays use text-only analysis since screenshots arent stored. */
-  const screenshotsToAnalyse = pages.slice(0, 4).filter(p => p.screenshotB64);
+     Replays use text-only analysis since screenshots arent stored.
+
+     Defensive size check: Claude's vision API rejects images where any dimension
+     exceeds 8000px or the file is larger than ~4MB. Rather than crashing the whole
+     audit if a screenshot is too big, we silently skip it. The text content from
+     that page is still analysed. */
+  const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024; // 4MB
+  const screenshotsToAnalyse = pages
+    .slice(0, 4)
+    .filter(p => p.screenshotB64)
+    .filter(p => {
+      const approxBytes = Math.floor(p.screenshotB64.length * 0.75);
+      if (approxBytes > MAX_SCREENSHOT_BYTES) {
+        console.warn(`[scorer-ai] Skipping oversize screenshot for ${p.url}: ~${(approxBytes/1024/1024).toFixed(1)}MB`);
+        return false;
+      }
+      return true;
+    });
   const imageBlocks = screenshotsToAnalyse.map(p => ({
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },

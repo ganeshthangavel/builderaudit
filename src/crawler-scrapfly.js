@@ -64,8 +64,11 @@ async function scrapflyFetch(url, { withScreenshot = false, debug = false } = {}
     country: 'gb',
     /* Wait up to 8 seconds after page load for content to settle */
     rendering_wait: '3000',
-    /* Get the page as JSON (HTML in `result.content`) */
-    format: 'json',
+    /* NOTE: Do NOT set format=json. That option converts the page to structured
+       JSON with markdown content, which strips out all the <a href> tags we need
+       to follow internal links. We want raw HTML so our parser can extract links
+       and images directly. The default response is already JSON-wrapped at the
+       outer level — `data.result.content` contains the raw HTML. */
   });
 
   if (withScreenshot) {
@@ -291,5 +294,5 @@ module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
   /* Version stamp — bump when this file changes so we can see which build is live */
-  version: '2026-04-26-html-debug',
+  version: '2026-04-26-rawhtml',
 };

@@ -234,23 +234,75 @@ function showLockScreen(preview){
   var main=document.getElementById('mainArea');
   var domain='';try{domain=new URL(preview.url).hostname;}catch(e){domain=preview.url;}
 
-  main.innerHTML=
-    '<div style="position:relative;min-height:70vh;overflow:hidden">'+
-      '<div class="aurora-wrap" aria-hidden="true"></div>'+
-      '<div class="aurora-mask" aria-hidden="true"></div>'+
-      '<div style="position:relative;z-index:2">'+
-    '<div class="lock-screen">'+
-      '<div class="lock-preview">'+
-        '<div class="lock-score c-'+color+'">'+score+'</div>'+
-        '<div class="lock-company">'+esc(preview.companyName||domain)+'</div>'+
-        '<div class="lock-url">'+esc(domain)+'</div>'+
-      '</div>'+
-      '<div class="lock-headline">'+esc(preview.headline||'Your audit is ready')+'</div>'+
-      '<div class="lock-sub">Create a free account to unlock your full forensic report, including every trust breakpoint, verified image analysis, and your personalised action plan. Takes 30 seconds.</div>'+
-      '<a href="/signup?claim='+encodeURIComponent(REPORT_ID)+'" class="lock-btn" style="text-decoration:none;display:block;box-sizing:border-box;text-align:center">Create account &amp; unlock &rarr;</a>'+
-      '<div class="lock-fineprint" style="margin-top:14px">Already have an account? <a href="/login?next=/report/'+encodeURIComponent(REPORT_ID)+'" style="color:var(--azure);font-weight:600;text-decoration:none">Log in</a></div>'+
-    '</div>'+
-    '</div></div>';
+  /* Reveal the top nav with score and domain (low-key teaser) */
+  showTopNav({
+    url: preview.url,
+    scannedAt: preview.scannedAt,
+    report: { hero: { score: score } }
+  });
+
+  /* Render fake "report-behind-glass" content at low opacity behind the modal —
+     enough hint of the report being there to feel like there's value to unlock,
+     without giving away anything specific. */
+  main.innerHTML =
+    '<div class="lock-stage">' +
+      '<div class="aurora-wrap" aria-hidden="true"></div>' +
+      '<div class="aurora-mask" aria-hidden="true"></div>' +
+
+      /* Faux blurred report content. Realistic enough to feel meaningful, vague enough to give nothing away. */
+      '<div class="lock-fakereport" aria-hidden="true">' +
+        '<div class="fake-tabs">' +
+          '<span class="fake-tab fake-active">Overview</span>' +
+          '<span class="fake-tab">Snapshot</span>' +
+          '<span class="fake-tab">Issues <span class="fake-badge">7</span></span>' +
+          '<span class="fake-tab">Journey</span>' +
+          '<span class="fake-tab">Images</span>' +
+          '<span class="fake-tab">Competitors</span>' +
+          '<span class="fake-tab">Actions</span>' +
+        '</div>' +
+        '<div class="fake-hero">' +
+          '<div class="fake-score-ring c-' + color + '"><div class="fake-score-num">' + score + '</div></div>' +
+          '<div class="fake-hero-text">' +
+            '<div class="fake-eyebrow">Trust audit · ' + esc(domain) + '</div>' +
+            '<div class="fake-h1">Your full report is ready</div>' +
+            '<div class="fake-h-sub">█████████████████████████████████ ███████████ ████████ ██████ ████████████.</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="fake-grid">' +
+          '<div class="fake-card"><div class="fake-card-h">Trust breakpoints</div>' +
+            '<div class="fake-row"></div><div class="fake-row"></div><div class="fake-row" style="width:60%"></div></div>' +
+          '<div class="fake-card"><div class="fake-card-h">Image verification</div>' +
+            '<div class="fake-row"></div><div class="fake-row" style="width:80%"></div><div class="fake-row" style="width:55%"></div></div>' +
+          '<div class="fake-card"><div class="fake-card-h">Homeowner journey</div>' +
+            '<div class="fake-row"></div><div class="fake-row" style="width:75%"></div></div>' +
+          '<div class="fake-card"><div class="fake-card-h">Action plan</div>' +
+            '<div class="fake-row"></div><div class="fake-row"></div><div class="fake-row" style="width:65%"></div></div>' +
+        '</div>' +
+      '</div>' +
+
+      /* The signup overlay floating above the blurred content */
+      '<div class="lock-overlay">' +
+        '<div class="lock-modal">' +
+          '<div class="lock-modal-eyebrow">Trust audit complete</div>' +
+          '<div class="lock-modal-score-row">' +
+            '<div class="lock-modal-score c-' + color + '">' + score + '</div>' +
+            '<div class="lock-modal-score-label">' +
+              '<div class="lock-modal-domain">' + esc(preview.companyName || domain) + '</div>' +
+              '<div class="lock-modal-url">' + esc(domain) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="lock-modal-h">Create a free account to unlock your full report</div>' +
+          '<ul class="lock-modal-list">' +
+            '<li>Every trust breakpoint with the exact wording that fails</li>' +
+            '<li>Image verification — duplicates and stock imagery flagged</li>' +
+            '<li>Personalised action plan ranked by impact</li>' +
+            '<li>Re-analyse free anytime as you fix things</li>' +
+          '</ul>' +
+          '<a href="/signup?claim=' + encodeURIComponent(REPORT_ID) + '" class="lock-btn" style="text-decoration:none;display:block;box-sizing:border-box;text-align:center">Create account &amp; unlock &rarr;</a>' +
+          '<div class="lock-fineprint">Already have an account? <a href="/login?next=/report/' + encodeURIComponent(REPORT_ID) + '">Log in</a></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 function showTopNav(data){

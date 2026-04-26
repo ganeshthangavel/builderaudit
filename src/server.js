@@ -920,6 +920,57 @@ app.post('/api/report/:id/override', async (req, res) => {
   }
 });
 
+/* Crawl test endpoint — runs the crawler on a URL and returns the page list.
+   Use to verify that target sites' key pages (about, team, services) are being reached.
+   GET /api/_diag/crawl?url=https://example.com  */
+app.get('/api/_diag/crawl', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl || !/^https?:\/\//.test(targetUrl)) {
+    return res.status(400).json({ error: 'Provide ?url=https://...' });
+  }
+  console.log('[crawl-test] Starting crawl of', targetUrl);
+  try {
+    const t0 = Date.now();
+    const pages = await crawlWebsite(targetUrl);
+    const elapsed = Date.now() - t0;
+
+    /* Classify pages the same way scorer-ai.js does */
+    const pageMap = pages.map(p => {
+      const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return p.url.toLowerCase(); } })();
+      let kind = 'other';
+      if (path === '/' || path === '') kind = 'home';
+      else if (/team|staff|people|meet|who-?we-?are/.test(path)) kind = 'team';
+      else if (/about/.test(path)) kind = 'about';
+      else if (/service|what-?we-?do|expertise/.test(path)) kind = 'services';
+      else if (/contact|get-?in-?touch|enquir/.test(path)) kind = 'contact';
+      else if (/portfolio|project|gallery|work|case-?stud/.test(path)) kind = 'portfolio';
+      else if (/testimonial|review|client/.test(path)) kind = 'testimonials';
+      else if (/blog|news|article|insight/.test(path)) kind = 'blog';
+      else if (/faq|help|support/.test(path)) kind = 'faq';
+      else if (/price|pricing|cost|quote/.test(path)) kind = 'pricing';
+      return { url: p.url, kind, textLength: (p.textContent || '').length, imageCount: (p.images || []).length };
+    });
+
+    res.json({
+      target: targetUrl,
+      elapsed_ms: elapsed,
+      total_pages_crawled: pages.length,
+      pages: pageMap,
+      page_kinds_present: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
+      max_pages_cap: MAX_PAGES,
+      hit_cap: pages.length >= MAX_PAGES,
+      /* For the team-classified page (if any), include first 800 chars of text */
+      team_page_text_sample: (() => {
+        const teamPage = pages.find(p => /team|staff|people|meet|who-?we-?are/.test(new URL(p.url).pathname.toLowerCase()));
+        return teamPage ? (teamPage.textContent || '').slice(0, 800) : null;
+      })(),
+    });
+  } catch (err) {
+    console.error('[crawl-test] failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* Diagnostic endpoint — shows DB schema + env var visibility.
    Visit /api/_diag/schema to confirm migrations ran. Safe to leave in prod — no secrets exposed. */
 app.get('/api/_diag/schema', async (req, res) => {
@@ -980,4 +1031,3 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-       

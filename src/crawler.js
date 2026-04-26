@@ -287,4 +287,6 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
+  /* Version stamp — bump when this file changes so we can see which build is live */
+  version: '2026-04-26-link-fix',
 };

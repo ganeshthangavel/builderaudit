@@ -23,6 +23,7 @@ const config = Object.freeze({
   DATABASE_URL: process.env.DATABASE_URL || null,
   JWT_SECRET: process.env.JWT_SECRET || null,
   SERPAPI_KEY: process.env.SERPAPI_KEY || null,
+  SCRAPFLY_API_KEY: process.env.SCRAPFLY_API_KEY || null,
   RESEND_API_KEY: process.env.RESEND_API_KEY || null,
   ENQUIRY_TO_EMAIL: process.env.ENQUIRY_TO_EMAIL || null,
   FROM_EMAIL: process.env.FROM_EMAIL || null,
@@ -31,12 +32,13 @@ const config = Object.freeze({
   PORT: process.env.PORT || '3000',
 });
 
-/* Boot-time logging — helps diagnose Railway env var issues. */
+/* Boot-time logging — helps diagnose env var configuration. */
 console.log('[config] Snapshotted env at boot:');
 console.log('  DATABASE_URL:    ' + (config.DATABASE_URL ? `present (length ${config.DATABASE_URL.length})` : '✗ MISSING'));
 console.log('  ANTHROPIC_API_KEY: ' + (config.ANTHROPIC_API_KEY ? `present (length ${config.ANTHROPIC_API_KEY.length})` : '✗ MISSING'));
 console.log('  JWT_SECRET:      ' + (config.JWT_SECRET ? 'present' : '✗ MISSING'));
 console.log('  SERPAPI_KEY:     ' + (config.SERPAPI_KEY ? 'present' : '✗ MISSING'));
+console.log('  SCRAPFLY_API_KEY: ' + (config.SCRAPFLY_API_KEY ? 'present' : '✗ MISSING (will fall back to Playwright)'));
 console.log('  RESEND_API_KEY:  ' + (config.RESEND_API_KEY ? 'present' : '✗ MISSING'));
 console.log('  ENQUIRY_TO_EMAIL: ' + (config.ENQUIRY_TO_EMAIL || '(default)'));
 console.log('  FROM_EMAIL:      ' + (config.FROM_EMAIL || '(default)'));

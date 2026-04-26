@@ -6,6 +6,7 @@
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
+const config = require('./config');
 
 /* Lazy-initialised Anthropic client. We don't instantiate at module load because
    that can run before env vars are available (and it lets us give a clearer error
@@ -13,7 +14,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 let _client = null;
 function getClient() {
   if (_client) return _client;
-  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  const apiKey = (config.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) {
     throw new Error(
       'ANTHROPIC_API_KEY environment variable is not set. ' +

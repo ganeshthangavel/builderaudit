@@ -163,14 +163,26 @@ function parsePageContent(html, pageUrl, origin) {
     images.push({ src: abs, alt, width: 0, height: 0 });
   }
 
-  /* Extract internal links for the crawl queue */
+  /* Extract internal links for the crawl queue.
+     We compare hostnames after stripping `www.` so links to the bare domain
+     get queued too. We also resolve protocol-relative URLs (//host/path) and
+     fragment-only links (#anchor). */
   const links = [];
   const linkRegex = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi;
   let linkMatch;
+  const originHost = (() => { try { return new URL(origin).hostname.replace(/^www\./, ''); } catch (e) { return ''; } })();
   while ((linkMatch = linkRegex.exec(html)) !== null) {
-    let abs = linkMatch[1];
-    try { abs = new URL(abs, pageUrl).toString(); } catch (e) { continue; }
-    if (abs.startsWith(origin)) links.push(abs);
+    let raw = linkMatch[1].trim();
+    if (!raw || raw.startsWith('#') || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('javascript:')) continue;
+    /* Resolve relative + protocol-relative URLs against the page URL */
+    let abs;
+    try { abs = new URL(raw, pageUrl).toString(); } catch (e) { continue; }
+    if (!abs.startsWith('http')) continue;
+    /* Same-host match ignoring www. */
+    let absHost;
+    try { absHost = new URL(abs).hostname.replace(/^www\./, ''); } catch (e) { continue; }
+    if (absHost !== originHost) continue;
+    links.push(abs);
   }
 
   /* Build the meta signals object the same way the Playwright crawler did */
@@ -250,7 +262,16 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
       });
 
       pages.push({ url, textContent, images, meta, screenshotB64 });
-      if (debug) debugLog.push({ url, stage: 'success', textLen: textContent.length, imageCount: images.length, linksFound: links.length, hadScreenshot: !!screenshotB64, cost: result.cost });
+      if (debug) debugLog.push({
+        url,
+        stage: 'success',
+        textLen: textContent.length,
+        imageCount: images.length,
+        linksFound: links.length,
+        linksSample: links.slice(0, 5),
+        hadScreenshot: !!screenshotB64,
+        cost: result.cost,
+      });
     } catch (err) {
       console.warn('ScrapFly crawl failed:', url, err.message);
       if (debug) debugLog.push({ url, stage: 'exception', message: err.message });

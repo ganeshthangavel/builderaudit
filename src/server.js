@@ -368,9 +368,18 @@ async function crawlWebsite(startUrl) {
         return [...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => h.startsWith(base));
       }, origin);
 
+      /* Push high-priority pages (about/team/services/contact) to the front of the queue
+         so they get crawled within MAX_PAGES even if the homepage has hundreds of links. */
+      const priorityPattern = /\/(our-?team|team|about|meet|who-?we-?are|services|what-?we-?do|contact|testimonials|reviews)/i;
       links.forEach(l => {
         const clean = normaliseUrl(l);
-        if (!visited.has(clean) && !queue.includes(clean)) queue.push(clean);
+        if (!visited.has(clean) && !queue.includes(clean)) {
+          if (priorityPattern.test(clean)) {
+            queue.unshift(clean);  // priority — front of queue
+          } else {
+            queue.push(clean);     // regular — back of queue
+          }
+        }
       });
 
       pages.push({ url, textContent, images, meta, screenshotB64 });

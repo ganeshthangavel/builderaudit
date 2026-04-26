@@ -5,10 +5,11 @@
  */
 
 const { Resend } = require('resend');
+const config = require('./config');
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const ENQUIRY_TO_EMAIL = process.env.ENQUIRY_TO_EMAIL || 'gthangavel1@gmail.com';
-const FROM_EMAIL = process.env.FROM_EMAIL || 'BuilderAudit <onboarding@resend.dev>';
+const RESEND_API_KEY = config.RESEND_API_KEY;
+const ENQUIRY_TO_EMAIL = config.ENQUIRY_TO_EMAIL || 'gthangavel1@gmail.com';
+const FROM_EMAIL = config.FROM_EMAIL || 'BuilderAudit <onboarding@resend.dev>';
 
 if (!RESEND_API_KEY) {
   console.warn('⚠  RESEND_API_KEY not set — email features disabled.');

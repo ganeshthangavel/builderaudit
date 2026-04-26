@@ -25,10 +25,69 @@ function getClient() {
   return _client;
 }
 
+/* Resize a base64 JPEG so neither dimension exceeds Claude's 8000px limit.
+   Returns either the original base64 (if already within limits) or a resized version.
+   If sharp fails for any reason, returns null so we skip this image rather than
+   crash the whole audit. */
+async function ensureImageWithinLimits(base64Data) {
+  if (!base64Data) return null;
+  try {
+    const sharp = require('sharp');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const metadata = await sharp(buffer).metadata();
+    const MAX_DIM = 7800; // a bit under 8000 to be safe
+    if ((metadata.width || 0) <= MAX_DIM && (metadata.height || 0) <= MAX_DIM) {
+      return base64Data; // already fine
+    }
+    /* Resize while keeping aspect ratio. The largest side becomes MAX_DIM. */
+    console.log(`[scorer-ai] Resizing oversize screenshot ${metadata.width}x${metadata.height} -> max ${MAX_DIM}px`);
+    const resized = await sharp(buffer)
+      .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return resized.toString('base64');
+  } catch (err) {
+    console.warn('[scorer-ai] Image resize failed, skipping screenshot:', err.message);
+    return null;
+  }
+}
+
 async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext, audience) {
   const client = getClient();
   audience = audience || 'builder';
-  const allText = pages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
+
+  /* Classify each crawled page by URL pattern. This lets the AI know what pages
+     EXIST on the site, even if their content was truncated out of the text budget below.
+     Without this, the AI sometimes mistakenly says "no team page" when the team page
+     was crawled but its body text didn't make it into the 6000-char window. */
+  const pageMap = pages.map(p => {
+    const url = p.url;
+    const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch (e) { return url.toLowerCase(); } })();
+    let kind = 'other';
+    if (path === '/' || path === '') kind = 'home';
+    else if (/team|staff|people|meet|who-?we-?are/.test(path)) kind = 'team';
+    else if (/about/.test(path)) kind = 'about';
+    else if (/service|what-?we-?do|expertise/.test(path)) kind = 'services';
+    else if (/contact|get-?in-?touch|enquir/.test(path)) kind = 'contact';
+    else if (/portfolio|project|gallery|work|case-?stud/.test(path)) kind = 'portfolio';
+    else if (/testimonial|review|client/.test(path)) kind = 'testimonials';
+    else if (/blog|news|article|insight/.test(path)) kind = 'blog';
+    else if (/faq|help|support/.test(path)) kind = 'faq';
+    else if (/price|pricing|cost|quote/.test(path)) kind = 'pricing';
+    return { url: p.url, kind, textLength: (p.textContent || '').length };
+  });
+
+  /* Order pages so important ones (about, team, services, contact) appear first
+     in the text budget. The AI gets the full text of these before it gets sliced. */
+  const priority = { home: 0, about: 1, team: 1, services: 2, contact: 3, testimonials: 4,
+    portfolio: 5, pricing: 5, faq: 6, blog: 7, other: 8 };
+  const sortedPages = [...pages].sort((a, b) => {
+    const am = pageMap.find(m => m.url === a.url);
+    const bm = pageMap.find(m => m.url === b.url);
+    return (priority[am.kind] ?? 9) - (priority[bm.kind] ?? 9);
+  });
+
+  const allText = sortedPages.map(p => '[PAGE: ' + p.url + ']\n' + p.textContent).join('\n\n---\n\n');
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
 
@@ -41,8 +100,20 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
   } : null;
 
   /* Only include image blocks for pages that have screenshots (fresh audits).
-     Replays use text-only analysis since screenshots arent stored. */
-  const screenshotsToAnalyse = pages.slice(0, 4).filter(p => p.screenshotB64);
+     Replays use text-only analysis since screenshots arent stored.
+
+     Each screenshot is run through sharp to ensure it's within Claude's vision
+     API limit (8000px in any dimension). Oversize images are resized in place,
+     keeping aspect ratio. If resize fails for any reason, that image is skipped
+     and the audit continues with text-only analysis for that page. */
+  const candidatePages = pages.slice(0, 4).filter(p => p.screenshotB64);
+  const safeScreenshots = await Promise.all(
+    candidatePages.map(async p => {
+      const safeB64 = await ensureImageWithinLimits(p.screenshotB64);
+      return safeB64 ? { ...p, screenshotB64: safeB64 } : null;
+    })
+  );
+  const screenshotsToAnalyse = safeScreenshots.filter(Boolean);
   const imageBlocks = screenshotsToAnalyse.map(p => ({
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
@@ -59,6 +130,10 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
 
   const aggregatedSignals = {
     totalPages: pages.length,
+    /* Crawled URLs by classification — tells the AI which pages exist on the site
+       so it can verify claims like "they don't have a team page" against actual data. */
+    pagesCrawled: pageMap.map(p => ({ url: p.url, kind: p.kind })),
+    pageKindsPresent: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
     totalImages: allImages.length,
     pagesWithPhone: allMeta.filter(m => m.hasPhone).length,
     pagesWithAddress: allMeta.filter(m => m.hasAddress).length,
@@ -123,7 +198,12 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
 
   const systemPrompt = audience === 'homeowner' ? homeownerPrompt : builderPrompt;
 
-  const userPrompt = 'Website being audited: ' + targetUrl + '\n\nEXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\nFULL PAGE TEXT (' + pages.length + ' pages crawled):\n' + allText.slice(0, 6000) + '\n\nI have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
+  const userPrompt = 'Website being audited: ' + targetUrl + '\n\n' +
+    'EXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\n' +
+    'CRITICAL: Before stating that the site lacks any kind of page (e.g. "no team page", "no about page"), CHECK the `pagesCrawled` list above. ' +
+    'If a URL like /our-team or /about exists in that list, the page DOES exist on the site even if its content is truncated below — do not claim it is missing.\n\n' +
+    'FULL PAGE TEXT (' + pages.length + ' pages crawled, prioritising about/team/services/contact):\n' + allText.slice(0, 12000) + '\n\n' +
+    'I have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
   (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?
     'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n' : '') +
   (audience === 'homeowner'

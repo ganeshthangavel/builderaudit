@@ -14,13 +14,14 @@
  *   node src/weekly-cron.js --user=<userId>  # just process one user (for testing)
  */
 
+const config = require('./config');
 const db = require('./db');
 const email = require('./email');
 const scorer = require('./scorer-ai');
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const SPECIFIC_USER = (process.argv.find(a => a.startsWith('--user=')) || '').replace('--user=', '');
-const APP_BASE_URL = process.env.APP_BASE_URL || 'https://builderaudit.co.uk';
+const APP_BASE_URL = config.APP_BASE_URL || 'https://builderaudit.co.uk';
 
 function log(...args) { console.log('[weekly-cron]', ...args); }
 

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Run an audit — BuilderAudit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
 </head>
@@ -117,6 +118,7 @@ function handle(name,data){
     /* Redirect to the report URL */
     setTimeout(function(){window.location.href='/report/'+data.id;},600);
   }
+  else if(name==='blocked')showBlocked(data);
   else if(name==='error')showError(data.message);
 }
 
@@ -139,6 +141,24 @@ function showError(msg){
   document.getElementById('auditBtn').disabled=false;
   document.getElementById('errorArea').innerHTML='<div class="error-card">Audit failed: '+esc(msg)+'</div>';
 }
+
+function showBlocked(data){
+  document.getElementById('scanStage').classList.remove('active');
+  document.getElementById('auditBtn').disabled=false;
+  var html=
+    '<div class="blocked-card">'+
+      '<div class="blocked-icon">\u26A0</div>'+
+      '<div class="blocked-title">We can\u2019t audit this site</div>'+
+      '<div class="blocked-message">'+esc(data.message||'Bot protection prevented us from analysing this website.')+'</div>'+
+      (data.suggestion?'<div class="blocked-suggestion">'+esc(data.suggestion)+'</div>':'')+
+      '<div class="blocked-actions">'+
+        '<a href="/" class="blocked-btn-primary">Try a different site</a>'+
+        '<a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20\u2014%20Site%20blocked" class="blocked-btn-secondary">Contact us</a>'+
+      '</div>'+
+    '</div>';
+  document.getElementById('errorArea').innerHTML=html;
+}
 </script>
+<script src="/assets/text-effect.js" defer></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ const https = require('https');
 const { chromium } = require('playwright');
 const Anthropic = require('@anthropic-ai/sdk');
 const { customAlphabet } = require('nanoid');
+const config = require('./config');
 const db = require('./db');
 const auth = require('./auth');
 const email = require('./email');
@@ -22,9 +23,9 @@ app.use(auth.attachUser);
 const PUBLIC = path.join(__dirname, '../public');
 
 /* ── Anthropic client with explicit key + startup diagnostics ──
-   The SDK auto-reads ANTHROPIC_API_KEY, but being explicit gives us
-   a clear error if the env var is missing rather than a cryptic SDK error. */
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+   Read from config.js (a boot-time snapshot) to bypass Railway Runtime V2
+   which strips user env vars at request time. */
+const ANTHROPIC_KEY = config.ANTHROPIC_API_KEY;
 if (!ANTHROPIC_KEY) {
   console.error('✗ ANTHROPIC_API_KEY is not set — audits WILL fail.');
   console.error('  Check Railway → Variables → ANTHROPIC_API_KEY and redeploy.');
@@ -41,7 +42,7 @@ if (!ANTHROPIC_KEY) {
 const client = new Anthropic({ apiKey: ANTHROPIC_KEY ? ANTHROPIC_KEY.trim() : undefined });
 
 const MAX_PAGES = 20;
-const SERPAPI_KEY = process.env.SERPAPI_KEY;
+const SERPAPI_KEY = config.SERPAPI_KEY;
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Initialise the database on startup
@@ -842,39 +843,33 @@ app.post('/api/report/:id/override', async (req, res) => {
 /* Diagnostic endpoint — shows DB schema + env var visibility.
    Visit /api/_diag/schema to confirm migrations ran. Safe to leave in prod — no secrets exposed. */
 app.get('/api/_diag/schema', async (req, res) => {
-  /* Multiple ways to read env so we can spot proxy/cache weirdness */
+  /* Compare process.env (which Runtime V2 strips) with config snapshot (captured at boot) */
   const directDb = process.env.DATABASE_URL;
-  const directDbAlt = process.env['DATABASE_URL'];
   const allKeys = Object.keys(process.env);
-  const allEntries = Object.entries(process.env).map(([k, v]) => k);
-  const hasOwn = Object.prototype.hasOwnProperty.call(process.env, 'DATABASE_URL');
 
-  /* Log to stdout so we can correlate this exact request with Railway logs */
-  console.log('[_diag] direct=' + (!!directDb) + ' bracket=' + (!!directDbAlt) +
-    ' hasOwn=' + hasOwn + ' totalKeys=' + allKeys.length + ' isEnabled=' + db.isEnabled());
+  console.log('[_diag] runtime DATABASE_URL=' + (!!directDb) +
+    ' config DATABASE_URL=' + (!!config.DATABASE_URL) +
+    ' isEnabled=' + db.isEnabled());
 
   const result = {
-    env: {
-      direct_DATABASE_URL: !!directDb,
-      bracket_DATABASE_URL: !!directDbAlt,
-      hasOwn_DATABASE_URL: hasOwn,
-      DATABASE_URL_length: directDb ? directDb.length : 0,
-      DATABASE_URL_prefix: directDb ? directDb.slice(0, 15) + '…' : null,
+    runtime_env: {
+      DATABASE_URL_present: !!directDb,
       ANTHROPIC_API_KEY_present: !!process.env.ANTHROPIC_API_KEY,
-      NODE_ENV: process.env.NODE_ENV || null,
-      PORT: process.env.PORT || null,
-      total_env_keys_via_Object_keys: allKeys.length,
-      total_env_keys_via_Object_entries: allEntries.length,
-      env_names: allKeys.filter(k =>
-        /^(DATABASE|POSTGRES|PG|ANTHROPIC|SERPAPI|RESEND|JWT|FROM)/.test(k)
-      ),
-      all_visible_keys: allKeys.sort(),
+      total_keys: allKeys.length,
+    },
+    config_snapshot: {
+      DATABASE_URL_present: !!config.DATABASE_URL,
+      DATABASE_URL_length: config.DATABASE_URL ? config.DATABASE_URL.length : 0,
+      ANTHROPIC_API_KEY_present: !!config.ANTHROPIC_API_KEY,
+      JWT_SECRET_present: !!config.JWT_SECRET,
+      RESEND_API_KEY_present: !!config.RESEND_API_KEY,
+      SERPAPI_KEY_present: !!config.SERPAPI_KEY,
     },
     db_enabled: db.isEnabled(),
   };
 
   if (!db.isEnabled()) {
-    result.error = 'DB not configured — db.isEnabled() returned false. DATABASE_URL not reaching db.js module.';
+    result.error = 'DB not configured — db.isEnabled() returned false. Check config.DATABASE_URL.';
     return res.json(result);
   }
 

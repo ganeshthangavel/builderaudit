@@ -222,6 +222,8 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
   const origin = new URL(startUrl).origin;
   const pages = [];
   let totalCost = 0;
+  let consecutiveErrors = 0;
+  let rateLimitHit = false;
 
   while (queue.length > 0 && pages.length < MAX_PAGES) {
     const url = queue.shift();
@@ -235,9 +237,16 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
     const isKeyPage = SCREENSHOT_PRIORITY.test(path);
     const withScreenshot = isHomepage || isKeyPage;
 
+    /* Throttle ourselves: ScrapFly's free/starter plans cap at ~25 requests/min.
+       2.5s between requests gives us max ~24/min, safely under the limit. */
+    if (pages.length > 0) {
+      await new Promise(r => setTimeout(r, 2500));
+    }
+
     try {
       const result = await scrapflyFetch(url, { withScreenshot, debug });
       totalCost += result.cost;
+      consecutiveErrors = 0;
 
       if (result.statusCode >= 400) {
         if (debug) debugLog.push({ url, stage: 'http-error', status: result.statusCode, cost: result.cost });
@@ -270,7 +279,6 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
         stage: 'success',
         textLen: textContent.length,
         htmlLen: result.html.length,
-        htmlSample: result.html.slice(0, 1500),
         anchorTagCount: (result.html.match(/<a\s/gi) || []).length,
         imageCount: images.length,
         linksFound: links.length,
@@ -279,14 +287,33 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
         cost: result.cost,
       });
     } catch (err) {
-      console.warn('ScrapFly crawl failed:', url, err.message);
-      if (debug) debugLog.push({ url, stage: 'exception', message: err.message });
+      const msg = err.message || '';
+      console.warn('ScrapFly crawl failed:', url, msg);
+      if (debug) debugLog.push({ url, stage: 'exception', message: msg });
+
+      consecutiveErrors++;
+
+      /* Rate limit hit — stop entirely. Continuing makes it worse and ScrapFly
+         warns about IP-level firewall blocks if we keep hammering. */
+      if (msg.includes('429') || msg.includes('throttled') || msg.includes('too many')) {
+        rateLimitHit = true;
+        console.warn('[scrapfly] Rate limit hit, aborting crawl');
+        if (debug) debugLog.push({ stage: 'aborted', reason: 'rate_limit', pagesCrawled: pages.length });
+        break;
+      }
+
+      /* Three consecutive errors → something else is wrong, stop firing requests */
+      if (consecutiveErrors >= 3) {
+        console.warn('[scrapfly] 3 consecutive errors, aborting crawl');
+        if (debug) debugLog.push({ stage: 'aborted', reason: 'consecutive_errors' });
+        break;
+      }
     }
   }
 
-  console.log(`[scrapfly] Crawl complete: ${pages.length} pages, total cost ${totalCost} credits`);
+  console.log(`[scrapfly] Crawl complete: ${pages.length} pages, total cost ${totalCost} credits${rateLimitHit ? ' (rate limited)' : ''}`);
 
-  if (debug) return { pages, debugLog, totalCost };
+  if (debug) return { pages, debugLog, totalCost, rateLimitHit };
   return pages;
 }
 
@@ -294,5 +321,5 @@ module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
   /* Version stamp — bump when this file changes so we can see which build is live */
-  version: '2026-04-26-rawhtml',
+  version: '2026-04-26-throttled',
 };

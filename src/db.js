@@ -120,6 +120,34 @@ async function initSchema() {
   await step('users.weekly_email_opt_in',  `ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_opt_in BOOLEAN DEFAULT FALSE`);
   await step('users.last_weekly_email_at', `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_email_at TIMESTAMPTZ`);
 
+  /* Phone number (required at signup, never displayed publicly) */
+  await step('users.phone',                 `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
+
+  /* GDPR consent flags + timestamps. We store both whether the user consented
+     AND when, because UK GDPR Art 7(1) requires we be able to demonstrate consent.
+     The consent_log table below has the immutable audit trail. */
+  await step('users.consent_tos',           `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_tos BOOLEAN DEFAULT FALSE`);
+  await step('users.consent_tos_at',        `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_tos_at TIMESTAMPTZ`);
+  await step('users.consent_auth',          `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_auth BOOLEAN DEFAULT FALSE`);
+  await step('users.consent_auth_at',       `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_auth_at TIMESTAMPTZ`);
+  await step('users.consent_agency',        `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_agency BOOLEAN DEFAULT FALSE`);
+  await step('users.consent_agency_at',     `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_agency_at TIMESTAMPTZ`);
+
+  /* Immutable audit log of every consent event (granted, withdrawn, updated).
+     Required by GDPR for demonstrability if challenged. */
+  await step('create consent_log table', `
+    CREATE TABLE IF NOT EXISTS consent_log (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      consent_type TEXT NOT NULL,
+      granted BOOLEAN NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await step('index consent_log', `CREATE INDEX IF NOT EXISTS idx_consent_log_user ON consent_log(user_id, created_at DESC)`);
+
   /* Step 4: indexes on new columns */
   await step('index audits.user_id', `CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
 
@@ -202,21 +230,68 @@ async function listEnquiriesForUser(userId) {
 // USERS
 // ═════════════════════════════════════════════════════════════════════════════
 
-async function createUser({ id, email, passwordHash, companyName, businessType, region }) {
+async function createUser({ id, email, passwordHash, companyName, businessType, region, phone,
+                            consentTos, consentAuth, consentAgency, consentWeekly }) {
   if (!getPool()) throw new Error('Database not configured');
+
+  /* GDPR requires consent timestamps to demonstrate when consent was given.
+     We set them to NOW() if the user gave that specific consent. */
+  const now = new Date();
 
   try {
     await getPool().query(
-      `INSERT INTO users (id, email, password_hash, company_name, business_type, region)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region]
+      `INSERT INTO users (
+         id, email, password_hash, company_name, business_type, region, phone,
+         consent_tos, consent_tos_at,
+         consent_auth, consent_auth_at,
+         consent_agency, consent_agency_at,
+         weekly_email_opt_in
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region,
+        phone || null,
+        !!consentTos, consentTos ? now : null,
+        !!consentAuth, consentAuth ? now : null,
+        !!consentAgency, consentAgency ? now : null,
+        !!consentWeekly,
+      ]
     );
     return { id, email, companyName, businessType, region };
   } catch (err) {
     if (err.code === '23505') {
       throw new Error('An account with this email already exists');
     }
+    /* If the user table doesn't have the new consent columns yet (legacy DB),
+       fall back to a basic insert so signup still works. We log a warning so
+       you can spot it. */
+    if (err.code === '42703') {
+      console.warn('createUser fallback: consent columns missing, inserting basic user.');
+      await getPool().query(
+        `INSERT INTO users (id, email, password_hash, company_name, business_type, region)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region]
+      );
+      return { id, email, companyName, businessType, region };
+    }
     throw err;
+  }
+}
+
+/* Append a row to the consent_log audit trail. Called whenever a user's consent
+   state changes (signup, settings change, withdrawal). Required by GDPR Art 7(1)
+   so we can demonstrate when each consent was given/withdrawn. */
+async function logConsent({ userId, consentType, granted, ipAddress, userAgent }) {
+  if (!getPool()) return;
+  try {
+    await getPool().query(
+      `INSERT INTO consent_log (user_id, consent_type, granted, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, consentType, !!granted, ipAddress || null, userAgent || null]
+    );
+  } catch (err) {
+    /* Non-fatal — log but don't throw, signup should still succeed */
+    console.warn('logConsent failed:', err.message);
   }
 }
 
@@ -225,14 +300,15 @@ async function getUserByEmail(email) {
   try {
     const { rows } = await getPool().query(
       `SELECT id, email, password_hash, company_name, business_type, region, created_at,
-              weekly_email_opt_in, last_weekly_email_at
+              phone, weekly_email_opt_in, last_weekly_email_at,
+              consent_agency, consent_agency_at
        FROM users WHERE email = $1`,
       [email.toLowerCase().trim()]
     );
     return rows[0] || null;
   } catch (err) {
     if (err.code === '42703') {
-      console.warn('getUserByEmail fallback: retention columns missing');
+      console.warn('getUserByEmail fallback: new columns missing');
       const { rows } = await getPool().query(
         `SELECT id, email, password_hash, company_name, business_type, region, created_at
          FROM users WHERE email = $1`,
@@ -249,14 +325,15 @@ async function getUserById(id) {
   try {
     const { rows } = await getPool().query(
       `SELECT id, email, company_name, business_type, region, created_at,
-              weekly_email_opt_in, last_weekly_email_at
+              phone, weekly_email_opt_in, last_weekly_email_at,
+              consent_agency, consent_agency_at
        FROM users WHERE id = $1`,
       [id]
     );
     return rows[0] || null;
   } catch (err) {
     if (err.code === '42703') {
-      console.warn('getUserById fallback: retention columns missing');
+      console.warn('getUserById fallback: new columns missing');
       const { rows } = await getPool().query(
         `SELECT id, email, company_name, business_type, region, created_at
          FROM users WHERE id = $1`,
@@ -434,6 +511,12 @@ async function updateUserSettings(userId, settings) {
     fields.push(`weekly_email_opt_in = $${idx++}`);
     values.push(settings.weeklyEmailOptIn);
   }
+  if (typeof settings.consentAgency === 'boolean') {
+    fields.push(`consent_agency = $${idx++}`);
+    values.push(settings.consentAgency);
+    fields.push(`consent_agency_at = $${idx++}`);
+    values.push(settings.consentAgency ? new Date() : null);
+  }
   if (fields.length === 0) return;
   values.push(userId);
   await getPool().query(
@@ -535,6 +618,7 @@ module.exports = {
   recordLogin,
   updateUserSettings,
   markWeeklyEmailSent,
+  logConsent,
   // audits
   saveAudit,
   updateAnalysis,

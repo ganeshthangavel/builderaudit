@@ -186,6 +186,40 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
 
   /* Build a user-context line that tailors the AI feedback */
   let contextLine = '';
+
+  /* Detect the builder's actual operating region from page content. The AI was
+     inferring "London" for a Doncaster builder because mentions of "Google London"
+     in client names confused it. We extract concrete UK location names from titles,
+     about page, team page, and the homepage's first 2000 chars — those locations
+     are the builder's true operating area. */
+  const ukLocations = [
+    'London','Manchester','Birmingham','Leeds','Liverpool','Bristol','Newcastle','Sheffield','Cardiff','Glasgow','Edinburgh',
+    'Doncaster','Rotherham','Barnsley','Wakefield','Bradford','Huddersfield','York','Hull','Halifax','Harrogate',
+    'Nottingham','Derby','Leicester','Coventry','Wolverhampton','Stoke','Stockport','Oldham','Bolton','Preston','Blackpool',
+    'Brighton','Reading','Oxford','Cambridge','Norwich','Ipswich','Colchester','Southampton','Portsmouth','Bournemouth','Plymouth','Exeter','Bath','Watford','Slough','Luton',
+    'Swansea','Newport','Belfast','Dundee','Aberdeen','Inverness',
+    'Yorkshire','Lancashire','Lincolnshire','Nottinghamshire','Derbyshire','Warwickshire','Worcestershire','Staffordshire','Cheshire','Greater Manchester',
+    'Surrey','Kent','Sussex','Hampshire','Dorset','Devon','Cornwall','Somerset','Gloucestershire','Wiltshire','Berkshire','Oxfordshire','Buckinghamshire','Hertfordshire','Bedfordshire','Cambridgeshire','Essex','Suffolk','Norfolk','Northamptonshire',
+  ];
+  /* Build search corpus from primary signals — page titles + about/team text + homepage start.
+     We avoid scanning the full body to dodge red herrings (e.g. "London" in a client list). */
+  const locationCorpus = [
+    pages.map(p => p.meta.title || '').join(' '),
+    aboutPage ? aboutPage.textContent : '',
+    teamPage ? teamPage.textContent : '',
+    pages[0] ? pages[0].textContent.slice(0, 2000) : '',
+  ].join(' ');
+  /* Count occurrences of each location — most-mentioned wins */
+  const locationCounts = {};
+  ukLocations.forEach(loc => {
+    const re = new RegExp('\\b' + loc + '\\b', 'gi');
+    const matches = locationCorpus.match(re);
+    if (matches) locationCounts[loc] = matches.length;
+  });
+  const detectedLocations = Object.keys(locationCounts).sort((a, b) => locationCounts[b] - locationCounts[a]);
+  const primaryLocation = detectedLocations[0] || null;
+  const otherLocations = detectedLocations.slice(1, 5);
+
   if (userContext && userContext.businessType) {
     const typeLabels = {
       ltd: 'Limited Company (Ltd) — homeowners expect Companies House number, VAT number, registered office address, director names',
@@ -195,9 +229,20 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     };
     contextLine += '\n\nBUSINESS CONTEXT: This website belongs to a ' + (typeLabels[userContext.businessType] || userContext.businessType) + '.';
     if (userContext.region) {
-      contextLine += '\nRegion: ' + userContext.region + '. Consider regional accreditations (e.g. local FMB chapter, Trading Standards) and regional homeowner expectations.';
+      contextLine += '\nRegion (from user signup): ' + userContext.region + '. Consider regional accreditations (e.g. local FMB chapter, Trading Standards) and regional homeowner expectations.';
     }
     contextLine += '\nYour feedback MUST acknowledge this business type. For example: do not penalise a Sole Trader for not having a Companies House number. Do not expect regional Ltd accreditations if they are a Partnership. Tailor the trust_questions, trust_breakpoints, and scoring accordingly.';
+  }
+
+  /* Tell the AI where the builder operates so it doesn't invent a London audience
+     for a Doncaster builder. This applies regardless of audience (builder report or
+     homeowner report) — both should reference the actual operating region. */
+  if (primaryLocation) {
+    contextLine += '\n\nBUILDER\'S OPERATING REGION (DETECTED FROM SITE CONTENT): The site primarily references ' + primaryLocation +
+      (otherLocations.length ? ' (and also: ' + otherLocations.join(', ') + ')' : '') + '. ' +
+      'When framing the homeowner persona — whether the report is for the builder or the homeowner directly — ASSUME the homeowner is located in or near these areas. ' +
+      'Do NOT reference cities or regions the builder does not operate in (e.g. don\'t say "London homeowners" if the site references Yorkshire). ' +
+      'If you mention a city or region, it must be one of the detected locations above.';
   }
 
   /* Pick the AI persona based on audience */
@@ -229,7 +274,7 @@ Your tone should be:
 
 CONTEXT: A homeowner has typed in a builder's website to check whether the builder stands up to scrutiny. They want the truth before they write a cheque.
 
-Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
+Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + contextLine;
 
   const systemPrompt = audience === 'homeowner' ? homeownerPrompt : builderPrompt;
 

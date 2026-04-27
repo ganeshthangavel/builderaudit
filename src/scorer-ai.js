@@ -7,6 +7,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('./config');
+const { extractSiteFacts } = require('./site-facts');
 
 /* Lazy-initialised Anthropic client. We don't instantiate at module load because
    that can run before env vars are available (and it lets us give a clearer error
@@ -187,38 +188,13 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
   /* Build a user-context line that tailors the AI feedback */
   let contextLine = '';
 
-  /* Detect the builder's actual operating region from page content. The AI was
-     inferring "London" for a Doncaster builder because mentions of "Google London"
-     in client names confused it. We extract concrete UK location names from titles,
-     about page, team page, and the homepage's first 2000 chars — those locations
-     are the builder's true operating area. */
-  const ukLocations = [
-    'London','Manchester','Birmingham','Leeds','Liverpool','Bristol','Newcastle','Sheffield','Cardiff','Glasgow','Edinburgh',
-    'Doncaster','Rotherham','Barnsley','Wakefield','Bradford','Huddersfield','York','Hull','Halifax','Harrogate',
-    'Nottingham','Derby','Leicester','Coventry','Wolverhampton','Stoke','Stockport','Oldham','Bolton','Preston','Blackpool',
-    'Brighton','Reading','Oxford','Cambridge','Norwich','Ipswich','Colchester','Southampton','Portsmouth','Bournemouth','Plymouth','Exeter','Bath','Watford','Slough','Luton',
-    'Swansea','Newport','Belfast','Dundee','Aberdeen','Inverness',
-    'Yorkshire','Lancashire','Lincolnshire','Nottinghamshire','Derbyshire','Warwickshire','Worcestershire','Staffordshire','Cheshire','Greater Manchester',
-    'Surrey','Kent','Sussex','Hampshire','Dorset','Devon','Cornwall','Somerset','Gloucestershire','Wiltshire','Berkshire','Oxfordshire','Buckinghamshire','Hertfordshire','Bedfordshire','Cambridgeshire','Essex','Suffolk','Norfolk','Northamptonshire',
-  ];
-  /* Build search corpus from primary signals — page titles + about/team text + homepage start.
-     We avoid scanning the full body to dodge red herrings (e.g. "London" in a client list). */
-  const locationCorpus = [
-    pages.map(p => p.meta.title || '').join(' '),
-    aboutPage ? aboutPage.textContent : '',
-    teamPage ? teamPage.textContent : '',
-    pages[0] ? pages[0].textContent.slice(0, 2000) : '',
-  ].join(' ');
-  /* Count occurrences of each location — most-mentioned wins */
-  const locationCounts = {};
-  ukLocations.forEach(loc => {
-    const re = new RegExp('\\b' + loc + '\\b', 'gi');
-    const matches = locationCorpus.match(re);
-    if (matches) locationCounts[loc] = matches.length;
-  });
-  const detectedLocations = Object.keys(locationCounts).sort((a, b) => locationCounts[b] - locationCounts[a]);
-  const primaryLocation = detectedLocations[0] || null;
-  const otherLocations = detectedLocations.slice(1, 5);
+  /* Extract structured site facts deterministically (site-facts.js).
+     This is the FUTURE-PROOFED replacement for the AI doing fact-extraction itself.
+     The AI was hallucinating — calling Doncaster builders "London-focused", missing
+     named team members, claiming "no testimonials" when they exist. The fix: we
+     extract every important fact via regex/heuristics BEFORE the AI sees anything,
+     then tell the AI to use these facts as authoritative ground truth. */
+  const siteFacts = extractSiteFacts(pages);
 
   if (userContext && userContext.businessType) {
     const typeLabels = {
@@ -234,12 +210,13 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     contextLine += '\nYour feedback MUST acknowledge this business type. For example: do not penalise a Sole Trader for not having a Companies House number. Do not expect regional Ltd accreditations if they are a Partnership. Tailor the trust_questions, trust_breakpoints, and scoring accordingly.';
   }
 
-  /* Tell the AI where the builder operates so it doesn't invent a London audience
-     for a Doncaster builder. This applies regardless of audience (builder report or
-     homeowner report) — both should reference the actual operating region. */
-  if (primaryLocation) {
-    contextLine += '\n\nBUILDER\'S OPERATING REGION (DETECTED FROM SITE CONTENT): The site primarily references ' + primaryLocation +
-      (otherLocations.length ? ' (and also: ' + otherLocations.join(', ') + ')' : '') + '. ' +
+  /* Tell the AI where the builder operates — uses the deterministic location
+     extraction from site-facts. This applies regardless of audience (builder
+     report or homeowner report). */
+  if (siteFacts.location && siteFacts.location.primary) {
+    const otherLocs = siteFacts.location.allMentioned.slice(1, 5);
+    contextLine += '\n\nBUILDER\'S OPERATING REGION (DETERMINISTICALLY EXTRACTED): The site primarily references ' + siteFacts.location.primary +
+      (otherLocs.length ? ' (and also: ' + otherLocs.join(', ') + ')' : '') + '. ' +
       'When framing the homeowner persona — whether the report is for the builder or the homeowner directly — ASSUME the homeowner is located in or near these areas. ' +
       'Do NOT reference cities or regions the builder does not operate in (e.g. don\'t say "London homeowners" if the site references Yorkshire). ' +
       'If you mention a city or region, it must be one of the detected locations above.';
@@ -279,13 +256,29 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + context
   const systemPrompt = audience === 'homeowner' ? homeownerPrompt : builderPrompt;
 
   const userPrompt = 'Website being audited: ' + targetUrl + '\n\n' +
-    'EXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\n' +
+    '════ AUTHORITATIVE SITE FACTS (extracted programmatically — TREAT AS GROUND TRUTH) ════\n' +
+    JSON.stringify(siteFacts, null, 2) + '\n\n' +
+    'CRITICAL — HOW TO USE THE FACTS ABOVE:\n' +
+    '- These facts have been extracted from the site by deterministic code (regex/heuristics), not by guessing. They are MORE RELIABLE than your reading of the truncated text below.\n' +
+    '- For business_snapshot.location: use `siteFacts.location.primary` and `siteFacts.location.allMentioned`.\n' +
+    '- For business_snapshot.team.key_people: use `siteFacts.team.namedPeople` (each item is { name, role }). If empty, the site genuinely lacks named individuals.\n' +
+    '- For business_snapshot.team.owners: use `siteFacts.team.ownerName`.\n' +
+    '- For business_snapshot.contact.address: use `siteFacts.location.streetAddress` and `siteFacts.location.postcode` if present.\n' +
+    '- For accreditations: use `siteFacts.accreditations`.\n' +
+    '- For company number / VAT / founded year: use `siteFacts.companyIdentity`.\n' +
+    '- For testimonials: use `siteFacts.testimonials.quoteCount` and `siteFacts.testimonials.sampleQuotes`. If quoteCount > 0, the site DOES have testimonials.\n' +
+    '- For external review links: use `siteFacts.externalReviews.platformsLinked`. If non-empty, the site has those.\n' +
+    '- For insurance: use `siteFacts.insurance`. If `mentioned: false`, then it\'s genuinely not on site — flag it.\n' +
+    '- For automatic red flags worth surfacing: use `siteFacts.flags`. Each flag is pre-validated.\n' +
+    '- DO NOT contradict siteFacts. If siteFacts says the team has named members, do NOT call the business "anonymous". If siteFacts says the location is "Doncaster", do NOT say "London homeowners".\n' +
+    '- The text below is a SECONDARY signal for nuance, tone, and details siteFacts may have missed. siteFacts wins disputes.\n\n' +
+    'EXTRACTED SIGNALS (additional context):\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\n' +
     'CRITICAL FACT-EXTRACTION RULES — FOLLOW THESE EXACTLY:\n' +
-    '1. If `teamPageContent` is non-null, you MUST read its `fullText` field carefully and extract every named individual (founders, directors, team members) into business_snapshot.team.key_people. Format each as "Full Name — Role". Do NOT say the business is "anonymous" or that there are "no named individuals" if teamPageContent contains names.\n' +
-    '2. If `testimonialsPageContent` is non-null with substantial content, the business HAS testimonials. Do NOT report "no testimonials" or "anonymous testimonials" without quoting evidence from this content.\n' +
-    '3. If `aboutPageContent` is non-null, use it to identify the company story, year founded, and key milestones for business_snapshot.\n' +
-    '4. Before claiming the site lacks any kind of page (e.g. "no team page"), CHECK the `pagesCrawled` list. If a relevant URL exists in that list, the page DOES exist — do not claim it is missing.\n' +
-    '5. The fullText fields above are the AUTHORITATIVE source for team and testimonial information. They take precedence over the truncated FULL PAGE TEXT below.\n\n' +
+    '1. If `teamPageContent` is non-null, you MUST read its `fullText` field carefully and extract every named individual into business_snapshot.team.key_people. Format each as "Full Name — Role". Do NOT say the business is "anonymous" or that there are "no named individuals" if siteFacts.team.namedPeople is non-empty.\n' +
+    '2. If `testimonialsPageContent` is non-null with substantial content, the business HAS testimonials. Do NOT report "no testimonials" if siteFacts.testimonials.quoteCount > 0.\n' +
+    '3. If `aboutPageContent` is non-null, use it to identify the company story, year founded, and key milestones.\n' +
+    '4. Before claiming the site lacks any kind of page, CHECK the `pagesCrawled` list. If a relevant URL exists, the page DOES exist.\n' +
+    '5. siteFacts is AUTHORITATIVE — the truncated text below is just for tone and missed nuance.\n\n' +
     'FULL PAGE TEXT (' + pages.length + ' pages crawled, prioritising about/team/services/contact):\n' + allText.slice(0, 12000) + '\n\n' +
     'I have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
   (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?

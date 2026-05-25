@@ -1,543 +1,209 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Create your account — BuilderAudit</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuilderAudit — Forensic trust analysis for UK construction websites</title>
+<meta name="description" content="The UK's first forensic trust platform for construction. Audit any builder's website in 60 seconds — for free. See what homeowners really think before they ring.">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
-<style>
-.auth-wrap { max-width: 520px; margin: 2rem auto 4rem; padding: 0 1.5rem; }
-.auth-card {
-  background: #fff;
-  border: 1px solid var(--brd);
-  border-radius: 24px;
-  padding: 2.5rem 2.25rem;
-  box-shadow: var(--shadow2);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Top stepper area — dark plum banner so the white dots read well */
-.stepper-banner {
-  margin: -2.5rem -2.25rem 2rem;
-  padding: 2rem 2.25rem 1.5rem;
-  background: linear-gradient(165deg, #4a3d43 0%, #3a2e33 50%, #2e2327 100%);
-  border-radius: 24px 24px 0 0;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
-}
-.stepper-banner::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 50% 60% at 50% 100%, rgba(222,166,175,0.22), transparent 60%),
-    radial-gradient(ellipse 40% 50% at 15% 0%, rgba(140,188,208,0.16), transparent 55%);
-  pointer-events: none;
-}
-.stepper-banner > * { position: relative; z-index: 1; }
-.stepper-banner-title {
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  margin-bottom: 16px;
-  opacity: .8;
-}
-
-.field { margin-bottom: 1rem; }
-.field label { font-size: 12px; font-weight: 700; color: var(--fg); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 6px; }
-.field input, .field select {
-  width: 100%;
-  padding: 13px 16px;
-  border: 1.5px solid var(--brd2);
-  border-radius: 12px;
-  font-size: 15px;
-  font-family: var(--font);
-  outline: none;
-  transition: border-color .2s, box-shadow .2s;
-  box-sizing: border-box;
-  color: var(--fg);
-  background: #fff;
-}
-.field input:focus, .field select:focus {
-  border-color: var(--peach);
-  box-shadow: 0 0 0 4px var(--peach-b);
-}
-.field-hint { font-size: 12px; color: var(--fg3); margin-top: 6px; line-height: 1.5; }
-
-.radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.radio-opt { position: relative; }
-.radio-opt input { position: absolute; opacity: 0; pointer-events: none; }
-.radio-opt label {
-  display: block;
-  padding: 13px 14px;
-  border: 1.5px solid var(--brd2);
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: center;
-  cursor: pointer;
-  transition: all .2s;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--fg2);
-  margin-bottom: 0;
-}
-.radio-opt input:checked + label {
-  border-color: var(--peach-d);
-  background: var(--peach-b);
-  color: var(--fg);
-  font-weight: 700;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(222,166,175,0.25);
-}
-
-.auth-alt { text-align: center; margin-top: 1.5rem; font-size: 13px; color: var(--fg2); }
-.auth-alt a { color: var(--peach-d); font-weight: 700; text-decoration: none; }
-
-.err-box {
-  background: var(--red-b);
-  color: var(--red);
-  border-left: 3px solid var(--red);
-  border-radius: 10px;
-  padding: 12px 16px;
-  font-size: 13px;
-  margin-bottom: 1rem;
-  font-weight: 500;
-  display: none;
-}
-.err-box.on { display: block; }
-
-/* Consent block */
-.consent-block {
-  margin-top: 1.25rem;
-  padding: 1.25rem;
-  background: var(--bg);
-  border: 1px solid var(--brd);
-  border-radius: 14px;
-}
-.consent-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--fg);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 1rem;
-}
-.consent-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 0;
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--fg);
-}
-.consent-row + .consent-row { border-top: 1px dashed var(--brd); }
-.consent-row input[type="checkbox"] {
-  margin-top: 2px;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  accent-color: var(--peach-d);
-  cursor: pointer;
-}
-.consent-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.consent-text a { color: var(--peach-d); font-weight: 600; text-decoration: underline; }
-.consent-required-tag,
-.consent-optional-tag {
-  display: inline-block;
-  width: fit-content;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 99px;
-  margin-top: 2px;
-}
-.consent-required-tag { background: var(--red-b); color: var(--red); }
-.consent-optional-tag { background: var(--bg3); color: var(--fg3); }
-</style>
 </head>
-<body>
+<body class="ba3">
+<div class="ba3-shell">
 
-<header>
-  <a href="/" class="logo">Builder<em>Audit</em></a>
-  <div class="tagline">Forensic trust analysis for UK construction websites</div>
-</header>
+  <!-- HERO -->
+  <section class="ba3-hero">
+    <nav class="ba3-nav">
+      <a href="/" class="ba3-logo">
+        <div class="ba3-logo-mark">BA</div>
+        <div class="ba3-logo-text">BuilderAudit</div>
+      </a>
 
-<div class="auth-wrap">
-  <div class="auth-card">
+      <div class="ba3-toggle" id="audienceToggle" role="tablist" aria-label="Choose your view">
+        <button type="button" role="tab" data-mode="builder" class="on" onclick="setMode('builder')">I'm a builder</button>
+        <button type="button" role="tab" data-mode="homeowner" onclick="setMode('homeowner')">I'm a homeowner</button>
+      </div>
 
-    <!-- Stepper banner -->
-    <div class="stepper-banner">
-      <div class="stepper-banner-title" id="bannerTitle">Step 1 of 3</div>
-      <div class="stepper-wrap" style="margin-bottom:0;gap:1.25rem">
-        <div class="stepper-dots">
-          <div class="stepper-fill" id="stepFill" style="width:12px"></div>
-          <div class="stepper-dot reached" id="dot1"></div>
-          <div class="stepper-dot" id="dot2"></div>
-          <div class="stepper-dot" id="dot3"></div>
+      <a href="/login" class="ba3-btn light" style="background:#fff">Sign in</a>
+    </nav>
+
+    <div class="ba3-hero-grid">
+      <div>
+        <div class="ba3-kicker" id="heroKicker">Free for UK builders</div>
+        <h1 class="ba3-h1" id="heroH1">What would a homeowner think of your website?</h1>
+        <p class="ba3-lead" id="heroSub">We crawl your site like a fussy homeowner with £40k to spend. Get a forensic trust report in 60 seconds — for free, no signup.</p>
+
+        <form class="ba3-url-input" id="auditForm" onsubmit="return startAudit(event)">
+          <div class="prefix">https://</div>
+          <input type="text" id="urlInput" name="url" placeholder="yourbuilder.co.uk" autocomplete="off" required>
+          <button type="submit" id="auditBtn"><span id="auditLabel">Audit my site</span> →</button>
+        </form>
+
+        <div style="margin-top: 20px; display: flex; gap: 18px; flex-wrap: wrap;">
+          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> 60 seconds</div>
+          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> No card needed</div>
+          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> UK construction-only</div>
+        </div>
+      </div>
+
+      <!-- Toolbox illustration cluster on the right -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 360px; margin: 0 auto;">
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/hammer.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/hardhat.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/clipboard.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/drill.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/level.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/wrench.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/tape.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/gear.png" alt=""></div>
+        <div class="ba3-tool-icon lg"><img src="/assets/icons/screwdriver.png" alt=""></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT WE CHECK -->
+  <section style="padding: 80px 80px;">
+    <div style="text-align: center; margin-bottom: 56px;">
+      <div class="ba3-kicker">What we look at</div>
+      <h2 class="ba3-h2">Six trust signals, forensically checked</h2>
+      <p class="ba3-lead" style="margin: 0 auto;">Cowboy builders cost UK homeowners £1.2 billion a year. Our audit catches the same red flags homeowners spot in 90 seconds on your site.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 1100px; margin: 0 auto;">
+
+      <div class="ba3-panel">
+        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/hardhat.png" alt=""></div>
+        <h3 class="ba3-h3">Identity & legitimacy</h3>
+        <p class="ba3-body ba3-muted">Companies House number. Registered address. Insurance proof. The boring stuff that proves you're real.</p>
+      </div>
+
+      <div class="ba3-panel">
+        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/clipboard.png" alt=""></div>
+        <h3 class="ba3-h3">Accreditations</h3>
+        <p class="ba3-body ba3-muted">FMB. NHBC. TrustMark. CHAS. Gas Safe. We check what you display, and what you should.</p>
+      </div>
+
+      <div class="ba3-panel">
+        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/hammer.png" alt=""></div>
+        <h3 class="ba3-h3">Real work, real proof</h3>
+        <p class="ba3-body ba3-muted">We reverse-image-search every photo. If your "past projects" are stock photos from Spain, we'll catch it.</p>
+      </div>
+
+      <div class="ba3-panel">
+        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/gear.png" alt=""></div>
+        <h3 class="ba3-h3">Team & ownership</h3>
+        <p class="ba3-body ba3-muted">Named directors. Real photos. Founder bios. Faceless companies lose 40% of enquiries.</p>
+      </div>
+
+      <div class="ba3-panel">
+        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/drill.png" alt=""></div>
+        <h3 class="ba3-h3">Reviews & reputation</h3>
+        <p class="ba3-body ba3-muted">Google reviews. Checkatrade. Trustpilot. Internal quotes count for nothing unless they're verifiable.</p>
+      </div>
+
+      <div class="ba3-panel">
+        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/tape.png" alt=""></div>
+        <h3 class="ba3-h3">Contact & friction</h3>
+        <p class="ba3-body ba3-muted">Phone visible? Email working? Form too long? Every barrier between visit and enquiry is measured.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- THE PROOF SECTION -->
+  <section style="padding: 0 80px 100px;">
+    <div class="ba3-panel cream" style="padding: 56px 64px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;">
+        <div>
+          <div class="ba3-kicker" style="background: var(--ba3-ink)">Built for builders</div>
+          <h2 class="ba3-h2">Stop guessing why enquiries dry up</h2>
+          <p class="ba3-body" style="font-size: 17px; margin-bottom: 24px;">
+            You can't see your own website like a stranger does. We can. We've crawled hundreds of UK builder sites and we know the exact moments where homeowners hesitate, second-guess, and ring someone else.
+          </p>
+          <p class="ba3-body" style="font-size: 17px; margin-bottom: 32px;">
+            One free audit. Your weak spots ranked. Fixes you can do this weekend.
+          </p>
+          <a href="#top" class="ba3-btn primary" onclick="document.getElementById('urlInput').focus();return false">Run my free audit →</a>
+        </div>
+        <div style="text-align: center;">
+          <img src="/assets/handshake.png" alt="" style="max-width: 360px; width: 100%;">
         </div>
       </div>
     </div>
+  </section>
 
-    <div class="err-box" id="errBox"></div>
-
-    <!-- Step panels -->
-    <div class="step-panels" id="stepPanels">
-
-      <!-- STEP 1: ACCOUNT -->
-      <div class="step-panel active" data-step="1">
-        <div class="step-heading">
-          <div class="step-eyebrow">Your account</div>
-          <h2 class="step-title">Let's get you set up</h2>
-          <p class="step-sub">A few details so we can secure your account and follow up if needed. Takes 30 seconds.</p>
-        </div>
-
-        <div class="field">
-          <label for="email">Your email</label>
-          <input type="email" id="email" autocomplete="email" required autofocus placeholder="you@company.co.uk">
-        </div>
-
-        <div class="field">
-          <label for="phone">Mobile number</label>
-          <input type="tel" id="phone" autocomplete="tel" required placeholder="07xxx xxx xxx">
-          <div class="field-hint">UK mobile or landline. Used only for support contact and important updates about your account.</div>
-        </div>
-
-        <div class="field">
-          <label for="password">Password</label>
-          <input type="password" id="password" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
-          <div class="field-hint">Minimum 8 characters. Use a mix of letters and numbers for a strong password.</div>
-        </div>
-      </div>
-
-      <!-- STEP 2: BUSINESS -->
-      <div class="step-panel" data-step="2">
-        <div class="step-heading">
-          <div class="step-eyebrow">About your business</div>
-          <h2 class="step-title">Tell us what you do</h2>
-          <p class="step-sub">Helps us tailor your feedback. Sole Traders aren't penalised for lacking Companies House details.</p>
-        </div>
-
-        <div class="field">
-          <label for="companyName">Company name</label>
-          <input type="text" id="companyName" placeholder="e.g. Hylands Homes Ltd">
-        </div>
-
-        <div class="field">
-          <label>Business type</label>
-          <div class="radio-grid">
-            <div class="radio-opt">
-              <input type="radio" name="businessType" value="ltd" id="bt-ltd">
-              <label for="bt-ltd">Limited Company</label>
-            </div>
-            <div class="radio-opt">
-              <input type="radio" name="businessType" value="sole_trader" id="bt-sole">
-              <label for="bt-sole">Sole Trader</label>
-            </div>
-            <div class="radio-opt">
-              <input type="radio" name="businessType" value="partnership" id="bt-part">
-              <label for="bt-part">Partnership</label>
-            </div>
-            <div class="radio-opt">
-              <input type="radio" name="businessType" value="llp" id="bt-llp">
-              <label for="bt-llp">LLP</label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- STEP 3: LOCATION + CONSENT + REVIEW -->
-      <div class="step-panel" data-step="3">
-        <div class="step-heading">
-          <div class="step-eyebrow">Almost there</div>
-          <h2 class="step-title">Where are you based?</h2>
-          <p class="step-sub">Used for local SEO context and regional benchmarking.</p>
-        </div>
-
-        <div class="field">
-          <label for="region">Region</label>
-          <select id="region">
-            <option value="">Choose your region...</option>
-            <option value="London">London</option>
-            <option value="South East">South East</option>
-            <option value="South West">South West</option>
-            <option value="East of England">East of England</option>
-            <option value="East Midlands">East Midlands</option>
-            <option value="West Midlands">West Midlands</option>
-            <option value="Yorkshire and the Humber">Yorkshire and the Humber</option>
-            <option value="North West">North West</option>
-            <option value="North East">North East</option>
-            <option value="Scotland">Scotland</option>
-            <option value="Wales">Wales</option>
-            <option value="Northern Ireland">Northern Ireland</option>
-          </select>
-        </div>
-
-        <!-- GDPR consent block -->
-        <div class="consent-block">
-          <div class="consent-title">Permissions &amp; preferences</div>
-
-          <label class="consent-row required">
-            <input type="checkbox" id="consentTos" required>
-            <div class="consent-text">
-              <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</span>
-              <span class="consent-required-tag">Required</span>
-            </div>
-          </label>
-
-          <label class="consent-row required">
-            <input type="checkbox" id="consentAuth" required>
-            <div class="consent-text">
-              <span>I confirm I'm authorised to use this service on behalf of the business named above.</span>
-              <span class="consent-required-tag">Required</span>
-            </div>
-          </label>
-
-          <label class="consent-row">
-            <input type="checkbox" id="consentAgency">
-            <div class="consent-text">
-              <span>I'd like introductions to vetted agency partners (web design, SEO, photography, branding, CRM) when relevant to issues found in my reports.</span>
-              <span class="consent-optional-tag">Optional</span>
-            </div>
-          </label>
-
-          <label class="consent-row">
-            <input type="checkbox" id="consentWeekly">
-            <div class="consent-text">
-              <span>Send me a weekly check-in email with score changes and what's improved on my site.</span>
-              <span class="consent-optional-tag">Optional</span>
-            </div>
-          </label>
-        </div>
-
-        <!-- Review summary -->
-        <div class="field">
-          <label>Review your details</label>
-          <div class="review-list" id="reviewList"></div>
-        </div>
-      </div>
+  <!-- FOOTER -->
+  <footer class="ba3-footer">
+    <div class="copy">© 2026 BuilderAudit · UK's first forensic trust platform for construction</div>
+    <div class="links">
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/login">Sign in</a>
     </div>
+  </footer>
 
-    <!-- Stepper buttons -->
-    <div class="stepper-buttons">
-      <button class="stepper-back" id="backBtn" onclick="goBack()">&larr; Back</button>
-      <button class="stepper-continue" id="continueBtn" onclick="goForward()">
-        <span id="continueLabel">Continue</span>
-        <span class="stepper-check" id="continueCheck" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="8 12 11 15 16 9"></polyline>
-          </svg>
-        </span>
-      </button>
-    </div>
-
-    <div class="auth-alt">Already have an account? <a href="/login">Log in</a></div>
-  </div>
 </div>
 
 <script>
-/* Handle ?claim param (from signup link in report lock screen) */
-var urlParams = new URLSearchParams(window.location.search);
-var claimAuditId = urlParams.get('claim');
+/* ─── Audience toggle (builder vs homeowner) ─── */
+var currentMode = 'builder';
 
-var step = 1;
-var MAX_STEP = 3;
+var COPY = {
+  builder: {
+    kicker: 'Free for UK builders',
+    h1: 'What would a homeowner think of your website?',
+    sub: 'We crawl your site like a fussy homeowner with £40k to spend. Get a forensic trust report in 60 seconds — for free, no signup.',
+    placeholder: 'yourbuilder.co.uk',
+    cta: 'Audit my site',
+  },
+  homeowner: {
+    kicker: 'Free for UK homeowners',
+    h1: 'Should you trust this builder?',
+    sub: 'Paste any UK builder website. We\'ll run a forensic trust check and tell you what they don\'t want you to notice. Free, in 60 seconds.',
+    placeholder: 'thebuilder-you-are-checking.co.uk',
+    cta: 'Check this builder',
+  },
+};
 
-function showErr(msg){
-  var box=document.getElementById('errBox');
-  box.textContent = msg;
-  box.classList.add('on');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-function clearErr(){ document.getElementById('errBox').classList.remove('on'); }
-
-function setStepUi() {
-  /* Dots */
-  ['dot1','dot2','dot3'].forEach(function(id, i) {
-    document.getElementById(id).classList.toggle('reached', (i+1) <= step);
+function setMode(mode){
+  currentMode = mode;
+  /* Toggle button state */
+  document.querySelectorAll('#audienceToggle button').forEach(function(b){
+    b.classList.toggle('on', b.dataset.mode === mode);
   });
-  /* Fill width — centres on each dot */
-  /* dot positions: dot1=8, dot2=40, dot3=72 (gap 24 + dot 8) — fill needs to span from 0 to current dot */
-  var fillW = step === 1 ? 12 : step === 2 ? 44 : 76;
-  document.getElementById('stepFill').style.width = fillW + 'px';
-
-  /* Banner title */
-  document.getElementById('bannerTitle').textContent = 'Step ' + step + ' of ' + MAX_STEP;
-
-  /* Panels */
-  document.querySelectorAll('.step-panel').forEach(function(p) {
-    var pStep = parseInt(p.dataset.step, 10);
-    p.classList.remove('active', 'prev');
-    if (pStep === step) p.classList.add('active');
-    else if (pStep < step) p.classList.add('prev');
-  });
-
-  /* Back button — hidden on step 1 */
-  var back = document.getElementById('backBtn');
-  back.classList.toggle('show', step > 1);
-
-  /* Continue button label + check */
-  var label = document.getElementById('continueLabel');
-  var check = document.getElementById('continueCheck');
-  if (step === MAX_STEP) {
-    label.textContent = 'Create account';
-    check.classList.add('on');
-  } else {
-    label.textContent = 'Continue';
-    check.classList.remove('on');
-  }
-
-  /* Focus first field of step */
-  setTimeout(function() {
-    var active = document.querySelector('.step-panel.active');
-    if (!active) return;
-    var firstInput = active.querySelector('input, select');
-    if (firstInput && step !== MAX_STEP) firstInput.focus();
-    if (step === MAX_STEP) populateReview();
-  }, 250);
+  /* Swap hero copy */
+  var c = COPY[mode];
+  document.getElementById('heroKicker').textContent = c.kicker;
+  document.getElementById('heroH1').textContent = c.h1;
+  document.getElementById('heroSub').textContent = c.sub;
+  document.getElementById('urlInput').placeholder = c.placeholder;
+  document.getElementById('auditLabel').textContent = c.cta;
+  /* Persist for the audit endpoint to know the audience */
+  try { sessionStorage.setItem('ba_audience', mode); } catch(e) {}
 }
 
-function validateStep() {
-  clearErr();
-  if (step === 1) {
-    var email = document.getElementById('email').value.trim();
-    var phone = document.getElementById('phone').value.trim();
-    var password = document.getElementById('password').value;
-    if (!email || !email.includes('@')) { showErr('Please enter a valid email address'); return false; }
-    if (!phone || phone.replace(/\D/g, '').length < 10) { showErr('Please enter a valid UK phone number'); return false; }
-    if (!password || password.length < 8) { showErr('Password must be at least 8 characters'); return false; }
-  } else if (step === 2) {
-    var cn = document.getElementById('companyName').value.trim();
-    var btEl = document.querySelector('input[name="businessType"]:checked');
-    if (!cn) { showErr('Please enter your company name'); return false; }
-    if (!btEl) { showErr('Please select a business type'); return false; }
-  } else if (step === 3) {
-    var region = document.getElementById('region').value;
-    var consentTos = document.getElementById('consentTos').checked;
-    var consentAuth = document.getElementById('consentAuth').checked;
-    if (!region) { showErr('Please choose your region'); return false; }
-    if (!consentTos) { showErr('You need to agree to the Terms of Service and Privacy Policy to continue'); return false; }
-    if (!consentAuth) { showErr('You need to confirm you\'re authorised to use this service'); return false; }
-  }
-  return true;
+/* Restore previously chosen mode */
+try {
+  var saved = sessionStorage.getItem('ba_audience');
+  if (saved === 'homeowner') setMode('homeowner');
+} catch(e) {}
+
+/* ─── Submit handler — sends user to /audit page ─── */
+function startAudit(e){
+  e.preventDefault();
+  var url = document.getElementById('urlInput').value.trim();
+  if (!url) return false;
+  /* Add https:// if missing */
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  /* Hand off to the audit page, carrying audience */
+  var qs = new URLSearchParams({ url: url, audience: currentMode });
+  window.location.href = '/audit?' + qs.toString();
+  return false;
 }
-
-function populateReview() {
-  var email = document.getElementById('email').value.trim();
-  var phone = document.getElementById('phone').value.trim();
-  var cn = document.getElementById('companyName').value.trim();
-  var btEl = document.querySelector('input[name="businessType"]:checked');
-  var btLabels = { ltd: 'Limited Company', sole_trader: 'Sole Trader', partnership: 'Partnership', llp: 'LLP' };
-  var bt = btEl ? btLabels[btEl.value] : '';
-  var region = document.getElementById('region').value;
-
-  var list = document.getElementById('reviewList');
-  list.innerHTML =
-    '<div class="review-row"><span class="review-key">Email</span><span class="review-val">' + esc(email) + '</span></div>' +
-    '<div class="review-row"><span class="review-key">Phone</span><span class="review-val">' + esc(phone) + '</span></div>' +
-    '<div class="review-row"><span class="review-key">Company</span><span class="review-val">' + esc(cn) + '</span></div>' +
-    '<div class="review-row"><span class="review-key">Type</span><span class="review-val">' + esc(bt) + '</span></div>' +
-    '<div class="review-row"><span class="review-key">Region</span><span class="review-val ' + (region?'':'empty') + '">' + (region ? esc(region) : 'Not selected') + '</span></div>';
-}
-
-function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-function goForward() {
-  if (!validateStep()) return;
-  if (step < MAX_STEP) {
-    step++;
-    setStepUi();
-  } else {
-    signup();
-  }
-}
-function goBack() {
-  if (step > 1) {
-    step--;
-    clearErr();
-    setStepUi();
-  }
-}
-
-async function signup() {
-  var btn = document.getElementById('continueBtn');
-  var label = document.getElementById('continueLabel');
-
-  var email = document.getElementById('email').value.trim();
-  var phone = document.getElementById('phone').value.trim();
-  var password = document.getElementById('password').value;
-  var companyName = document.getElementById('companyName').value.trim();
-  var btEl = document.querySelector('input[name="businessType"]:checked');
-  var region = document.getElementById('region').value;
-
-  var consentTos = document.getElementById('consentTos').checked;
-  var consentAuth = document.getElementById('consentAuth').checked;
-  var consentAgency = document.getElementById('consentAgency').checked;
-  var consentWeekly = document.getElementById('consentWeekly').checked;
-
-  btn.disabled = true;
-  label.textContent = 'Creating account...';
-
-  try {
-    var res = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        email: email, password: password, phone: phone,
-        companyName: companyName,
-        businessType: btEl.value,
-        region: region,
-        consentTos: consentTos,
-        consentAuth: consentAuth,
-        consentAgency: consentAgency,
-        consentWeekly: consentWeekly,
-        claimAuditId: claimAuditId
-      })
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Signup failed');
-
-    window.location.href = claimAuditId ? ('/report/' + claimAuditId) : '/dashboard';
-  } catch(e) {
-    btn.disabled = false;
-    label.textContent = 'Create account';
-    showErr(e.message);
-  }
-}
-
-/* Enter key advances the step */
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    var active = document.activeElement;
-    if (active && active.tagName === 'SELECT') return; /* let native select handle */
-    if (active && active.tagName === 'BUTTON' && active.id !== 'continueBtn' && active.id !== 'backBtn') return;
-    e.preventDefault();
-    goForward();
-  }
-});
-
-/* Init */
-setStepUi();
 </script>
-<script src="/assets/text-effect.js" defer></script>
+
 </body>
 </html>

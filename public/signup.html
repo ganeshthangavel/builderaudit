@@ -3,206 +3,783 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BuilderAudit — Forensic trust analysis for UK construction websites</title>
-<meta name="description" content="The UK's first forensic trust platform for construction. Audit any builder's website in 60 seconds — for free. See what homeowners really think before they ring.">
+<title>Create your account — BuilderAudit</title>
+<meta name="description" content="Join free. Builders and homeowners welcome. Your audits get saved here ready any time you log back in.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css">
+
+<style>
+/* ════════════════════════════════════════════════════════════════
+   BA3 SIGN-UP · Split-screen · Classroom palette · 3-step wizard
+   Faithful BA3 visuals + full GDPR consent flow preserved.
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --fill:    #FFD24D;
+  --accent:  #5247B8;
+  --surface: #FBF5E1;
+  --cream2:  #F4EDD8;
+  --ink:     #1B1A17;
+  --line:    #1B1A17;
+  --muted:   #5C5851;
+  --good:    #1F8A5B;
+  --bad:     #C0392B;
+  --display: 'Archivo','Archivo Black',-apple-system,sans-serif;
+  --body:    'IBM Plex Sans',-apple-system,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  min-height: 100vh; background: var(--surface);
+  font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased;
+}
+
+/* Split screen */
+.si-grid {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+}
+
+/* ── LEFT panel — yellow welcome ── */
+.si-left {
+  background: var(--fill);
+  padding: 36px 56px 0;
+  position: relative;
+  display: flex; flex-direction: column;
+  border-right: 3px solid var(--line);
+  overflow: hidden;
+}
+.si-top {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.brand-mark {
+  width: 40px; height: 40px; border-radius: 4px;
+  background: var(--accent); border: 2px solid var(--line);
+  display: grid; place-items: center;
+  color: #fff; font-weight: 800; font-size: 18px; font-family: var(--display);
+}
+.brand-name {
+  font-family: var(--display); font-weight: 800; font-size: 20px;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+.back-home {
+  font-family: var(--body); font-size: 13.5px; font-weight: 600;
+  color: var(--ink); text-decoration: none;
+  display: flex; align-items: center; gap: 6px;
+}
+.back-home:hover { text-decoration: underline; }
+
+.si-welcome { margin-top: 56px; margin-bottom: 24px; max-width: 480px; }
+.si-kicker {
+  display: inline-block; padding: 6px 12px;
+  background: var(--accent); color: #fff;
+  border-radius: 999px; font-family: var(--body);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; margin-bottom: 16px; white-space: nowrap;
+}
+.si-h1 {
+  font-family: var(--display); font-weight: 900;
+  font-size: 48px; line-height: 0.95; color: var(--ink);
+  text-transform: uppercase; letter-spacing: -0.02em;
+  margin: 0 0 18px;
+}
+.si-lead {
+  font-family: var(--body); font-size: 17px;
+  color: var(--muted); line-height: 1.5; margin: 0; max-width: 440px;
+}
+.si-illustration {
+  margin-top: auto; align-self: center; margin-bottom: -8px;
+}
+.si-stamp {
+  position: absolute; top: 200px; right: 56px; transform: rotate(8deg);
+  pointer-events: none;
+  background: #fff; border: 2px solid var(--line); border-radius: 4px;
+  padding: 8px 14px; font-family: var(--body);
+  font-size: 11.5px; font-weight: 700; color: var(--ink);
+  letter-spacing: 0.05em; text-transform: uppercase;
+  box-shadow: 3px 3px 0 var(--line); white-space: nowrap;
+}
+
+/* ── RIGHT panel — wizard form ── */
+.si-right {
+  background: #fff;
+  padding: 32px 56px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.si-form-box { max-width: 460px; width: 100%; margin: 16px auto; }
+
+/* Sign in / Create account tabs */
+.si-tabs {
+  display: flex;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  margin-bottom: 24px;
+  gap: 2px;
+  box-shadow: 3px 3px 0 var(--line);
+}
+.si-tabs button {
+  flex: 1; padding: 10px 14px;
+  background: transparent; color: var(--ink);
+  border: none; border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 13.5px;
+  letter-spacing: 0.01em; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.si-tabs button.on { background: var(--ink); color: #fff; }
+
+.si-h2 {
+  font-family: var(--display); font-weight: 900; font-size: 32px;
+  line-height: 1; color: var(--ink); text-transform: uppercase;
+  letter-spacing: -0.02em; margin: 0 0 6px;
+}
+.si-sub {
+  font-family: var(--body); font-size: 14px; color: var(--muted);
+  margin: 0 0 20px;
+}
+
+/* Step dots — show where in 3-step wizard */
+.si-steps {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 18px;
+}
+.si-step-dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--line);
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 800; font-size: 12px;
+  color: var(--muted);
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.si-step-dot.active {
+  background: var(--accent); color: #fff; box-shadow: 2px 2px 0 var(--line);
+}
+.si-step-dot.done {
+  background: var(--good); color: #fff;
+}
+.si-step-bar {
+  flex: 1; height: 2px; background: var(--line); opacity: 0.18;
+}
+.si-step-label {
+  font-family: var(--body); font-size: 12px; color: var(--muted);
+  font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  margin-bottom: 18px;
+}
+
+/* Step panels */
+.si-step-panel { display: none; }
+.si-step-panel.active { display: flex; flex-direction: column; gap: 16px; }
+
+/* Form field */
+.si-field { display: flex; flex-direction: column; gap: 6px; }
+.si-field label {
+  display: block; font-family: var(--body);
+  font-size: 12px; font-weight: 700; color: var(--ink);
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.si-input {
+  display: flex; align-items: center;
+  background: #fff; border: 2px solid var(--line);
+  border-radius: 4px; padding: 0 6px;
+}
+.si-input input,
+.si-input select {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-family: var(--body); font-size: 15px; color: var(--ink);
+  padding: 12px 10px; min-width: 0;
+}
+.si-input select { padding-right: 6px; }
+.si-input .show-toggle {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); padding: 8px 10px;
+  font-family: var(--body); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+.si-field .hint {
+  font-size: 12px; color: var(--muted); line-height: 1.4;
+}
+
+/* Role chooser (BA3 style) */
+.si-role-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.si-role-btn {
+  padding: 12px 14px;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); cursor: pointer; text-align: left;
+  transition: background .12s, box-shadow .12s, transform .12s;
+}
+.si-role-btn .ttl { font-weight: 700; font-size: 14px; }
+.si-role-btn .hnt { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.si-role-btn.on {
+  background: var(--fill);
+  box-shadow: 3px 3px 0 var(--line);
+  transform: translate(-1px,-1px);
+}
+
+/* Business-type chooser — same style as role but smaller */
+.si-biz-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.si-biz-btn {
+  padding: 10px 12px;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); cursor: pointer; text-align: left;
+  font-size: 13.5px; font-weight: 700;
+  transition: background .12s, box-shadow .12s, transform .12s;
+}
+.si-biz-btn.on {
+  background: var(--fill);
+  box-shadow: 2px 2px 0 var(--line);
+  transform: translate(-1px,-1px);
+}
+
+/* Consent block */
+.si-consent-block {
+  background: var(--cream2);
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  padding: 16px 18px;
+}
+.si-consent-title {
+  font-family: var(--display);
+  font-weight: 800; font-size: 13px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ink); margin-bottom: 12px;
+}
+.si-consent-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0; cursor: pointer;
+  font-size: 13.5px; line-height: 1.45;
+  font-family: var(--body);
+}
+.si-consent-row + .si-consent-row { border-top: 1px dashed rgba(27,26,23,0.18); }
+.si-consent-row input[type="checkbox"] {
+  margin-top: 3px; width: 17px; height: 17px;
+  accent-color: var(--accent); flex-shrink: 0;
+}
+.si-consent-row a { color: var(--accent); font-weight: 700; text-decoration: underline; }
+.si-consent-row .tag {
+  display: inline-block; width: fit-content;
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 99px; margin-top: 4px;
+}
+.si-consent-row .tag.req { background: #FEE7E5; color: var(--bad); }
+.si-consent-row .tag.opt { background: rgba(27,26,23,0.06); color: var(--muted); }
+
+/* Review summary rows */
+.si-review-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 9px 12px;
+  background: #fff;
+  border: 1.5px solid rgba(27,26,23,0.14);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-family: var(--body); font-size: 13.5px;
+}
+.si-review-row .key { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em; align-self: center; }
+.si-review-row .val { font-weight: 700; color: var(--ink); text-align: right; }
+
+/* Submit button — chunky purple */
+.si-submit {
+  padding: 15px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 16px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--line);
+  transition: transform .12s, box-shadow .12s;
+  flex: 1;
+}
+.si-submit:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
+.si-submit:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--line); }
+.si-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: 4px 4px 0 var(--line); }
+
+.si-back-btn {
+  padding: 15px 18px;
+  background: transparent;
+  color: var(--muted);
+  border: 2px solid transparent;
+  font-family: var(--body); font-weight: 600; font-size: 14px;
+  cursor: pointer; border-radius: 4px;
+}
+.si-back-btn:hover { color: var(--ink); }
+.si-back-btn:disabled { visibility: hidden; }
+
+.si-step-nav { display: flex; gap: 10px; margin-top: 8px; }
+
+.si-switch-row {
+  text-align: center; margin-top: 16px;
+  font-family: var(--body); font-size: 14px; color: var(--muted);
+}
+.si-switch-row a {
+  font-family: var(--body); font-size: 14px; font-weight: 700;
+  color: var(--accent); text-decoration: none;
+}
+.si-switch-row a:hover { text-decoration: underline; }
+
+/* Error box */
+.si-err {
+  background: #FEE7E5;
+  border: 2px solid var(--bad);
+  border-radius: 4px;
+  padding: 11px 14px;
+  font-family: var(--body); font-size: 13px; font-weight: 600;
+  color: var(--bad);
+  margin-bottom: 14px; display: none;
+}
+.si-err.on { display: block; }
+
+/* ── Mobile ── */
+@media (max-width: 880px) {
+  .si-grid { grid-template-columns: 1fr; }
+  .si-left {
+    padding: 24px 24px 32px;
+    border-right: none; border-bottom: 3px solid var(--line);
+  }
+  .si-h1 { font-size: 34px; }
+  .si-illustration { display: none; }
+  .si-stamp { display: none; }
+  .si-right { padding: 24px; }
+  .si-form-box { margin: 0 auto; }
+}
+</style>
 </head>
-<body class="ba3">
-<div class="ba3-shell">
+<body>
+<div class="si-grid">
 
-  <!-- HERO -->
-  <section class="ba3-hero">
-    <nav class="ba3-nav">
-      <a href="/" class="ba3-logo">
-        <div class="ba3-logo-mark">BA</div>
-        <div class="ba3-logo-text">BuilderAudit</div>
+  <!-- ═══════════ LEFT — yellow welcome panel ═══════════ -->
+  <div class="si-left">
+    <div class="si-top">
+      <a href="/" class="brand">
+        <div class="brand-mark">BA</div>
+        <div class="brand-name">BUILDERAUDIT</div>
       </a>
+      <a href="/" class="back-home">← Back to home</a>
+    </div>
 
-      <div class="ba3-toggle" id="audienceToggle" role="tablist" aria-label="Choose your view">
-        <button type="button" role="tab" data-mode="builder" class="on" onclick="setMode('builder')">I'm a builder</button>
-        <button type="button" role="tab" data-mode="homeowner" onclick="setMode('homeowner')">I'm a homeowner</button>
+    <div class="si-welcome">
+      <div class="si-kicker">Free, forever</div>
+      <h1 class="si-h1">Join free. Builders and homeowners welcome.</h1>
+      <p class="si-lead">Whether you're a builder auditing your own site or a homeowner vetting one, your audits and notes get saved here — ready any time you log back in.</p>
+    </div>
+
+    <!-- Stamp -->
+    <div class="si-stamp">Two sides, one tool</div>
+
+    <!-- HandshakeScene SVG (homeowner + builder figures + thought bubble) -->
+    <div class="si-illustration">
+      <svg width="540" height="400" viewBox="0 0 540 460" style="overflow:visible;display:block" aria-hidden="true">
+        <g transform="translate(80 0)">
+          <path d="M190 16 Q160 10 146 28 Q118 24 114 50 Q98 54 102 80 Q106 110 132 110 Q160 132 190 122 Q220 132 248 110 Q274 110 278 80 Q282 54 266 50 Q262 24 234 28 Q220 10 190 16 Z"
+            fill="#FBF5E1" stroke="#1B1A17" stroke-width="3.4" stroke-linejoin="round"/>
+          <image href="/assets/handshake.png" x="142" y="24" width="96" height="96"/>
+          <circle cx="118" cy="138" r="9" fill="#FBF5E1" stroke="#1B1A17" stroke-width="3"/>
+          <circle cx="96" cy="158" r="6" fill="#FBF5E1" stroke="#1B1A17" stroke-width="2.4"/>
+          <circle cx="262" cy="138" r="9" fill="#FBF5E1" stroke="#1B1A17" stroke-width="3"/>
+          <circle cx="284" cy="158" r="6" fill="#FBF5E1" stroke="#1B1A17" stroke-width="2.4"/>
+        </g>
+
+        <!-- Homeowner figure (left) -->
+        <g transform="translate(95 200)">
+          <path d="M14 78 Q14 60 32 60 L118 60 Q136 60 136 78 L146 200 Q146 218 130 218 L20 218 Q4 218 4 200 Z" fill="#7AA3C2" stroke="#1B1A17" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M58 60 L75 78 L92 60" fill="none" stroke="#1B1A17" stroke-width="2.4" stroke-linejoin="round"/>
+          <rect x="63" y="50" width="24" height="14" fill="#E8B89A" stroke="#1B1A17" stroke-width="2.4"/>
+          <circle cx="75" cy="16" r="36" fill="#E8B89A" stroke="#1B1A17" stroke-width="3"/>
+          <circle cx="63" cy="16" r="3" fill="#1B1A17"/>
+          <circle cx="87" cy="16" r="3" fill="#1B1A17"/>
+          <path d="M67 32 Q75 38 83 32" fill="none" stroke="#1B1A17" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M40 6 Q44 -22 75 -24 Q106 -22 110 6 Q98 0 75 0 Q52 0 40 6 Z" fill="#3E2A18" stroke="#1B1A17" stroke-width="2.6" stroke-linejoin="round"/>
+        </g>
+
+        <!-- Builder figure (right) -->
+        <g transform="translate(335 200)">
+          <path d="M14 78 Q14 60 32 60 L118 60 Q136 60 136 78 L146 200 Q146 218 130 218 L20 218 Q4 218 4 200 Z" fill="#FFE600" stroke="#1B1A17" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M7 122 Q75 132 143 122" fill="none" stroke="#1B1A17" stroke-width="9" opacity="0.7" stroke-linecap="round"/>
+          <path d="M5 152 Q75 162 145 152" fill="none" stroke="#1B1A17" stroke-width="9" opacity="0.7" stroke-linecap="round"/>
+          <path d="M58 60 L75 78 L92 60" fill="none" stroke="#1B1A17" stroke-width="2.4" stroke-linejoin="round"/>
+          <rect x="63" y="50" width="24" height="14" fill="#E8B89A" stroke="#1B1A17" stroke-width="2.4"/>
+          <circle cx="75" cy="16" r="34" fill="#E8B89A" stroke="#1B1A17" stroke-width="3"/>
+          <circle cx="63" cy="16" r="3" fill="#1B1A17"/>
+          <circle cx="87" cy="16" r="3" fill="#1B1A17"/>
+          <path d="M67 32 Q75 38 83 32" fill="none" stroke="#1B1A17" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M43 -10 Q43 -42 75 -42 Q107 -42 107 -10 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M75 -42 V-10" stroke="#1B1A17" stroke-width="2.6"/>
+          <path d="M57 -38 Q53 -22 59 -10" fill="none" stroke="#1B1A17" stroke-width="1.6" opacity="0.55"/>
+          <path d="M93 -38 Q97 -22 91 -10" fill="none" stroke="#1B1A17" stroke-width="1.6" opacity="0.55"/>
+          <ellipse cx="75" cy="-6" rx="42" ry="7" fill="#FFD24D" stroke="#1B1A17" stroke-width="3"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ═══════════ RIGHT — wizard form ═══════════ -->
+  <div class="si-right">
+    <div class="si-form-box">
+
+      <!-- Tabs -->
+      <div class="si-tabs" role="tablist">
+        <button type="button" data-tab="signin" onclick="window.location.href='/login'">Sign in</button>
+        <button type="button" class="on" data-tab="signup">Create account</button>
       </div>
 
-      <a href="/login" class="ba3-btn light" style="background:#fff">Sign in</a>
-    </nav>
+      <h2 class="si-h2">Create your account</h2>
+      <p class="si-sub">No card needed. We'll never spam you.</p>
 
-    <div class="ba3-hero-grid">
-      <div>
-        <div class="ba3-kicker" id="heroKicker">Free for UK builders</div>
-        <h1 class="ba3-h1" id="heroH1">What would a homeowner think of your website?</h1>
-        <p class="ba3-lead" id="heroSub">We crawl your site like a fussy homeowner with £40k to spend. Get a forensic trust report in 60 seconds — for free, no signup.</p>
+      <!-- Step indicator -->
+      <div class="si-steps">
+        <div class="si-step-dot active" id="dot1">1</div>
+        <div class="si-step-bar"></div>
+        <div class="si-step-dot" id="dot2">2</div>
+        <div class="si-step-bar"></div>
+        <div class="si-step-dot" id="dot3">3</div>
+      </div>
+      <div class="si-step-label" id="stepLabel">Step 1 of 3 · Account</div>
 
-        <form class="ba3-url-input" id="auditForm" onsubmit="return startAudit(event)">
-          <div class="prefix">https://</div>
-          <input type="text" id="urlInput" name="url" placeholder="yourbuilder.co.uk" autocomplete="off" required>
-          <button type="submit" id="auditBtn"><span id="auditLabel">Audit my site</span> →</button>
-        </form>
+      <div class="si-err" id="errBox"></div>
 
-        <div style="margin-top: 20px; display: flex; gap: 18px; flex-wrap: wrap;">
-          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> 60 seconds</div>
-          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> No card needed</div>
-          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> UK construction-only</div>
+      <!-- STEP 1: account -->
+      <div class="si-step-panel active" data-step="1">
+
+        <!-- Role chooser (BA3) -->
+        <div class="si-field">
+          <label>This is for…</label>
+          <div class="si-role-grid">
+            <button type="button" class="si-role-btn on" data-role="builder" onclick="setRole('builder')">
+              <div class="ttl">Builder / Building company</div>
+              <div class="hnt">Audit my own site &amp; track fixes</div>
+            </button>
+            <button type="button" class="si-role-btn" data-role="homeowner" onclick="setRole('homeowner')">
+              <div class="ttl">Homeowner / Client</div>
+              <div class="hnt">Vet builders before I hire</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="si-field">
+          <label for="email">Email</label>
+          <div class="si-input">
+            <input type="email" id="email" autocomplete="email" required placeholder="you@buildingco.co.uk">
+          </div>
+        </div>
+
+        <div class="si-field">
+          <label for="phone">Mobile number</label>
+          <div class="si-input">
+            <input type="tel" id="phone" autocomplete="tel" required placeholder="07xxx xxx xxx">
+          </div>
+          <div class="hint">UK mobile or landline. Used only for support contact and important account updates.</div>
+        </div>
+
+        <div class="si-field">
+          <label for="password">Password</label>
+          <div class="si-input">
+            <input type="password" id="password" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
+            <button type="button" class="show-toggle" onclick="togglePwd()" id="showBtn">Show</button>
+          </div>
+          <div class="hint">Minimum 8 characters. Use a mix of letters and numbers for a strong password.</div>
         </div>
       </div>
 
-      <!-- Toolbox illustration cluster on the right -->
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 360px; margin: 0 auto;">
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/hammer.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/hardhat.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/clipboard.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/drill.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/level.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/wrench.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/tape.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/gear.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/screwdriver.png" alt=""></div>
-      </div>
-    </div>
-  </section>
+      <!-- STEP 2: business -->
+      <div class="si-step-panel" data-step="2">
 
-  <!-- WHAT WE CHECK -->
-  <section style="padding: 80px 80px;">
-    <div style="text-align: center; margin-bottom: 56px;">
-      <div class="ba3-kicker">What we look at</div>
-      <h2 class="ba3-h2">Six trust signals, forensically checked</h2>
-      <p class="ba3-lead" style="margin: 0 auto;">Cowboy builders cost UK homeowners £1.2 billion a year. Our audit catches the same red flags homeowners spot in 90 seconds on your site.</p>
-    </div>
-
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 1100px; margin: 0 auto;">
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/hardhat.png" alt=""></div>
-        <h3 class="ba3-h3">Identity & legitimacy</h3>
-        <p class="ba3-body ba3-muted">Companies House number. Registered address. Insurance proof. The boring stuff that proves you're real.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/clipboard.png" alt=""></div>
-        <h3 class="ba3-h3">Accreditations</h3>
-        <p class="ba3-body ba3-muted">FMB. NHBC. TrustMark. CHAS. Gas Safe. We check what you display, and what you should.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/hammer.png" alt=""></div>
-        <h3 class="ba3-h3">Real work, real proof</h3>
-        <p class="ba3-body ba3-muted">We reverse-image-search every photo. If your "past projects" are stock photos from Spain, we'll catch it.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/gear.png" alt=""></div>
-        <h3 class="ba3-h3">Team & ownership</h3>
-        <p class="ba3-body ba3-muted">Named directors. Real photos. Founder bios. Faceless companies lose 40% of enquiries.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/drill.png" alt=""></div>
-        <h3 class="ba3-h3">Reviews & reputation</h3>
-        <p class="ba3-body ba3-muted">Google reviews. Checkatrade. Trustpilot. Internal quotes count for nothing unless they're verifiable.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/tape.png" alt=""></div>
-        <h3 class="ba3-h3">Contact & friction</h3>
-        <p class="ba3-body ba3-muted">Phone visible? Email working? Form too long? Every barrier between visit and enquiry is measured.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- THE PROOF SECTION -->
-  <section style="padding: 0 80px 100px;">
-    <div class="ba3-panel cream" style="padding: 56px 64px;">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;">
-        <div>
-          <div class="ba3-kicker" style="background: var(--ba3-ink)">Built for builders</div>
-          <h2 class="ba3-h2">Stop guessing why enquiries dry up</h2>
-          <p class="ba3-body" style="font-size: 17px; margin-bottom: 24px;">
-            You can't see your own website like a stranger does. We can. We've crawled hundreds of UK builder sites and we know the exact moments where homeowners hesitate, second-guess, and ring someone else.
-          </p>
-          <p class="ba3-body" style="font-size: 17px; margin-bottom: 32px;">
-            One free audit. Your weak spots ranked. Fixes you can do this weekend.
-          </p>
-          <a href="#top" class="ba3-btn primary" onclick="document.getElementById('urlInput').focus();return false">Run my free audit →</a>
+        <div class="si-field" id="bizNameField">
+          <label for="companyName">Company name</label>
+          <div class="si-input">
+            <input type="text" id="companyName" placeholder="Smith &amp; Sons Builders Ltd">
+          </div>
+          <div class="hint" id="bizNameHint">The name of your building company (Ltd, sole trader, partnership — whatever you operate as).</div>
         </div>
-        <div style="text-align: center;">
-          <img src="/assets/handshake.png" alt="" style="max-width: 360px; width: 100%;">
+
+        <div class="si-field" id="bizTypeField">
+          <label>Business type</label>
+          <div class="si-biz-grid">
+            <button type="button" class="si-biz-btn" data-biz="ltd" onclick="setBiz('ltd')">Limited Company</button>
+            <button type="button" class="si-biz-btn" data-biz="sole_trader" onclick="setBiz('sole_trader')">Sole Trader</button>
+            <button type="button" class="si-biz-btn" data-biz="partnership" onclick="setBiz('partnership')">Partnership</button>
+            <button type="button" class="si-biz-btn" data-biz="llp" onclick="setBiz('llp')">LLP</button>
+          </div>
+        </div>
+
+        <div class="si-field">
+          <label for="region">Region</label>
+          <div class="si-input">
+            <select id="region">
+              <option value="">Choose your region…</option>
+              <option value="London">London</option>
+              <option value="South East">South East</option>
+              <option value="South West">South West</option>
+              <option value="East of England">East of England</option>
+              <option value="East Midlands">East Midlands</option>
+              <option value="West Midlands">West Midlands</option>
+              <option value="Yorkshire and the Humber">Yorkshire and the Humber</option>
+              <option value="North West">North West</option>
+              <option value="North East">North East</option>
+              <option value="Scotland">Scotland</option>
+              <option value="Wales">Wales</option>
+              <option value="Northern Ireland">Northern Ireland</option>
+            </select>
+          </div>
+          <div class="hint">Used for local SEO context and regional benchmarking.</div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- FOOTER -->
-  <footer class="ba3-footer">
-    <div class="copy">© 2026 BuilderAudit · UK's first forensic trust platform for construction</div>
-    <div class="links">
-      <a href="/privacy">Privacy</a>
-      <a href="/terms">Terms</a>
-      <a href="/login">Sign in</a>
-    </div>
-  </footer>
+      <!-- STEP 3: consents + review -->
+      <div class="si-step-panel" data-step="3">
 
+        <div class="si-consent-block">
+          <div class="si-consent-title">Permissions &amp; preferences</div>
+
+          <label class="si-consent-row">
+            <input type="checkbox" id="consentTos" required>
+            <div>
+              <div>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</div>
+              <span class="tag req">Required</span>
+            </div>
+          </label>
+
+          <label class="si-consent-row">
+            <input type="checkbox" id="consentAuth" required>
+            <div>
+              <div>I confirm I'm authorised to use this service on behalf of the business named above.</div>
+              <span class="tag req">Required</span>
+            </div>
+          </label>
+
+          <label class="si-consent-row">
+            <input type="checkbox" id="consentAgency">
+            <div>
+              <div>I'd like introductions to vetted agency partners (web design, SEO, photography, branding, CRM) when relevant to issues found in my reports.</div>
+              <span class="tag opt">Optional</span>
+            </div>
+          </label>
+
+          <label class="si-consent-row">
+            <input type="checkbox" id="consentWeekly">
+            <div>
+              <div>Send me a weekly check-in email with score changes and what's improved on my site.</div>
+              <span class="tag opt">Optional</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="si-field">
+          <label>Review your details</label>
+          <div id="reviewList"></div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="si-step-nav">
+        <button type="button" class="si-back-btn" id="backBtn" onclick="goBack()" disabled>← Back</button>
+        <button type="button" class="si-submit" id="continueBtn" onclick="advance()">
+          <span id="continueLabel">Continue →</span>
+        </button>
+      </div>
+
+      <div class="si-switch-row">
+        Already have an account? <a href="/login">Sign in →</a>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-/* ─── Audience toggle (builder vs homeowner) ─── */
-var currentMode = 'builder';
+/* ─── State ─── */
+var step = 1;
+var MAX_STEP = 3;
+var role = 'builder';
+var bizType = null;
+var claimAuditId = new URLSearchParams(window.location.search).get('claim') || null;
 
-var COPY = {
-  builder: {
-    kicker: 'Free for UK builders',
-    h1: 'What would a homeowner think of your website?',
-    sub: 'We crawl your site like a fussy homeowner with £40k to spend. Get a forensic trust report in 60 seconds — for free, no signup.',
-    placeholder: 'yourbuilder.co.uk',
-    cta: 'Audit my site',
-  },
-  homeowner: {
-    kicker: 'Free for UK homeowners',
-    h1: 'Should you trust this builder?',
-    sub: 'Paste any UK builder website. We\'ll run a forensic trust check and tell you what they don\'t want you to notice. Free, in 60 seconds.',
-    placeholder: 'thebuilder-you-are-checking.co.uk',
-    cta: 'Check this builder',
-  },
-};
+function esc(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
-function setMode(mode){
-  currentMode = mode;
-  /* Toggle button state */
-  document.querySelectorAll('#audienceToggle button').forEach(function(b){
-    b.classList.toggle('on', b.dataset.mode === mode);
+function showErr(msg){
+  var box = document.getElementById('errBox');
+  box.textContent = msg;
+  box.classList.add('on');
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function clearErr(){ document.getElementById('errBox').classList.remove('on'); }
+
+/* ─── Role selection ─── */
+function setRole(r) {
+  role = r;
+  document.querySelectorAll('.si-role-btn').forEach(function(b){
+    b.classList.toggle('on', b.dataset.role === r);
   });
-  /* Swap hero copy */
-  var c = COPY[mode];
-  document.getElementById('heroKicker').textContent = c.kicker;
-  document.getElementById('heroH1').textContent = c.h1;
-  document.getElementById('heroSub').textContent = c.sub;
-  document.getElementById('urlInput').placeholder = c.placeholder;
-  document.getElementById('auditLabel').textContent = c.cta;
-  /* Persist for the audit endpoint to know the audience */
-  try { sessionStorage.setItem('ba_audience', mode); } catch(e) {}
+  /* Switch company-name label/hint based on role */
+  var label = document.querySelector('#bizNameField label');
+  var hint = document.getElementById('bizNameHint');
+  if (r === 'homeowner') {
+    label.textContent = 'Your full name';
+    hint.textContent = 'Just your name — no company needed for homeowner accounts.';
+    /* Hide business-type chooser entirely for homeowners */
+    document.getElementById('bizTypeField').style.display = 'none';
+  } else {
+    label.textContent = 'Company name';
+    hint.textContent = 'The name of your building company (Ltd, sole trader, partnership — whatever you operate as).';
+    document.getElementById('bizTypeField').style.display = '';
+  }
 }
 
-/* Restore previously chosen mode */
-try {
-  var saved = sessionStorage.getItem('ba_audience');
-  if (saved === 'homeowner') setMode('homeowner');
-} catch(e) {}
+/* ─── Business type selection ─── */
+function setBiz(b) {
+  bizType = b;
+  document.querySelectorAll('.si-biz-btn').forEach(function(btn){
+    btn.classList.toggle('on', btn.dataset.biz === b);
+  });
+}
 
-/* ─── Submit handler — sends user to /audit page ─── */
-function startAudit(e){
+/* ─── Password toggle ─── */
+function togglePwd() {
+  var input = document.getElementById('password');
+  var btn = document.getElementById('showBtn');
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = 'Hide'; }
+  else { input.type = 'password'; btn.textContent = 'Show'; }
+}
+
+/* ─── Step navigation ─── */
+function showStep(n) {
+  document.querySelectorAll('.si-step-panel').forEach(function(p){
+    p.classList.toggle('active', parseInt(p.dataset.step, 10) === n);
+  });
+  /* Step dots */
+  for (var i = 1; i <= MAX_STEP; i++) {
+    var dot = document.getElementById('dot' + i);
+    dot.classList.remove('active', 'done');
+    if (i < n) dot.classList.add('done');
+    else if (i === n) dot.classList.add('active');
+  }
+  /* Labels + buttons */
+  var labels = { 1: 'Account', 2: 'Business', 3: 'Permissions' };
+  document.getElementById('stepLabel').textContent = 'Step ' + n + ' of ' + MAX_STEP + ' · ' + labels[n];
+  document.getElementById('backBtn').disabled = (n === 1);
+  document.getElementById('continueLabel').textContent = (n === MAX_STEP ? 'Create account →' : 'Continue →');
+  if (n === MAX_STEP) populateReview();
+}
+
+function goBack() {
+  clearErr();
+  if (step > 1) { step--; showStep(step); }
+}
+
+function advance() {
+  clearErr();
+  if (!validateStep()) return;
+  if (step < MAX_STEP) { step++; showStep(step); }
+  else { signup(); }
+}
+
+function validateStep() {
+  clearErr();
+  if (step === 1) {
+    var email = document.getElementById('email').value.trim();
+    var phone = document.getElementById('phone').value.trim();
+    var pwd = document.getElementById('password').value;
+    if (!email || !email.includes('@')) { showErr('Please enter a valid email address'); return false; }
+    if (!phone || phone.replace(/\D/g, '').length < 10) { showErr('Please enter a valid UK phone number'); return false; }
+    if (!pwd || pwd.length < 8) { showErr('Password must be at least 8 characters'); return false; }
+  } else if (step === 2) {
+    var cn = document.getElementById('companyName').value.trim();
+    var region = document.getElementById('region').value;
+    if (!cn) { showErr(role === 'homeowner' ? 'Please enter your name' : 'Please enter your company name'); return false; }
+    if (role === 'builder' && !bizType) { showErr('Please select a business type'); return false; }
+    if (!region) { showErr('Please choose your region'); return false; }
+  } else if (step === 3) {
+    if (!document.getElementById('consentTos').checked) { showErr('You need to agree to the Terms and Privacy Policy to continue'); return false; }
+    if (!document.getElementById('consentAuth').checked) { showErr("You need to confirm you're authorised to use this service"); return false; }
+  }
+  return true;
+}
+
+function populateReview() {
+  var email = document.getElementById('email').value.trim();
+  var phone = document.getElementById('phone').value.trim();
+  var cn = document.getElementById('companyName').value.trim();
+  var btLabels = { ltd: 'Limited Company', sole_trader: 'Sole Trader', partnership: 'Partnership', llp: 'LLP' };
+  var bt = bizType ? btLabels[bizType] : '';
+  var region = document.getElementById('region').value;
+  var roleLabel = role === 'builder' ? 'Builder / Building company' : 'Homeowner / Client';
+
+  var rows = [
+    { k: 'Account type', v: roleLabel },
+    { k: 'Email', v: email },
+    { k: 'Phone', v: phone },
+    { k: role === 'homeowner' ? 'Name' : 'Company', v: cn },
+  ];
+  if (role === 'builder') rows.push({ k: 'Business type', v: bt });
+  rows.push({ k: 'Region', v: region || '—' });
+
+  document.getElementById('reviewList').innerHTML = rows.map(function(r){
+    return '<div class="si-review-row"><span class="key">' + esc(r.k) + '</span><span class="val">' + esc(r.v) + '</span></div>';
+  }).join('');
+}
+
+async function signup() {
+  var btn = document.getElementById('continueBtn');
+  var label = document.getElementById('continueLabel');
+
+  var email = document.getElementById('email').value.trim();
+  var phone = document.getElementById('phone').value.trim();
+  var pwd = document.getElementById('password').value;
+  var cn = document.getElementById('companyName').value.trim();
+  var region = document.getElementById('region').value;
+  var consentTos    = document.getElementById('consentTos').checked;
+  var consentAuth   = document.getElementById('consentAuth').checked;
+  var consentAgency = document.getElementById('consentAgency').checked;
+  var consentWeekly = document.getElementById('consentWeekly').checked;
+
+  btn.disabled = true;
+  label.textContent = 'Creating account…';
+
+  try {
+    var res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        email: email,
+        password: pwd,
+        phone: phone,
+        companyName: cn,
+        businessType: role === 'homeowner' ? 'homeowner' : (bizType || 'ltd'),
+        region: region,
+        role: role,
+        consentTos: consentTos,
+        consentAuth: consentAuth,
+        consentAgency: consentAgency,
+        consentWeekly: consentWeekly,
+        claimAuditId: claimAuditId,
+      }),
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Signup failed');
+    window.location.href = claimAuditId ? ('/report/' + claimAuditId) : '/dashboard';
+  } catch (e) {
+    btn.disabled = false;
+    label.textContent = 'Create account →';
+    showErr(e.message || 'Signup failed. Please try again.');
+  }
+}
+
+/* Enter advances the wizard */
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'Enter') return;
+  var t = e.target;
+  if (t && t.tagName === 'TEXTAREA') return;
   e.preventDefault();
-  var url = document.getElementById('urlInput').value.trim();
-  if (!url) return false;
-  /* Add https:// if missing */
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  /* Hand off to the audit page, carrying audience */
-  var qs = new URLSearchParams({ url: url, audience: currentMode });
-  window.location.href = '/audit?' + qs.toString();
-  return false;
-}
+  advance();
+});
 </script>
 
 </body>

@@ -606,7 +606,7 @@ app.post('/api/audit', async (req, res) => {
    AUTH ROUTES
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const VALID_BUSINESS_TYPES = ['ltd', 'sole_trader', 'partnership', 'llp'];
+const VALID_BUSINESS_TYPES = ['ltd', 'sole_trader', 'partnership', 'llp', 'homeowner'];
 
 const VALID_REGIONS = [
   'London','South East','South West','East of England','East Midlands',
@@ -1189,4 +1189,3 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-         

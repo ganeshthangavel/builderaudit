@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
 <title>BuilderAudit — UK builders' free AI website audit</title>
 <meta name="description" content="The first AI-powered website audit built for UK building companies. Paste your URL, get a score out of 100 and a fix-list in 60 seconds. Free, forever.">
 
@@ -62,16 +65,11 @@ body {
   margin-bottom: 56px; gap: 24px;
 }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
-.brand-mark {
-  width: 40px; height: 40px; border-radius: 4px;
-  background: var(--accent); border: 2px solid var(--line);
-  display: grid; place-items: center;
-  color: #fff; font-weight: 800; font-size: 18px;
-  font-family: var(--display);
-}
+.brand-mark-svg { flex-shrink: 0; }
 .brand-name {
   font-family: var(--display); font-weight: 800; font-size: 22px;
-  color: var(--ink); letter-spacing: -0.01em;
+  color: var(--ink); letter-spacing: -0.01em; line-height: 1;
+  white-space: nowrap;
 }
 
 /* Audience toggle */
@@ -441,13 +439,8 @@ body {
   flex-wrap: wrap; gap: 16px;
 }
 .footer-brand { display: flex; align-items: center; gap: 10px; }
-.footer-brand .mini {
-  width: 30px; height: 30px; border-radius: 4px;
-  background: var(--accent); border: 2px solid var(--line);
-  display: grid; place-items: center; color: #fff;
-  font-weight: 800; font-size: 12px; font-family: var(--display);
-}
-.footer-brand .name { font-weight: 700; color: var(--ink); font-size: 15px; }
+.footer-brand .mini-svg { flex-shrink: 0; }
+.footer-brand .name { font-weight: 700; color: var(--ink); font-size: 15px; font-family: var(--display); line-height: 1; white-space: nowrap; }
 .footer-brand .tagline { color: var(--muted); font-size: 13px; margin-left: 8px; }
 .footer-links { display: flex; gap: 24px; color: var(--muted); font-size: 13px; }
 .footer-links a { color: var(--muted); text-decoration: none; }
@@ -481,8 +474,8 @@ body {
   <section class="hero">
     <div class="topbar">
       <a href="/" class="brand">
-        <div class="brand-mark">BA</div>
-        <div class="brand-name">BUILDERAUDIT</div>
+        <svg class="brand-mark-svg" width="40" height="41" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/><path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/><path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/></svg>
+        <span class="brand-name"><span>Builder</span><span style="color:var(--accent)">Audit</span></span>
       </a>
 
       <div class="audience-toggle" role="tablist" aria-label="Choose your view">
@@ -783,8 +776,8 @@ body {
   <!-- ═══════════ FOOTER ═══════════ -->
   <footer class="footer">
     <div class="footer-brand">
-      <div class="mini">BA</div>
-      <div class="name">BuilderAudit</div>
+      <svg class="mini-svg" width="30" height="31" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/><path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/><path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/></svg>
+      <div class="name"><span>Builder</span><span style="color:var(--accent)">Audit</span></div>
       <div class="tagline">· Free website audits for UK builders</div>
     </div>
     <div class="footer-links">

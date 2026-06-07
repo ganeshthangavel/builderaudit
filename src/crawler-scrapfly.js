@@ -47,8 +47,17 @@ function normaliseUrl(url) {
   }
 }
 
-/* Hit ScrapFly for a single URL. Returns the parsed result or throws. */
-async function scrapflyFetch(url, { withScreenshot = false, debug = false } = {}) {
+/* Hit ScrapFly for a single URL. Returns the parsed result or throws.
+ *
+ * `mode` controls how aggressively we try to extract content:
+ *   - 'standard' (default): JS render + ASP + UK datacenter proxy. ~5 credits.
+ *     Works for the vast majority of UK builder sites including most Cloudflare-protected ones.
+ *   - 'stubborn': adds longer rendering wait + auto-scroll. ~7 credits.
+ *     For JS-heavy sites where the initial render returns near-empty HTML.
+ *   - 'fortress': switches to residential proxy pool. ~25 credits.
+ *     For sites with serious bot detection that block datacenter IPs entirely.
+ */
+async function scrapflyFetch(url, { withScreenshot = false, debug = false, mode = 'standard' } = {}) {
   if (!config.SCRAPFLY_API_KEY) {
     throw new Error('SCRAPFLY_API_KEY not configured');
   }
@@ -60,16 +69,26 @@ async function scrapflyFetch(url, { withScreenshot = false, debug = false } = {}
     render_js: 'true',
     /* Anti-Scraping Protection — bypasses Cloudflare and similar */
     asp: 'true',
-    /* UK-based residential proxies — cheaper than premium and works for UK sites */
+    /* UK-based proxies — cheaper than premium and works for UK sites */
     country: 'gb',
-    /* Wait up to 8 seconds after page load for content to settle */
-    rendering_wait: '3000',
+    /* Wait after page load for content to settle. Longer in stubborn/fortress mode. */
+    rendering_wait: mode === 'standard' ? '3000' : '8000',
     /* NOTE: Do NOT set format=json. That option converts the page to structured
        JSON with markdown content, which strips out all the <a href> tags we need
        to follow internal links. We want raw HTML so our parser can extract links
        and images directly. The default response is already JSON-wrapped at the
        outer level — `data.result.content` contains the raw HTML. */
   });
+
+  /* Stubborn mode adds auto-scroll to trigger lazy-loaded content */
+  if (mode === 'stubborn' || mode === 'fortress') {
+    params.set('auto_scroll', 'true');
+  }
+
+  /* Fortress mode switches to residential proxies (much harder for sites to block) */
+  if (mode === 'fortress') {
+    params.set('proxy_pool', 'public_residential_pool');
+  }
 
   if (withScreenshot) {
     /* Viewport-only screenshot (1920x1080 max) — full-page screenshots of long
@@ -92,7 +111,7 @@ async function scrapflyFetch(url, { withScreenshot = false, debug = false } = {}
 
   const result = data.result;
   if (debug) {
-    console.log(`[scrapfly] ${url} → status ${result.status_code}, ${result.content?.length || 0} bytes, ${data.context?.cost?.total || '?'} credits`);
+    console.log(`[scrapfly:${mode}] ${url} → status ${result.status_code}, ${result.content?.length || 0} bytes, ${data.context?.cost?.total || '?'} credits`);
   }
 
   return {
@@ -103,6 +122,7 @@ async function scrapflyFetch(url, { withScreenshot = false, debug = false } = {}
        We fetch and base64 encode so the AI can see them inline. */
     screenshotUrl: result.screenshots?.main?.url || null,
     cost: data.context?.cost?.total || 0,
+    mode,
   };
 }
 
@@ -208,7 +228,83 @@ function parsePageContent(html, pageUrl, origin) {
   return { textContent, images, meta, links };
 }
 
-/* Main crawler entry point — same signature as the old Playwright function */
+/* Sitemap discovery — used when the initial homepage crawl yields few internal
+ * links. Many builder sites hide their site structure behind JS menus that even
+ * with auto-scroll we don't fully expand. /sitemap.xml is the canonical list.
+ * Returns a list of same-origin URLs (max 30) or [] if no sitemap is found. */
+async function tryFetchSitemap(origin, debug) {
+  const sitemapCandidates = ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml'];
+  const originHost = new URL(origin).hostname.replace(/^www\./, '');
+  for (const candidate of sitemapCandidates) {
+    try {
+      /* Sitemaps don't need JS rendering — but they often sit behind Cloudflare
+         too, so we still go through ScrapFly with minimal settings. */
+      const params = new URLSearchParams({
+        key: config.SCRAPFLY_API_KEY,
+        url: origin + candidate,
+        country: 'gb',
+        asp: 'true',
+      });
+      const res = await fetch(SCRAPFLY_API_BASE + '?' + params.toString());
+      const data = await res.json();
+      if (!res.ok || !data.result || data.result.status_code >= 400) continue;
+      const xml = data.result.content || '';
+      const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1].trim());
+      const sameOrigin = locs.filter(u => {
+        try {
+          const h = new URL(u).hostname.replace(/^www\./, '');
+          return h === originHost;
+        } catch (e) { return false; }
+      });
+      if (sameOrigin.length > 0) {
+        if (debug) console.log(`[scrapfly] Sitemap found: ${candidate} (${sameOrigin.length} URLs)`);
+        return sameOrigin.slice(0, 30);
+      }
+    } catch (err) {
+      /* Try next candidate */
+    }
+  }
+  return [];
+}
+
+/* Fetch a page with smart escalation. Tries 'standard' first; if the response
+ * is suspiciously empty (likely a JS-heavy page that didn't finish rendering),
+ * retries with 'stubborn' mode. Returns the better of the two results.
+ * Never escalates to 'fortress' automatically — that's reserved for the
+ * homepage retry path because it costs 5x more. */
+async function fetchPageWithEscalation(url, { withScreenshot, debug }) {
+  /* First attempt — cheap, fast */
+  let result = await scrapflyFetch(url, { withScreenshot, debug, mode: 'standard' });
+
+  /* If the page came back near-empty AND status is OK, retry with stubborn mode.
+     "Near-empty" = under 800 bytes of content (a 200-OK with empty body is a
+     classic sign the JS didn't finish rendering in 3s). */
+  if (result.statusCode === 200 && (result.html || '').length < 800) {
+    if (debug) console.log(`[scrapfly] Sparse response from ${url} (${result.html.length} bytes), retrying with stubborn mode`);
+    try {
+      const retry = await scrapflyFetch(url, { withScreenshot, debug, mode: 'stubborn' });
+      if ((retry.html || '').length > (result.html || '').length) {
+        result = retry;
+      }
+    } catch (err) {
+      /* Stubborn retry failed — keep the original (sparse) response */
+      if (debug) console.warn(`[scrapfly] Stubborn retry of ${url} failed:`, err.message);
+    }
+  }
+  return result;
+}
+
+/* Main crawler entry point — same signature as the old Playwright function.
+ * Smart-fallback flow:
+ *   1. Fetch homepage with standard settings (cheap)
+ *   2. If homepage returns near-empty content, retry with stubborn mode
+ *      (longer wait + auto-scroll)
+ *   3. If homepage STILL fails or returns very few internal links (<5),
+ *      try sitemap discovery to seed the queue
+ *   4. For each subsequent page, retry with stubborn mode if the first
+ *      attempt is suspiciously empty
+ *   5. Throttle, rate-limit detection, consecutive-error abort — unchanged
+ */
 async function crawlWebsiteScrapFly(startUrl, opts = {}) {
   const debug = opts.debug || false;
   const debugLog = [];
@@ -224,6 +320,8 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
   let totalCost = 0;
   let consecutiveErrors = 0;
   let rateLimitHit = false;
+  let homepageProcessed = false;
+  let sitemapAttempted = false;
 
   while (queue.length > 0 && pages.length < MAX_PAGES) {
     const url = queue.shift();
@@ -243,13 +341,34 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
       await new Promise(r => setTimeout(r, 2500));
     }
 
+    let homepageFortressTried = false;
+
     try {
-      const result = await scrapflyFetch(url, { withScreenshot, debug });
+      let result = await fetchPageWithEscalation(url, { withScreenshot, debug });
       totalCost += result.cost;
+
+      /* Homepage-specific: if standard + stubborn both failed (no HTML or 4xx/5xx),
+         try one more time with fortress mode (residential proxies). Worth the
+         extra credits because if we can't get the homepage we get nothing. */
+      if (isHomepage && (result.statusCode >= 400 || (result.html || '').length < 800)) {
+        homepageFortressTried = true;
+        if (debug) console.log(`[scrapfly] Homepage ${url} weak after stubborn, escalating to fortress mode`);
+        try {
+          await new Promise(r => setTimeout(r, 1500));
+          const fortress = await scrapflyFetch(url, { withScreenshot, debug, mode: 'fortress' });
+          totalCost += fortress.cost;
+          if (fortress.statusCode < 400 && (fortress.html || '').length >= (result.html || '').length) {
+            result = fortress;
+          }
+        } catch (err) {
+          if (debug) console.warn(`[scrapfly] Fortress retry of ${url} failed:`, err.message);
+        }
+      }
+
       consecutiveErrors = 0;
 
       if (result.statusCode >= 400) {
-        if (debug) debugLog.push({ url, stage: 'http-error', status: result.statusCode, cost: result.cost });
+        if (debug) debugLog.push({ url, stage: 'http-error', status: result.statusCode, cost: result.cost, mode: result.mode });
         continue;
       }
 
@@ -285,7 +404,33 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
         linksSample: links.slice(0, 5),
         hadScreenshot: !!screenshotB64,
         cost: result.cost,
+        mode: result.mode,
+        homepageFortressTried,
       });
+
+      /* After processing the homepage, decide whether to seed sitemap URLs.
+         Trigger: homepage succeeded but yielded fewer than 5 internal links.
+         JS menus often hide the real site structure — sitemap rescues it. */
+      if (isHomepage && !homepageProcessed) {
+        homepageProcessed = true;
+        if (links.length < 5 && !sitemapAttempted) {
+          sitemapAttempted = true;
+          if (debug) console.log(`[scrapfly] Homepage had only ${links.length} internal links, trying sitemap`);
+          const sitemapUrls = await tryFetchSitemap(origin, debug);
+          if (debug) debugLog.push({ stage: 'sitemap', found: sitemapUrls.length, sample: sitemapUrls.slice(0, 5) });
+          /* Seed sitemap URLs into the queue, prioritising key pages */
+          sitemapUrls.forEach(u => {
+            const clean = normaliseUrl(u);
+            if (!visited.has(clean) && !queue.includes(clean)) {
+              if (PRIORITY_PATTERN.test(clean)) {
+                queue.unshift(clean);
+              } else {
+                queue.push(clean);
+              }
+            }
+          });
+        }
+      }
     } catch (err) {
       const msg = err.message || '';
       console.warn('ScrapFly crawl failed:', url, msg);
@@ -308,6 +453,29 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
         if (debug) debugLog.push({ stage: 'aborted', reason: 'consecutive_errors' });
         break;
       }
+
+      /* If the HOMEPAGE failed outright, try sitemap as an emergency seed —
+         maybe the homepage has aggressive bot detection but the sitemap doesn't. */
+      if (isHomepage && !sitemapAttempted) {
+        sitemapAttempted = true;
+        if (debug) console.log(`[scrapfly] Homepage threw — trying sitemap as fallback`);
+        try {
+          const sitemapUrls = await tryFetchSitemap(origin, debug);
+          if (debug) debugLog.push({ stage: 'sitemap', found: sitemapUrls.length, reason: 'homepage_failed' });
+          sitemapUrls.forEach(u => {
+            const clean = normaliseUrl(u);
+            if (!visited.has(clean) && !queue.includes(clean)) {
+              if (PRIORITY_PATTERN.test(clean)) {
+                queue.unshift(clean);
+              } else {
+                queue.push(clean);
+              }
+            }
+          });
+        } catch (e) {
+          if (debug) debugLog.push({ stage: 'sitemap', error: e.message });
+        }
+      }
     }
   }
 
@@ -321,5 +489,5 @@ module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
   /* Version stamp — bump when this file changes so we can see which build is live */
-  version: '2026-04-26-throttled',
+  version: '2026-06-07-smart-fallback',
 };

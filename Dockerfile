@@ -1,16 +1,16 @@
-# Use the official Playwright image — has Chromium + all OS deps pre-installed
-FROM mcr.microsoft.com/playwright:v1.59.1-jammy
+# Lightweight Node 20 base — no browser binaries needed.
+# Crawling is delegated to ScrapFly via HTTP, so the server only needs Node.
+FROM node:20-bookworm-slim
 
 WORKDIR /app
 
 # Install dependencies first (better layer caching)
-COPY package.json ./
-RUN npm install --production
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev
 
 # Copy source
 COPY src/ ./src/
 COPY public/ ./public/
-COPY audit.js ./
 
 # Railway injects PORT automatically; default to 3000
 ENV PORT=3000

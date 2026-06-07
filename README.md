@@ -130,3 +130,4 @@ Ideas for v2:
 - Page speed (Lighthouse API)
 - Competitor benchmarking (scan 3 local competitors automatically)
 - Monthly re-scan scheduler with change detection
+

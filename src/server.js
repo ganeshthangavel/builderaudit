@@ -3,7 +3,6 @@ const cors = require('cors');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const https = require('https');
-const { chromium } = require('playwright');
 const Anthropic = require('@anthropic-ai/sdk');
 const { customAlphabet } = require('nanoid');
 const config = require('./config');
@@ -291,216 +290,26 @@ async function verifyImages(allImages) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CRAWLER
+// CRAWLER — ScrapFly only.
 // ─────────────────────────────────────────────────────────────────────────────
-async function crawlWebsite(startUrl, opts = {}) {
-  const debug = opts.debug || false;
-  const debugLog = [];
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-web-security',
-      '--disable-infobars',
-      '--window-size=1920,1080',
-    ],
-  });
-  const context = await browser.newContext({
-    /* Modern Chrome on macOS user-agent — better blends in than the previous Windows one */
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    viewport: { width: 1920, height: 1080 },
-    locale: 'en-GB',
-    timezoneId: 'Europe/London',
-    extraHTTPHeaders: {
-      'Accept-Language': 'en-GB,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"macOS"',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-    },
-  });
-  /* Stealth shims — undo Playwright fingerprints that bot detectors look for */
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    Object.defineProperty(navigator, 'languages', { get: () => ['en-GB', 'en'] });
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-    window.chrome = { runtime: {}, app: {}, csi: () => {}, loadTimes: () => {} };
-    /* Spoof permissions API */
-    const origQuery = window.navigator.permissions && window.navigator.permissions.query;
-    if (origQuery) {
-      window.navigator.permissions.query = (parameters) =>
-        parameters.name === 'notifications'
-          ? Promise.resolve({ state: Notification.permission })
-          : origQuery(parameters);
-    }
-  });
-
-  const visited = new Set();
-  const queue = [normaliseUrl(startUrl)];
-  const origin = new URL(startUrl).origin;
-  const pages = [];
-
-  while (queue.length > 0 && pages.length < MAX_PAGES) {
-    const url = queue.shift();
-    if (visited.has(url)) continue;
-    visited.add(url);
-
-    try {
-      const page = await context.newPage();
-      /* Random pause between requests so we don't look like a scraper */
-      await page.waitForTimeout(800 + Math.random() * 1500);
-
-      let response;
-      try {
-        /* First try with networkidle — slower but more reliable for JS-heavy sites */
-        response = await page.goto(url, { waitUntil: 'networkidle', timeout: 35000 });
-      } catch (err) {
-        /* Fall back to domcontentloaded if networkidle times out */
-        if (debug) debugLog.push({ url, stage: 'goto-fallback', message: err.message });
-        try {
-          response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        } catch (err2) {
-          if (debug) debugLog.push({ url, stage: 'goto-failed', message: err2.message });
-          await page.close();
-          continue;
-        }
-      }
-
-      const status = response ? response.status() : null;
-      if (status && (status === 403 || status === 429 || status >= 500)) {
-        if (debug) debugLog.push({ url, stage: 'blocked', status });
-        await page.close();
-        continue;
-      }
-
-      /* Extra wait — gives Cloudflare's "Checking your browser" challenge time to clear */
-      await page.waitForTimeout(2500);
-
-      /* Check if Cloudflare is challenging us — title/URL clues */
-      const challengeCheck = await page.evaluate(() => {
-        const title = document.title || '';
-        const bodyText = (document.body && document.body.innerText) ? document.body.innerText.slice(0, 500) : '';
-        return {
-          title,
-          bodyLen: (document.body && document.body.innerText) ? document.body.innerText.length : 0,
-          looksLikeChallenge: /just a moment|verifying|cloudflare|attention required|checking your browser/i.test(title + ' ' + bodyText),
-        };
-      });
-
-      if (challengeCheck.looksLikeChallenge) {
-        if (debug) debugLog.push({ url, stage: 'cloudflare-challenge', title: challengeCheck.title });
-        /* Wait longer — sometimes the challenge clears itself */
-        await page.waitForTimeout(8000);
-      }
-
-      if (challengeCheck.bodyLen < 200) {
-        if (debug) debugLog.push({ url, stage: 'empty-body', status, title: challengeCheck.title, bodyLen: challengeCheck.bodyLen });
-      }
-
-      const screenshot = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 75 });
-      const screenshotB64 = screenshot.toString('base64');
-
-      const textContent = await page.evaluate(() => {
-        const el = document.body.cloneNode(true);
-        ['nav','footer','script','style','noscript'].forEach(tag => el.querySelectorAll(tag).forEach(n => n.remove()));
-        return el.innerText.replace(/\s+/g, ' ').trim().slice(0, 8000);
-      });
-
-      const images = await page.evaluate(() => {
-        return [...document.querySelectorAll('img')].map(img => ({
-          src: img.src || '', alt: img.alt || '',
-          width: img.naturalWidth, height: img.naturalHeight,
-        })).filter(i => i.src.startsWith('http'));
-      });
-
-      const meta = await page.evaluate(() => {
-        const text = document.body.innerText;
-        const badges = ['FMB','NHBC','CHAS','TrustMark','Gas Safe','NICEIC','Checkatrade','Which? Trusted','Federation of Master Builders'];
-        return {
-          title: document.title,
-          copyrightYear: (text.match(/\u00a9\s*(\d{4})/) || [])[1] || null,
-          hasPhone: /(\+44|0\d{10}|0\d{4}\s\d{6})/.test(text),
-          hasAddress: /(street|road|avenue|lane|close|drive|,\s*[A-Z]{1,2}\d)/i.test(text),
-          hasVAT: /VAT\s*(no|number|reg)?\s*:?\s*\d+/i.test(text),
-          hasCompaniesHouse: /company\s*(no|number|reg)?\s*:?\s*\d+/i.test(text),
-          accreditations: badges.filter(b => new RegExp(b,'i').test(text)),
-          testimonialCount: (text.match(/[\u201c\u201d][^\u201c\u201d]{40,}[\u201c\u201d]/g) || []).length,
-          hasGoogleMaps: !!document.querySelector('iframe[src*="google.com/maps"]'),
-          hasExternalReviewLinks: /checkatrade|trustpilot|google.*review|houzz|rated\.people/i.test(text),
-          professionalEmail: !/gmail|hotmail|yahoo|outlook\.com/i.test(text),
-        };
-      });
-
-      const links = await page.evaluate((base) => {
-        return [...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => h.startsWith(base));
-      }, origin);
-
-      /* Push high-priority pages (about/team/services/contact) to the front of the queue
-         so they get crawled within MAX_PAGES even if the homepage has hundreds of links. */
-      const priorityPattern = /\/(our-?team|team|about|meet|who-?we-?are|services|what-?we-?do|contact|testimonials|reviews)/i;
-      links.forEach(l => {
-        const clean = normaliseUrl(l);
-        if (!visited.has(clean) && !queue.includes(clean)) {
-          if (priorityPattern.test(clean)) {
-            queue.unshift(clean);  // priority — front of queue
-          } else {
-            queue.push(clean);     // regular — back of queue
-          }
-        }
-      });
-
-      if (debug) debugLog.push({ url, stage: 'success', status, textLen: textContent.length, imageCount: images.length, linksFound: links.length });
-      pages.push({ url, textContent, images, meta, screenshotB64 });
-      await page.close();
-    } catch (err) {
-      console.warn('Crawl failed:', url, err.message);
-      if (debug) debugLog.push({ url, stage: 'exception', message: err.message });
-    }
-  }
-
-  await browser.close();
-  if (debug) return { pages, debugLog };
-  return pages;
-}
-
-/**
- * Smart crawler wrapper. Prefers ScrapFly (handles Cloudflare, JS rendering,
- * residential proxies). Falls back to local Playwright if ScrapFly isn't
- * configured or fails entirely.
- *
- * Both crawlers return the same shape so callers don't need to know which one ran.
- */
+// We removed the in-house Playwright crawler in favour of ScrapFly. ScrapFly
+// handles Cloudflare, residential proxies, JS rendering and screenshots in
+// one HTTP call, so the server no longer needs a local Chromium image.
+// If SCRAPFLY_API_KEY is missing or ScrapFly fails, we surface a clear error
+// instead of silently falling back to a broken second crawler.
 async function smartCrawl(startUrl, opts = {}) {
-  if (isScrapFlyAvailable()) {
-    try {
-      console.log('[smart-crawl] Using ScrapFly for', startUrl);
-      const result = await crawlWebsiteScrapFly(startUrl, opts);
-      const pages = opts.debug ? result.pages : result;
-      /* If ScrapFly returns zero pages, treat as failure and fall back. */
-      if (pages.length === 0) {
-        console.warn('[smart-crawl] ScrapFly returned 0 pages, falling back to Playwright');
-      } else {
-        return result;
-      }
-    } catch (err) {
-      console.warn('[smart-crawl] ScrapFly failed, falling back to Playwright:', err.message);
-    }
-  } else {
-    console.log('[smart-crawl] SCRAPFLY_API_KEY not set, using Playwright');
+  if (!isScrapFlyAvailable()) {
+    throw new Error('Crawler unavailable: SCRAPFLY_API_KEY is not configured on the server.');
   }
-
-  return crawlWebsite(startUrl, opts);
+  console.log('[smart-crawl] Using ScrapFly for', startUrl);
+  const result = await crawlWebsiteScrapFly(startUrl, opts);
+  const pages = opts.debug ? result.pages : result;
+  if (!pages || pages.length === 0) {
+    throw new Error('ScrapFly returned no pages. The target site may block all bots, be offline, or require captcha.');
+  }
+  return result;
 }
+
 
 function normaliseUrl(raw) {
   try {
@@ -1056,34 +865,17 @@ app.post('/api/report/:id/override', async (req, res) => {
    GET /api/_diag/crawl?url=https://example.com  */
 app.get('/api/_diag/crawl', async (req, res) => {
   const targetUrl = req.query.url;
-  const engineRequested = (req.query.engine || 'auto').toLowerCase();
   if (!targetUrl || !/^https?:\/\//.test(targetUrl)) {
-    return res.status(400).json({ error: 'Provide ?url=https://...  Optional: &engine=scrapfly|playwright|auto' });
+    return res.status(400).json({ error: 'Provide ?url=https://...' });
   }
-  console.log(`[crawl-test] Starting crawl of ${targetUrl} (engine: ${engineRequested})`);
+  if (!isScrapFlyAvailable()) {
+    return res.status(503).json({ error: 'SCRAPFLY_API_KEY not configured on the server.' });
+  }
+  console.log(`[crawl-test] Starting ScrapFly crawl of ${targetUrl}`);
   try {
     const t0 = Date.now();
-    let result;
-    let engineUsed;
-    if (engineRequested === 'scrapfly') {
-      if (!isScrapFlyAvailable()) {
-        return res.status(400).json({ error: 'SCRAPFLY_API_KEY not configured. Add it as an env var on Render.' });
-      }
-      result = await crawlWebsiteScrapFly(targetUrl, { debug: true });
-      engineUsed = 'scrapfly';
-    } else if (engineRequested === 'playwright') {
-      result = await crawlWebsite(targetUrl, { debug: true });
-      engineUsed = 'playwright';
-    } else {
-      /* Auto: ScrapFly if configured, fallback Playwright */
-      if (isScrapFlyAvailable()) {
-        result = await crawlWebsiteScrapFly(targetUrl, { debug: true });
-        engineUsed = 'scrapfly';
-      } else {
-        result = await crawlWebsite(targetUrl, { debug: true });
-        engineUsed = 'playwright';
-      }
-    }
+    const result = await crawlWebsiteScrapFly(targetUrl, { debug: true });
+    const engineUsed = 'scrapfly';
     const pages = result.pages || result;
     const debugLog = result.debugLog || [];
     const totalCost = result.totalCost || null;
@@ -1189,4 +981,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-                                       
+       

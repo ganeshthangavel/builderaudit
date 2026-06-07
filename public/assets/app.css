@@ -51,11 +51,10 @@ body.ba3 {
 
 /* The 1440-max page container */
 .ba3-shell {
-  max-width: 1440px;
+  max-width: 100%;
   margin: 0 auto;
   background: var(--ba3-surface);
   min-height: 100vh;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 30px 80px rgba(0,0,0,0.08);
 }
 
 /* Top bar — logo, audience toggle, sign in */
@@ -272,32 +271,37 @@ body.ba3 {
 /* URL input with inline button — the classic "https://" prefix style */
 .ba3-url-input {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 0;
   background: #fff;
   border: var(--ba3-border);
   border-radius: 4px;
   padding: 6px;
-  max-width: 560px;
+  max-width: 600px;
+  width: 100%;
   box-shadow: 4px 4px 0 var(--ba3-line);
+  box-sizing: border-box;
 }
 .ba3-url-input .prefix {
   padding: 0 14px;
+  display: flex;
+  align-items: center;
   color: var(--ba3-muted);
   font-family: var(--ba3-body);
   font-size: 15px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 .ba3-url-input input {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
   font-family: var(--ba3-body);
-  font-size: 17px;
+  font-size: 16px;
   color: var(--ba3-ink);
-  padding: 12px 4px;
-  min-width: 0;
+  padding: 12px 8px;
 }
 .ba3-url-input button {
   background: var(--ba3-accent);
@@ -307,9 +311,10 @@ body.ba3 {
   padding: 12px 20px;
   font-family: var(--ba3-body);
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14.5px;
   cursor: pointer;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .ba3-url-input button:hover {
   background: var(--ba3-accent-d);

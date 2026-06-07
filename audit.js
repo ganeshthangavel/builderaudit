@@ -1,91 +1,535 @@
-#!/usr/bin/env node
-/**
- * audit.js  — CLI tool
- * Usage: node audit.js https://example-builder.co.uk
- * Outputs a full JSON report to ./reports/<domain>-<timestamp>.json
- *   and prints a human-readable summary to the console.
- */
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
+<title>Auditing your site — BuilderAudit</title>
 
-const fs = require('fs');
-const path = require('path');
-const { crawlWebsite } = require('./src/crawler');
-const { scoreWebsite, DIMENSIONS } = require('./src/scorer');
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-const url = process.argv[2];
-if (!url) {
-  console.error('Usage: node audit.js <url>');
-  process.exit(1);
+<style>
+/* ════════════════════════════════════════════════════════════════
+   BA3 SCANNING · Audit-in-progress page
+   Visual port of /tmp/scan-design/ba3/project/src/scanning.jsx
+   Real backend: connects to /api/audit SSE stream, maps 4 server
+   phases to the 9-check visual list, redirects to /report/:id.
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --fill:    #FFD24D;
+  --accent:  #5247B8;
+  --surface: #FBF5E1;
+  --ink:     #1B1A17;
+  --line:    #1B1A17;
+  --muted:   #5C5851;
+  --good:    #1F8A5B;
+  --bad:     #C0392B;
+  --display: 'Archivo','Archivo Black',-apple-system,sans-serif;
+  --body:    'IBM Plex Sans',-apple-system,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--fill); min-height: 100vh; }
+body {
+  font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased;
+}
+a { -webkit-tap-highlight-color: transparent; }
+
+.sc-header {
+  padding: 20px 40px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sc-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.sc-brand-name {
+  font-family: var(--display); font-weight: 800; font-size: 20px;
+  color: var(--ink); letter-spacing: -0.01em; line-height: 1;
+  white-space: nowrap;
+}
+.sc-status-chip {
+  font-family: var(--body); font-size: 12.5px; font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sc-status-chip.done { background: var(--good); color: #fff; border-color: var(--line); }
+
+.sc-main {
+  flex: 1; display: grid; place-items: center;
+  padding: 20px 24px 60px;
+  min-height: calc(100vh - 80px);
+}
+.sc-wrap { width: 100%; max-width: 720px; }
+
+.sc-hero { text-align: center; margin-bottom: 32px; }
+.sc-tool-bubble { position: relative; display: inline-block; margin-bottom: 18px; }
+.sc-tool-circle {
+  width: 110px; height: 110px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--line);
+  display: grid; place-items: center;
+  box-shadow: 5px 5px 0 var(--line);
+  overflow: hidden;
+}
+.sc-tool-circle img { width: 68px; height: 68px; object-fit: contain; animation: sc-pop .4s ease; }
+.sc-orbit {
+  position: absolute; inset: -8px;
+  border-radius: 50%;
+  border: 3px dashed var(--accent);
+  opacity: 0.5;
+  animation: sc-spin 3s linear infinite;
+}
+.sc-h1 {
+  font-family: var(--display); font-weight: 900;
+  font-size: 38px; line-height: 1;
+  color: var(--ink); text-transform: uppercase; letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+.sc-sub {
+  font-family: var(--body); font-size: 16px;
+  color: var(--ink); opacity: 0.78; margin: 0;
+  min-height: 1.5em;
 }
 
-const SEVERITY_ORDER = { critical: 0, warning: 1, good: 2 };
-const BAR = (score) => {
-  const filled = Math.round(score / 5);
-  return '█'.repeat(filled) + '░'.repeat(20 - filled) + `  ${score}/100`;
-};
+.sc-card {
+  background: #fff;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  padding: 26px;
+  box-shadow: 6px 6px 0 var(--line);
+}
+.sc-card-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; gap: 12px;
+}
+.sc-url-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sc-url-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); flex: 0 0 auto;
+}
+.sc-url-dot.done { background: var(--good); }
+.sc-url {
+  font-family: var(--body); font-size: 14px; font-weight: 600;
+  color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sc-pct {
+  font-family: var(--display); font-weight: 900; font-size: 22px;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
 
-(async () => {
-  try {
-    const pages = await crawlWebsite(url);
-    if (!pages.length) throw new Error('No pages crawled — check the URL');
+.sc-bar {
+  height: 18px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+.sc-bar-fill {
+  height: 100%; background: var(--fill);
+  width: 0%;
+  transition: width .3s ease;
+}
+.sc-bar-fill.done { background: var(--good); }
 
-    const report = await scoreWebsite(pages, url);
+.sc-check-list { display: flex; flex-direction: column; gap: 8px; }
+.sc-check-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: 6px;
+  background: transparent;
+  opacity: 0.4;
+  transition: opacity .3s, background .3s;
+}
+.sc-check-row.active { background: var(--surface); opacity: 1; }
+.sc-check-row.done { opacity: 1; }
+.sc-check-row img { width: 28px; height: 28px; object-fit: contain; }
+.sc-check-label {
+  flex: 1; font-family: var(--body); font-size: 14.5px;
+  font-weight: 500; color: var(--ink);
+}
+.sc-check-row.active .sc-check-label { font-weight: 700; }
+.sc-status { display: inline-flex; align-items: center; justify-content: center; }
+.sc-status-done {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--good); color: #fff;
+  font-size: 12px; font-weight: 800;
+  border: 2px solid var(--line);
+  display: grid; place-items: center;
+}
+.sc-status-active {
+  font-family: var(--body); font-size: 11px; font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.sc-status-pending {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px dashed var(--muted); opacity: 0.6;
+}
 
-    // ── Console summary ───────────────────────────────────────────────────
-    console.log('\n' + '═'.repeat(60));
-    console.log(`  SITE AUDIT REPORT`);
-    console.log(`  ${url}`);
-    console.log('═'.repeat(60));
-    console.log(`\n  OVERALL SCORE: ${report.overallScore}/100`);
-    console.log(`  ${BAR(report.overallScore)}`);
-    console.log(`\n  ${report.summary}\n`);
-    console.log('─'.repeat(60));
-    console.log('  CATEGORY BREAKDOWN\n');
+.sc-cta {
+  display: none; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 22px; padding: 15px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--body); font-weight: 700; font-size: 16px;
+  text-decoration: none;
+  box-shadow: 4px 4px 0 var(--line);
+  animation: sc-pop .4s ease;
+}
+.sc-cta.on { display: flex; }
+.sc-cta:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
 
-    for (const [key, cfg] of Object.entries(DIMENSIONS)) {
-      const score = report.scores[key];
-      const emoji = score >= 70 ? '✅' : score >= 45 ? '⚠️ ' : '❌';
-      console.log(`  ${emoji} ${cfg.label.padEnd(22)} ${BAR(score)}`);
+.sc-foot {
+  text-align: center; font-family: var(--body); font-size: 13px;
+  color: var(--ink); opacity: 0.6; margin-top: 18px;
+}
+
+.sc-blocked, .sc-error {
+  display: none;
+  background: #fff;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: 6px 6px 0 var(--line);
+  text-align: center;
+}
+.sc-blocked.on, .sc-error.on { display: block; }
+.sc-blocked-icon, .sc-error-icon { font-size: 48px; margin-bottom: 12px; }
+.sc-blocked-title, .sc-error-title {
+  font-family: var(--display); font-weight: 900; font-size: 26px;
+  color: var(--ink); text-transform: uppercase; letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+.sc-blocked-msg, .sc-error-msg {
+  font-family: var(--body); font-size: 15px; color: var(--ink);
+  line-height: 1.5; margin: 0 0 12px;
+}
+.sc-blocked-suggest {
+  background: var(--surface); border: 2px solid var(--line);
+  border-radius: 6px; padding: 12px 16px;
+  font-family: var(--body); font-size: 14px; color: var(--ink);
+  margin: 16px 0;
+}
+.sc-blocked-actions, .sc-error-actions {
+  display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+  margin-top: 20px;
+}
+.sc-btn-primary {
+  padding: 12px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
+  text-decoration: none; cursor: pointer;
+  box-shadow: 4px 4px 0 var(--line);
+}
+.sc-btn-secondary {
+  padding: 12px 22px;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
+  text-decoration: none; cursor: pointer;
+}
+
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+@keyframes sc-pop { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+@media (max-width: 700px) {
+  .sc-header { padding: 16px 20px; }
+  .sc-main { padding: 8px 16px 40px; }
+  .sc-h1 { font-size: 28px; }
+  .sc-card { padding: 20px; box-shadow: 4px 4px 0 var(--line); }
+  .sc-tool-circle { width: 90px; height: 90px; }
+  .sc-tool-circle img { width: 54px; height: 54px; }
+  .sc-check-row { padding: 6px 8px; gap: 10px; }
+  .sc-check-row img { width: 22px; height: 22px; }
+  .sc-check-label { font-size: 13.5px; }
+}
+</style>
+</head>
+<body>
+
+<header class="sc-header">
+  <a href="/" class="sc-brand">
+    <svg width="38" height="39" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block">
+      <rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/>
+      <circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/>
+      <path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/>
+      <rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/>
+      <path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/>
+      <rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/>
+      <path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/>
+      <path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/>
+      <path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/>
+      <path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/>
+    </svg>
+    <span class="sc-brand-name"><span>Builder</span><span style="color:var(--accent)">Audit</span></span>
+  </a>
+  <div class="sc-status-chip" id="statusChip">Auditing…</div>
+</header>
+
+<main class="sc-main">
+  <div class="sc-wrap">
+
+    <div class="sc-hero">
+      <div class="sc-tool-bubble">
+        <div class="sc-tool-circle">
+          <img id="activeToolIcon" src="/assets/icons/drill.png" alt="">
+        </div>
+        <div class="sc-orbit" id="orbit"></div>
+      </div>
+      <h1 class="sc-h1" id="heroH1">Auditing your site</h1>
+      <p class="sc-sub" id="heroSub">Starting up…</p>
+    </div>
+
+    <div class="sc-card" id="progressCard">
+      <div class="sc-card-top">
+        <div class="sc-url-row">
+          <span class="sc-url-dot" id="urlDot"></span>
+          <span class="sc-url" id="urlDisplay">https://…</span>
+        </div>
+        <span class="sc-pct" id="pctDisplay">0%</span>
+      </div>
+
+      <div class="sc-bar"><div class="sc-bar-fill" id="barFill"></div></div>
+
+      <div class="sc-check-list" id="checkList"></div>
+
+      <a class="sc-cta" id="ctaButton" href="#">See my results →</a>
+    </div>
+
+    <p class="sc-foot" id="footnote">This usually takes under a minute · no need to refresh</p>
+
+    <div class="sc-blocked" id="blockedCard" style="margin-top:18px">
+      <div class="sc-blocked-icon">⚠</div>
+      <h2 class="sc-blocked-title">We can't audit this site</h2>
+      <p class="sc-blocked-msg" id="blockedMsg"></p>
+      <div class="sc-blocked-suggest" id="blockedSuggest" style="display:none"></div>
+      <div class="sc-blocked-actions">
+        <a href="/" class="sc-btn-primary">Try a different site</a>
+        <a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20%E2%80%94%20Site%20blocked" class="sc-btn-secondary">Contact us</a>
+      </div>
+    </div>
+
+    <div class="sc-error" id="errorCard" style="margin-top:18px">
+      <div class="sc-error-icon">⚠</div>
+      <h2 class="sc-error-title">Audit failed</h2>
+      <p class="sc-error-msg" id="errorMsg"></p>
+      <div class="sc-error-actions">
+        <a href="/" class="sc-btn-primary">Try again</a>
+        <a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20%E2%80%94%20Audit%20error" class="sc-btn-secondary">Contact us</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* The 9 visual checks. Each maps to a backend phase. */
+var CHECKS = [
+  { icon: 'drill',       label: 'Site speed',        line: 'Timing how fast your pages load on 4G…' },
+  { icon: 'tape',        label: 'Mobile friendly',   line: 'Shrinking down to a 6-inch screen…' },
+  { icon: 'hardhat',     label: 'Photo quality',     line: 'Reverse-image searching your job photos…' },
+  { icon: 'gear',        label: 'Trust signals',     line: 'Looking for insurance, reviews and trade badges…' },
+  { icon: 'toolbox',     label: 'Services clarity',  line: 'Reading what you say you actually do…' },
+  { icon: 'screwdriver', label: 'Quote flow',        line: 'Counting the fields in your quote form…' },
+  { icon: 'ladder',      label: 'SEO & Google',      line: 'Checking where you rank locally…' },
+  { icon: 'roller',      label: 'Copy & tone',       line: 'Listening for robot-speak in your copy…' },
+  { icon: 'cone',        label: 'Real vs AI photos', line: 'Sniffing out stock and AI-generated images…' },
+];
+
+function renderCheckList() {
+  var list = document.getElementById('checkList');
+  list.innerHTML = CHECKS.map(function(c, i){
+    return '<div class="sc-check-row" data-idx="' + i + '">' +
+      '<img src="/assets/icons/' + c.icon + '.png" alt="">' +
+      '<span class="sc-check-label">' + c.label + '</span>' +
+      '<div class="sc-status"><div class="sc-status-pending"></div></div>' +
+    '</div>';
+  }).join('');
+}
+renderCheckList();
+
+function setActiveIdx(idx, done) {
+  var rows = document.querySelectorAll('.sc-check-row');
+  rows.forEach(function(row, i){
+    row.classList.remove('active', 'done');
+    var statusEl = row.querySelector('.sc-status');
+    if (done || i < idx) {
+      row.classList.add('done');
+      statusEl.innerHTML = '<div class="sc-status-done">✓</div>';
+    } else if (i === idx) {
+      row.classList.add('active');
+      statusEl.innerHTML = '<span class="sc-status-active">Checking…</span>';
+    } else {
+      statusEl.innerHTML = '<div class="sc-status-pending"></div>';
     }
-
-    console.log('\n' + '─'.repeat(60));
-    console.log('  PRIORITY ISSUES\n');
-
-    const sorted = [...report.issues].sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
-    );
-
-    for (const issue of sorted) {
-      const icon = issue.severity === 'critical' ? '🔴' :
-                   issue.severity === 'warning'  ? '🟡' : '🟢';
-      console.log(`  ${icon} ${issue.title}`);
-      console.log(`     ${issue.detail}`);
-      console.log(`     Fix: ${issue.fix}\n`);
-    }
-
-    if (report.positives?.length) {
-      console.log('─'.repeat(60));
-      console.log('  WHAT\'S WORKING\n');
-      report.positives.forEach(p => console.log(`  ✓ ${p}`));
-      console.log('');
-    }
-
-    console.log('─'.repeat(60));
-    console.log(`  Competitor gap: ${report.competitorGap}`);
-    console.log('═'.repeat(60) + '\n');
-
-    // ── Save full JSON report ─────────────────────────────────────────────
-    const reportsDir = path.join(__dirname, 'reports');
-    fs.mkdirSync(reportsDir, { recursive: true });
-
-    const domain = new URL(url).hostname.replace(/\./g, '_');
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    const outPath = path.join(reportsDir, `${domain}-${timestamp}.json`);
-
-    fs.writeFileSync(outPath, JSON.stringify({ url, scannedAt: new Date().toISOString(), ...report }, null, 2));
-    console.log(`  📄 Full report saved: ${outPath}\n`);
-
-  } catch (err) {
-    console.error('\n❌ Audit failed:', err.message);
-    process.exit(1);
+  });
+  var current = CHECKS[Math.min(idx, CHECKS.length - 1)];
+  document.getElementById('activeToolIcon').src = '/assets/icons/' + (done ? 'clipboard' : current.icon) + '.png';
+  if (done) {
+    document.getElementById('heroH1').textContent = 'Your audit is ready';
+    document.getElementById('heroSub').textContent = "We've finished going through " + displayUrl + ' like a homeowner would.';
+  } else {
+    document.getElementById('heroH1').textContent = 'Auditing your site';
+    document.getElementById('heroSub').textContent = current.line;
   }
-})();
+}
+
+function setProgress(pct, done) {
+  var p = Math.max(0, Math.min(100, pct));
+  document.getElementById('pctDisplay').textContent = Math.round(p) + '%';
+  var bar = document.getElementById('barFill');
+  bar.style.width = p + '%';
+  bar.classList.toggle('done', done);
+  document.getElementById('urlDot').classList.toggle('done', done);
+  document.getElementById('statusChip').classList.toggle('done', done);
+  document.getElementById('statusChip').textContent = done ? 'Audit complete' : 'Auditing…';
+  if (done) {
+    document.getElementById('orbit').style.display = 'none';
+    document.getElementById('footnote').textContent = 'Free, forever · re-scan any time';
+  }
+}
+
+var params = new URLSearchParams(window.location.search);
+var rawUrl = params.get('url') || '';
+var audience = params.get('audience') || params.get('role') || 'builder';
+var displayUrl = rawUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+document.getElementById('urlDisplay').textContent = displayUrl || 'your site';
+
+if (!rawUrl) { window.location.href = '/'; }
+
+var currentPhase = 0;
+var smoothInterval = null;
+
+function phaseToPct(phase, top) {
+  if (phase <= 0) return 0;
+  var bands = [[0,5], [5,30], [30,55], [55,90], [90,99]];
+  var band = bands[phase] || [0, 5];
+  return top ? band[1] : band[0];
+}
+function phaseToActiveCheckIdx(phase) {
+  if (phase <= 1) return 0;
+  if (phase === 2) return 3;
+  if (phase === 3) return 5;
+  if (phase === 4) return 8;
+  return CHECKS.length - 1;
+}
+
+function startSmoothTick() {
+  if (smoothInterval) return;
+  smoothInterval = setInterval(function(){
+    var ceiling = phaseToPct(currentPhase, true);
+    var floor = phaseToPct(currentPhase, false);
+    var displayed = parseFloat(document.getElementById('pctDisplay').textContent) || 0;
+    if (displayed < ceiling - 0.5) {
+      var step = Math.max(0.2, (ceiling - floor) / 90);
+      setProgress(Math.min(ceiling, displayed + step), false);
+    }
+  }, 100);
+}
+function stopSmoothTick() {
+  if (smoothInterval) clearInterval(smoothInterval);
+  smoothInterval = null;
+}
+
+function handle(name, data) {
+  if (name === 'status') {
+    var step = data.step || 1;
+    if (step > currentPhase) {
+      currentPhase = step;
+      setProgress(phaseToPct(step, false), false);
+      setActiveIdx(phaseToActiveCheckIdx(step), false);
+    }
+  } else if (name === 'complete') {
+    stopSmoothTick();
+    setProgress(100, true);
+    setActiveIdx(CHECKS.length, true);
+    var cta = document.getElementById('ctaButton');
+    cta.href = '/report/' + data.id;
+    cta.classList.add('on');
+    setTimeout(function(){ window.location.href = '/report/' + data.id; }, 1500);
+  } else if (name === 'blocked') {
+    showBlocked(data);
+  } else if (name === 'error') {
+    showError(data.message);
+  }
+}
+
+function showBlocked(data) {
+  stopSmoothTick();
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('footnote').style.display = 'none';
+  document.querySelector('.sc-hero').style.display = 'none';
+  document.getElementById('statusChip').textContent = 'Blocked';
+  document.getElementById('blockedMsg').textContent = data.message || 'Bot protection prevented us from analysing this website.';
+  if (data.suggestion) {
+    var s = document.getElementById('blockedSuggest');
+    s.textContent = data.suggestion;
+    s.style.display = 'block';
+  }
+  document.getElementById('blockedCard').classList.add('on');
+}
+
+function showError(msg) {
+  stopSmoothTick();
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('footnote').style.display = 'none';
+  document.querySelector('.sc-hero').style.display = 'none';
+  document.getElementById('statusChip').textContent = 'Failed';
+  document.getElementById('errorMsg').textContent = msg || 'Something went wrong running the audit. Please try again.';
+  document.getElementById('errorCard').classList.add('on');
+}
+
+async function runAudit() {
+  setProgress(2, false);
+  setActiveIdx(0, false);
+  startSmoothTick();
+  try {
+    var res = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ url: rawUrl, audience: audience }),
+    });
+    if (!res.body) {
+      var errText = await res.text().catch(function(){ return 'Network error'; });
+      throw new Error(errText.slice(0, 200));
+    }
+    var reader = res.body.getReader();
+    var dec = new TextDecoder();
+    var buf = '';
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buf += dec.decode(chunk.value, { stream: true });
+      var lines = buf.split('\n');
+      buf = lines.pop();
+      var lastEvt = null;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('event: ')) { lastEvt = line.slice(7).trim(); continue; }
+        if (line.startsWith('data: ')) {
+          try {
+            var d = JSON.parse(line.slice(6));
+            var evt = lastEvt || (d.step ? 'status' : d.id ? 'complete' : d.message ? 'error' : null);
+            if (evt) handle(evt, d);
+          } catch(e) {}
+          lastEvt = null;
+        }
+      }
+    }
+  } catch (e) {
+    showError(e.message || 'Could not connect to the audit service.');
+  }
+}
+
+runAudit();
+</script>
+
+</body>
+</html>
+    

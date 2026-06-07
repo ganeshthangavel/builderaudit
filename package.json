@@ -5,9 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "audit": "node audit.js",
-    "install-browsers": "npx playwright install chromium"
+    "dev": "nodemon src/server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
@@ -19,7 +17,6 @@
     "nanoid": "^3.3.7",
     "pg": "^8.11.3",
     "resend": "^4.0.0",
-    "playwright": "^1.44.0",
     "sharp": "^0.33.0"
   },
   "devDependencies": {

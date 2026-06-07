@@ -3,205 +3,477 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BuilderAudit — Forensic trust analysis for UK construction websites</title>
-<meta name="description" content="The UK's first forensic trust platform for construction. Audit any builder's website in 60 seconds — for free. See what homeowners really think before they ring.">
+<title>Sign in — BuilderAudit</title>
+<meta name="description" content="Sign in to BuilderAudit. Your audits and saved reports are right where you left them.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css">
+
+<style>
+/* ════════════════════════════════════════════════════════════════
+   BA3 SIGN-IN · Split-screen · Classroom palette
+   Faithful port of /tmp/ba3-handoff/ba3/project/src/sign-in.jsx
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --fill:    #FFD24D;
+  --accent:  #5247B8;
+  --surface: #FBF5E1;
+  --ink:     #1B1A17;
+  --line:    #1B1A17;
+  --muted:   #5C5851;
+  --bad:     #C0392B;
+  --display: 'Archivo','Archivo Black',-apple-system,sans-serif;
+  --body:    'IBM Plex Sans',-apple-system,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  min-height: 100vh; background: var(--surface);
+  font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased;
+}
+
+/* Split screen */
+.si-grid {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+}
+
+/* ── LEFT panel — yellow welcome + handshake illustration ── */
+.si-left {
+  background: var(--fill);
+  padding: 36px 56px 0;
+  position: relative;
+  display: flex; flex-direction: column;
+  border-right: 3px solid var(--line);
+  overflow: hidden;
+}
+.si-top {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.brand-mark {
+  width: 40px; height: 40px; border-radius: 4px;
+  background: var(--accent); border: 2px solid var(--line);
+  display: grid; place-items: center;
+  color: #fff; font-weight: 800; font-size: 18px; font-family: var(--display);
+}
+.brand-name {
+  font-family: var(--display); font-weight: 800; font-size: 20px;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+.back-home {
+  font-family: var(--body); font-size: 13.5px; font-weight: 600;
+  color: var(--ink); text-decoration: none;
+  display: flex; align-items: center; gap: 6px;
+}
+.back-home:hover { text-decoration: underline; }
+
+.si-welcome { margin-top: 56px; margin-bottom: 24px; max-width: 480px; }
+.si-kicker {
+  display: inline-block; padding: 6px 12px;
+  background: var(--accent); color: #fff;
+  border-radius: 999px; font-family: var(--body);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; margin-bottom: 16px; white-space: nowrap;
+}
+.si-h1 {
+  font-family: var(--display); font-weight: 900;
+  font-size: 54px; line-height: 0.95; color: var(--ink);
+  text-transform: uppercase; letter-spacing: -0.02em;
+  margin: 0 0 18px;
+}
+.si-lead {
+  font-family: var(--body); font-size: 17px;
+  color: var(--muted); line-height: 1.5; margin: 0; max-width: 440px;
+}
+.si-illustration {
+  margin-top: auto; align-self: center; margin-bottom: -8px;
+}
+.si-stamp {
+  position: absolute; top: 200px; right: 56px; transform: rotate(8deg);
+  pointer-events: none;
+  background: #fff; border: 2px solid var(--line); border-radius: 4px;
+  padding: 8px 14px; font-family: var(--body);
+  font-size: 11.5px; font-weight: 700; color: var(--ink);
+  letter-spacing: 0.05em; text-transform: uppercase;
+  box-shadow: 3px 3px 0 var(--line); white-space: nowrap;
+}
+
+/* ── RIGHT panel — white form area ── */
+.si-right {
+  background: #fff;
+  padding: 40px 56px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.si-form-box { max-width: 440px; width: 100%; margin: 0 auto; }
+
+/* Sign in / Create account tabs */
+.si-tabs {
+  display: flex;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  margin-bottom: 32px;
+  gap: 2px;
+  box-shadow: 3px 3px 0 var(--line);
+}
+.si-tabs button {
+  flex: 1; padding: 10px 14px;
+  background: transparent; color: var(--ink);
+  border: none; border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 13.5px;
+  letter-spacing: 0.01em; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.si-tabs button.on { background: var(--ink); color: #fff; }
+
+.si-h2 {
+  font-family: var(--display); font-weight: 900; font-size: 32px;
+  line-height: 1; color: var(--ink); text-transform: uppercase;
+  letter-spacing: -0.02em; margin: 0 0 8px;
+}
+.si-sub {
+  font-family: var(--body); font-size: 14px; color: var(--muted);
+  margin: 0 0 24px;
+}
+
+/* Form field */
+.si-field { display: flex; flex-direction: column; gap: 8px; }
+.si-field label {
+  display: block; font-family: var(--body);
+  font-size: 12px; font-weight: 700; color: var(--ink);
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.si-input {
+  display: flex; align-items: center;
+  background: #fff; border: 2px solid var(--line);
+  border-radius: 4px; padding: 0 6px;
+}
+.si-input input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-family: var(--body); font-size: 16px; color: var(--ink);
+  padding: 14px 10px; min-width: 0;
+}
+.si-input .show-toggle {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); padding: 8px 10px;
+  font-family: var(--body); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+/* Keep me signed in row */
+.si-keep-row {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.si-keep {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--body); font-size: 14px; color: var(--ink);
+  cursor: pointer; white-space: nowrap;
+}
+.si-keep input { width: 16px; height: 16px; accent-color: var(--accent); }
+.forgot-link {
+  font-family: var(--body); font-size: 14px; font-weight: 600;
+  color: var(--accent); text-decoration: none;
+}
+.forgot-link:hover { text-decoration: underline; }
+
+/* Submit button — chunky purple with offset shadow */
+.si-submit {
+  padding: 15px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 16px;
+  cursor: pointer; margin-top: 6px;
+  box-shadow: 4px 4px 0 var(--line);
+  transition: transform .12s, box-shadow .12s;
+}
+.si-submit:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
+.si-submit:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--line); }
+.si-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: 4px 4px 0 var(--line); }
+
+/* Divider */
+.si-divider {
+  display: flex; align-items: center; gap: 12px; margin: 4px 0;
+}
+.si-divider .line { flex: 1; height: 2px; background: var(--line); opacity: 0.15; }
+.si-divider span {
+  font-family: var(--body); font-size: 11px; color: var(--muted);
+  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+}
+
+/* Google button (visual only — wire up later if you add OAuth) */
+.si-google {
+  padding: 13px 18px;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 14.5px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+
+.si-switch-row {
+  text-align: center; margin-top: 4px;
+  font-family: var(--body); font-size: 14px; color: var(--muted);
+}
+.si-switch-row a {
+  font-family: var(--body); font-size: 14px; font-weight: 700;
+  color: var(--accent); text-decoration: none; cursor: pointer;
+}
+.si-switch-row a:hover { text-decoration: underline; }
+
+/* Error box */
+.si-err {
+  background: #FEE7E5;
+  border: 2px solid var(--bad);
+  border-radius: 4px;
+  padding: 12px 14px;
+  font-family: var(--body); font-size: 13.5px; font-weight: 600;
+  color: var(--bad);
+  margin-bottom: 16px; display: none;
+}
+.si-err.on { display: block; }
+
+/* ── Mobile responsive: stack columns ── */
+@media (max-width: 880px) {
+  .si-grid { grid-template-columns: 1fr; }
+  .si-left {
+    padding: 24px 24px 32px;
+    border-right: none; border-bottom: 3px solid var(--line);
+  }
+  .si-h1 { font-size: 38px; }
+  .si-illustration { margin-top: 24px; }
+  .si-illustration svg { max-width: 100%; height: auto; }
+  .si-stamp { display: none; }
+  .si-right { padding: 32px 24px; }
+}
+</style>
 </head>
-<body class="ba3">
-<div class="ba3-shell">
+<body>
+<div class="si-grid">
 
-  <!-- HERO -->
-  <section class="ba3-hero">
-    <nav class="ba3-nav">
-      <a href="/" class="ba3-logo">
-        <div class="ba3-logo-mark">BA</div>
-        <div class="ba3-logo-text">BuilderAudit</div>
+  <!-- ═══════════ LEFT — yellow welcome panel ═══════════ -->
+  <div class="si-left">
+    <div class="si-top">
+      <a href="/" class="brand">
+        <div class="brand-mark">BA</div>
+        <div class="brand-name">BUILDERAUDIT</div>
       </a>
+      <a href="/" class="back-home">← Back to home</a>
+    </div>
 
-      <div class="ba3-toggle" id="audienceToggle" role="tablist" aria-label="Choose your view">
-        <button type="button" role="tab" data-mode="builder" class="on" onclick="setMode('builder')">I'm a builder</button>
-        <button type="button" role="tab" data-mode="homeowner" onclick="setMode('homeowner')">I'm a homeowner</button>
+    <div class="si-welcome">
+      <div class="si-kicker">Welcome back</div>
+      <h1 class="si-h1">Welcome back.</h1>
+      <p class="si-lead">Your audits and the builders you've saved are right where you left them.</p>
+    </div>
+
+    <!-- Stamp -->
+    <div class="si-stamp">See you again</div>
+
+    <!-- HandshakeScene SVG -->
+    <div class="si-illustration">
+      <svg width="540" height="400" viewBox="0 0 540 460" style="overflow:visible;display:block" aria-hidden="true">
+        <!-- THOUGHT BUBBLE — centered cloud + handshake -->
+        <g transform="translate(80 0)">
+          <!-- 5-lobed cloud -->
+          <path d="
+            M190 16
+            Q160 10 146 28
+            Q118 24 114 50
+            Q98 54 102 80
+            Q106 110 132 110
+            Q160 132 190 122
+            Q220 132 248 110
+            Q274 110 278 80
+            Q282 54 266 50
+            Q262 24 234 28
+            Q220 10 190 16 Z"
+            fill="#FBF5E1" stroke="#1B1A17" stroke-width="3.4" stroke-linejoin="round"/>
+          <!-- handshake image inside the bubble -->
+          <image href="/assets/handshake.png" x="142" y="24" width="96" height="96"/>
+          <!-- trail dots toward homeowner (down-left) -->
+          <circle cx="118" cy="138" r="9" fill="#FBF5E1" stroke="#1B1A17" stroke-width="3"/>
+          <circle cx="96" cy="158" r="6" fill="#FBF5E1" stroke="#1B1A17" stroke-width="2.4"/>
+          <!-- trail dots toward builder (down-right) -->
+          <circle cx="262" cy="138" r="9" fill="#FBF5E1" stroke="#1B1A17" stroke-width="3"/>
+          <circle cx="284" cy="158" r="6" fill="#FBF5E1" stroke="#1B1A17" stroke-width="2.4"/>
+        </g>
+
+        <!-- HOMEOWNER FIGURE (left) — casual blue shirt, brown hair -->
+        <g transform="translate(95 200)">
+          <!-- body -->
+          <path d="M14 78 Q14 60 32 60 L118 60 Q136 60 136 78 L146 200 Q146 218 130 218 L20 218 Q4 218 4 200 Z"
+            fill="#7AA3C2" stroke="#1B1A17" stroke-width="3" stroke-linejoin="round"/>
+          <!-- collar V -->
+          <path d="M58 60 L75 78 L92 60" fill="none" stroke="#1B1A17" stroke-width="2.4" stroke-linejoin="round"/>
+          <!-- neck -->
+          <rect x="63" y="50" width="24" height="14" fill="#E8B89A" stroke="#1B1A17" stroke-width="2.4"/>
+          <!-- head -->
+          <circle cx="75" cy="16" r="36" fill="#E8B89A" stroke="#1B1A17" stroke-width="3"/>
+          <!-- eyes -->
+          <circle cx="63" cy="16" r="3" fill="#1B1A17"/>
+          <circle cx="87" cy="16" r="3" fill="#1B1A17"/>
+          <!-- smile -->
+          <path d="M67 32 Q75 38 83 32" fill="none" stroke="#1B1A17" stroke-width="2.6" stroke-linecap="round"/>
+          <!-- hair (drawn last over head outline) -->
+          <path d="M40 6 Q44 -22 75 -24 Q106 -22 110 6 Q98 0 75 0 Q52 0 40 6 Z"
+            fill="#3E2A18" stroke="#1B1A17" stroke-width="2.6" stroke-linejoin="round"/>
+        </g>
+
+        <!-- BUILDER FIGURE (right) — hi-vis yellow vest, hardhat -->
+        <g transform="translate(335 200)">
+          <!-- body -->
+          <path d="M14 78 Q14 60 32 60 L118 60 Q136 60 136 78 L146 200 Q146 218 130 218 L20 218 Q4 218 4 200 Z"
+            fill="#FFE600" stroke="#1B1A17" stroke-width="3" stroke-linejoin="round"/>
+          <!-- reflective bands -->
+          <path d="M7 122 Q75 132 143 122" fill="none" stroke="#1B1A17" stroke-width="9" opacity="0.7" stroke-linecap="round"/>
+          <path d="M5 152 Q75 162 145 152" fill="none" stroke="#1B1A17" stroke-width="9" opacity="0.7" stroke-linecap="round"/>
+          <!-- collar V -->
+          <path d="M58 60 L75 78 L92 60" fill="none" stroke="#1B1A17" stroke-width="2.4" stroke-linejoin="round"/>
+          <!-- neck -->
+          <rect x="63" y="50" width="24" height="14" fill="#E8B89A" stroke="#1B1A17" stroke-width="2.4"/>
+          <!-- head (smaller, hardhat covers top) -->
+          <circle cx="75" cy="16" r="34" fill="#E8B89A" stroke="#1B1A17" stroke-width="3"/>
+          <!-- eyes -->
+          <circle cx="63" cy="16" r="3" fill="#1B1A17"/>
+          <circle cx="87" cy="16" r="3" fill="#1B1A17"/>
+          <!-- smile -->
+          <path d="M67 32 Q75 38 83 32" fill="none" stroke="#1B1A17" stroke-width="2.6" stroke-linecap="round"/>
+          <!-- hard hat -->
+          <path d="M43 -10 Q43 -42 75 -42 Q107 -42 107 -10 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M75 -42 V-10" stroke="#1B1A17" stroke-width="2.6"/>
+          <path d="M57 -38 Q53 -22 59 -10" fill="none" stroke="#1B1A17" stroke-width="1.6" opacity="0.55"/>
+          <path d="M93 -38 Q97 -22 91 -10" fill="none" stroke="#1B1A17" stroke-width="1.6" opacity="0.55"/>
+          <ellipse cx="75" cy="-6" rx="42" ry="7" fill="#FFD24D" stroke="#1B1A17" stroke-width="3"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ═══════════ RIGHT — form panel ═══════════ -->
+  <div class="si-right">
+    <div class="si-form-box">
+
+      <!-- Tabs -->
+      <div class="si-tabs" role="tablist">
+        <button type="button" class="on" data-tab="signin" onclick="switchTab('signin')">Sign in</button>
+        <button type="button" data-tab="signup" onclick="switchTab('signup')">Create account</button>
       </div>
 
-      <a href="/login" class="ba3-btn light" style="background:#fff">Sign in</a>
-    </nav>
+      <h2 class="si-h2">Sign in</h2>
+      <p class="si-sub">Use the email you signed up with.</p>
 
-    <div class="ba3-hero-grid">
-      <div>
-        <div class="ba3-kicker" id="heroKicker">Free for UK builders</div>
-        <h1 class="ba3-h1" id="heroH1">What would a homeowner think of your website?</h1>
-        <p class="ba3-lead" id="heroSub">We crawl your site like a fussy homeowner with £40k to spend. Get a forensic trust report in 60 seconds — for free, no signup.</p>
+      <div class="si-err" id="errBox"></div>
 
-        <form class="ba3-url-input" id="auditForm" onsubmit="return startAudit(event)">
-          <div class="prefix">https://</div>
-          <input type="text" id="urlInput" name="url" placeholder="yourbuilder.co.uk" autocomplete="off" required>
-          <button type="submit" id="auditBtn"><span id="auditLabel">Audit my site</span> →</button>
-        </form>
+      <form id="signinForm" onsubmit="return signin(event)" style="display:flex;flex-direction:column;gap:18px">
 
-        <div style="margin-top: 20px; display: flex; gap: 18px; flex-wrap: wrap;">
-          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> 60 seconds</div>
-          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> No card needed</div>
-          <div class="ba3-pill cream"><span style="color:var(--ba3-good);font-weight:800">✓</span> UK construction-only</div>
+        <div class="si-field">
+          <label for="email">Email</label>
+          <div class="si-input">
+            <input type="email" id="email" autocomplete="email" required autofocus placeholder="you@buildingco.co.uk">
+          </div>
         </div>
-      </div>
 
-      <!-- Toolbox illustration cluster on the right -->
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 360px; margin: 0 auto;">
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/hammer.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/hardhat.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/clipboard.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/drill.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/level.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/wrench.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/tape.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/gear.png" alt=""></div>
-        <div class="ba3-tool-icon lg"><img src="/assets/icons/screwdriver.png" alt=""></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- WHAT WE CHECK -->
-  <section style="padding: 80px 80px;">
-    <div style="text-align: center; margin-bottom: 56px;">
-      <div class="ba3-kicker">What we look at</div>
-      <h2 class="ba3-h2">Six trust signals, forensically checked</h2>
-      <p class="ba3-lead" style="margin: 0 auto;">Cowboy builders cost UK homeowners £1.2 billion a year. Our audit catches the same red flags homeowners spot in 90 seconds on your site.</p>
-    </div>
-
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 1100px; margin: 0 auto;">
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/hardhat.png" alt=""></div>
-        <h3 class="ba3-h3">Identity & legitimacy</h3>
-        <p class="ba3-body ba3-muted">Companies House number. Registered address. Insurance proof. The boring stuff that proves you're real.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/clipboard.png" alt=""></div>
-        <h3 class="ba3-h3">Accreditations</h3>
-        <p class="ba3-body ba3-muted">FMB. NHBC. TrustMark. CHAS. Gas Safe. We check what you display, and what you should.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/hammer.png" alt=""></div>
-        <h3 class="ba3-h3">Real work, real proof</h3>
-        <p class="ba3-body ba3-muted">We reverse-image-search every photo. If your "past projects" are stock photos from Spain, we'll catch it.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/gear.png" alt=""></div>
-        <h3 class="ba3-h3">Team & ownership</h3>
-        <p class="ba3-body ba3-muted">Named directors. Real photos. Founder bios. Faceless companies lose 40% of enquiries.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/drill.png" alt=""></div>
-        <h3 class="ba3-h3">Reviews & reputation</h3>
-        <p class="ba3-body ba3-muted">Google reviews. Checkatrade. Trustpilot. Internal quotes count for nothing unless they're verifiable.</p>
-      </div>
-
-      <div class="ba3-panel">
-        <div class="ba3-tool-icon" style="margin-bottom: 16px;"><img src="/assets/icons/tape.png" alt=""></div>
-        <h3 class="ba3-h3">Contact & friction</h3>
-        <p class="ba3-body ba3-muted">Phone visible? Email working? Form too long? Every barrier between visit and enquiry is measured.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- THE PROOF SECTION -->
-  <section style="padding: 0 80px 100px;">
-    <div class="ba3-panel cream" style="padding: 56px 64px;">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;">
-        <div>
-          <div class="ba3-kicker" style="background: var(--ba3-ink)">Built for builders</div>
-          <h2 class="ba3-h2">Stop guessing why enquiries dry up</h2>
-          <p class="ba3-body" style="font-size: 17px; margin-bottom: 24px;">
-            You can't see your own website like a stranger does. We can. We've crawled hundreds of UK builder sites and we know the exact moments where homeowners hesitate, second-guess, and ring someone else.
-          </p>
-          <p class="ba3-body" style="font-size: 17px; margin-bottom: 32px;">
-            One free audit. Your weak spots ranked. Fixes you can do this weekend.
-          </p>
-          <a href="#top" class="ba3-btn primary" onclick="document.getElementById('urlInput').focus();return false">Run my free audit →</a>
+        <div class="si-field">
+          <label for="password">Password</label>
+          <div class="si-input">
+            <input type="password" id="password" autocomplete="current-password" required placeholder="Your password">
+            <button type="button" class="show-toggle" onclick="togglePwd()" id="showBtn">Show</button>
+          </div>
         </div>
-        <div style="text-align: center;">
-          <img src="/assets/handshake.png" alt="" style="max-width: 360px; width: 100%;">
+
+        <div class="si-keep-row">
+          <label class="si-keep"><input type="checkbox" id="keepSignedIn"> Keep me signed in</label>
+          <a href="mailto:gthangavel1@gmail.com?subject=Password%20reset" class="forgot-link">Forgot password?</a>
         </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- FOOTER -->
-  <footer class="ba3-footer">
-    <div class="copy">© 2026 BuilderAudit · UK's first forensic trust platform for construction</div>
-    <div class="links">
-      <a href="/privacy">Privacy</a>
-      <a href="/terms">Terms</a>
-      <a href="/login">Sign in</a>
-    </div>
-  </footer>
+        <button type="submit" class="si-submit" id="submitBtn">Sign in →</button>
 
+        <div class="si-divider">
+          <div class="line"></div>
+          <span>or</span>
+          <div class="line"></div>
+        </div>
+
+        <button type="button" class="si-google" onclick="alert('Google sign-in coming soon.')">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+            <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.91-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.95v2.33A9 9 0 0 0 9 18z"/>
+            <path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.95A8.99 8.99 0 0 0 0 9c0 1.45.35 2.83.95 4.04l3.01-2.33z"/>
+            <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 9 0 9 9 0 0 0 .95 4.96l3.01 2.33C4.67 5.16 6.66 3.58 9 3.58z"/>
+          </svg>
+          Continue with Google
+        </button>
+
+        <div class="si-switch-row">
+          New to BuilderAudit? <a href="/signup">Create one →</a>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <script>
-/* ─── Audience toggle (builder vs homeowner) ─── */
-var currentMode = 'builder';
-
-var COPY = {
-  builder: {
-    kicker: 'Free for UK builders',
-    h1: 'What would a homeowner think of your website?',
-    sub: 'We crawl your site like a fussy homeowner with £40k to spend. Get a forensic trust report in 60 seconds — for free, no signup.',
-    placeholder: 'yourbuilder.co.uk',
-    cta: 'Audit my site',
-  },
-  homeowner: {
-    kicker: 'Free for UK homeowners',
-    h1: 'Should you trust this builder?',
-    sub: 'Paste any UK builder website. We\'ll run a forensic trust check and tell you what they don\'t want you to notice. Free, in 60 seconds.',
-    placeholder: 'thebuilder-you-are-checking.co.uk',
-    cta: 'Check this builder',
-  },
-};
-
-function setMode(mode){
-  currentMode = mode;
-  /* Toggle button state */
-  document.querySelectorAll('#audienceToggle button').forEach(function(b){
-    b.classList.toggle('on', b.dataset.mode === mode);
-  });
-  /* Swap hero copy */
-  var c = COPY[mode];
-  document.getElementById('heroKicker').textContent = c.kicker;
-  document.getElementById('heroH1').textContent = c.h1;
-  document.getElementById('heroSub').textContent = c.sub;
-  document.getElementById('urlInput').placeholder = c.placeholder;
-  document.getElementById('auditLabel').textContent = c.cta;
-  /* Persist for the audit endpoint to know the audience */
-  try { sessionStorage.setItem('ba_audience', mode); } catch(e) {}
+/* Tabs: signin tab stays on this page; signup tab navigates to /signup */
+function switchTab(tab) {
+  if (tab === 'signup') {
+    window.location.href = '/signup';
+    return;
+  }
+  /* (signin tab is already active) */
 }
 
-/* Restore previously chosen mode */
-try {
-  var saved = sessionStorage.getItem('ba_audience');
-  if (saved === 'homeowner') setMode('homeowner');
-} catch(e) {}
+function togglePwd() {
+  var input = document.getElementById('password');
+  var btn = document.getElementById('showBtn');
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = 'Hide'; }
+  else { input.type = 'password'; btn.textContent = 'Show'; }
+}
 
-/* ─── Submit handler — sends user to /audit page ─── */
-function startAudit(e){
+function showErr(msg) {
+  var box = document.getElementById('errBox');
+  box.textContent = msg;
+  box.classList.add('on');
+}
+
+var urlParams = new URLSearchParams(window.location.search);
+var redirectTo = urlParams.get('next') || '/dashboard';
+
+async function signin(e) {
   e.preventDefault();
-  var url = document.getElementById('urlInput').value.trim();
-  if (!url) return false;
-  /* Add https:// if missing */
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  /* Hand off to the audit page, carrying audience */
-  var qs = new URLSearchParams({ url: url, audience: currentMode });
-  window.location.href = '/audit?' + qs.toString();
+  var btn = document.getElementById('submitBtn');
+  var email = document.getElementById('email').value.trim();
+  var password = document.getElementById('password').value;
+  if (!email || !password) { showErr('Please enter your email and password'); return false; }
+
+  document.getElementById('errBox').classList.remove('on');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+
+  try {
+    var res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email: email, password: password }),
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Sign in failed');
+    window.location.href = redirectTo;
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Sign in →';
+    showErr(err.message || 'Sign in failed');
+  }
   return false;
+}
+
+/* If URL ends in #signup, redirect to signup */
+if (window.location.hash === '#signup') {
+  window.location.href = '/signup';
 }
 </script>
 

@@ -945,6 +945,8 @@ app.get('/api/_diag/schema', async (req, res) => {
       JWT_SECRET_present: !!config.JWT_SECRET,
       RESEND_API_KEY_present: !!config.RESEND_API_KEY,
       SERPAPI_KEY_present: !!config.SERPAPI_KEY,
+      SCRAPFLY_API_KEY_present: !!config.SCRAPFLY_API_KEY,
+      SCRAPFLY_API_KEY_runtime_present: !!process.env.SCRAPFLY_API_KEY,
     },
     db_enabled: db.isEnabled(),
   };
@@ -981,4 +983,3 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-   

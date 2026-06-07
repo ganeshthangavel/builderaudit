@@ -1,164 +1,530 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Run an audit — BuilderAudit</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditing your site — BuilderAudit</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ════════════════════════════════════════════════════════════════
+   BA3 SCANNING · Audit-in-progress page
+   Visual port of /tmp/scan-design/ba3/project/src/scanning.jsx
+   Real backend: connects to /api/audit SSE stream, maps 4 server
+   phases to the 9-check visual list, redirects to /report/:id.
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --fill:    #FFD24D;
+  --accent:  #5247B8;
+  --surface: #FBF5E1;
+  --ink:     #1B1A17;
+  --line:    #1B1A17;
+  --muted:   #5C5851;
+  --good:    #1F8A5B;
+  --bad:     #C0392B;
+  --display: 'Archivo','Archivo Black',-apple-system,sans-serif;
+  --body:    'IBM Plex Sans',-apple-system,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--fill); min-height: 100vh; }
+body {
+  font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased;
+}
+a { -webkit-tap-highlight-color: transparent; }
+
+.sc-header {
+  padding: 20px 40px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sc-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.sc-brand-name {
+  font-family: var(--display); font-weight: 800; font-size: 20px;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+.sc-status-chip {
+  font-family: var(--body); font-size: 12.5px; font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sc-status-chip.done { background: var(--good); color: #fff; border-color: var(--line); }
+
+.sc-main {
+  flex: 1; display: grid; place-items: center;
+  padding: 20px 24px 60px;
+  min-height: calc(100vh - 80px);
+}
+.sc-wrap { width: 100%; max-width: 720px; }
+
+.sc-hero { text-align: center; margin-bottom: 32px; }
+.sc-tool-bubble { position: relative; display: inline-block; margin-bottom: 18px; }
+.sc-tool-circle {
+  width: 110px; height: 110px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--line);
+  display: grid; place-items: center;
+  box-shadow: 5px 5px 0 var(--line);
+  overflow: hidden;
+}
+.sc-tool-circle img { width: 68px; height: 68px; object-fit: contain; animation: sc-pop .4s ease; }
+.sc-orbit {
+  position: absolute; inset: -8px;
+  border-radius: 50%;
+  border: 3px dashed var(--accent);
+  opacity: 0.5;
+  animation: sc-spin 3s linear infinite;
+}
+.sc-h1 {
+  font-family: var(--display); font-weight: 900;
+  font-size: 38px; line-height: 1;
+  color: var(--ink); text-transform: uppercase; letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+.sc-sub {
+  font-family: var(--body); font-size: 16px;
+  color: var(--ink); opacity: 0.78; margin: 0;
+  min-height: 1.5em;
+}
+
+.sc-card {
+  background: #fff;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  padding: 26px;
+  box-shadow: 6px 6px 0 var(--line);
+}
+.sc-card-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; gap: 12px;
+}
+.sc-url-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sc-url-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); flex: 0 0 auto;
+}
+.sc-url-dot.done { background: var(--good); }
+.sc-url {
+  font-family: var(--body); font-size: 14px; font-weight: 600;
+  color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sc-pct {
+  font-family: var(--display); font-weight: 900; font-size: 22px;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+
+.sc-bar {
+  height: 18px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+.sc-bar-fill {
+  height: 100%; background: var(--fill);
+  width: 0%;
+  transition: width .3s ease;
+}
+.sc-bar-fill.done { background: var(--good); }
+
+.sc-check-list { display: flex; flex-direction: column; gap: 8px; }
+.sc-check-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: 6px;
+  background: transparent;
+  opacity: 0.4;
+  transition: opacity .3s, background .3s;
+}
+.sc-check-row.active { background: var(--surface); opacity: 1; }
+.sc-check-row.done { opacity: 1; }
+.sc-check-row img { width: 28px; height: 28px; object-fit: contain; }
+.sc-check-label {
+  flex: 1; font-family: var(--body); font-size: 14.5px;
+  font-weight: 500; color: var(--ink);
+}
+.sc-check-row.active .sc-check-label { font-weight: 700; }
+.sc-status { display: inline-flex; align-items: center; justify-content: center; }
+.sc-status-done {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--good); color: #fff;
+  font-size: 12px; font-weight: 800;
+  border: 2px solid var(--line);
+  display: grid; place-items: center;
+}
+.sc-status-active {
+  font-family: var(--body); font-size: 11px; font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.sc-status-pending {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px dashed var(--muted); opacity: 0.6;
+}
+
+.sc-cta {
+  display: none; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 22px; padding: 15px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--body); font-weight: 700; font-size: 16px;
+  text-decoration: none;
+  box-shadow: 4px 4px 0 var(--line);
+  animation: sc-pop .4s ease;
+}
+.sc-cta.on { display: flex; }
+.sc-cta:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
+
+.sc-foot {
+  text-align: center; font-family: var(--body); font-size: 13px;
+  color: var(--ink); opacity: 0.6; margin-top: 18px;
+}
+
+.sc-blocked, .sc-error {
+  display: none;
+  background: #fff;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: 6px 6px 0 var(--line);
+  text-align: center;
+}
+.sc-blocked.on, .sc-error.on { display: block; }
+.sc-blocked-icon, .sc-error-icon { font-size: 48px; margin-bottom: 12px; }
+.sc-blocked-title, .sc-error-title {
+  font-family: var(--display); font-weight: 900; font-size: 26px;
+  color: var(--ink); text-transform: uppercase; letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+.sc-blocked-msg, .sc-error-msg {
+  font-family: var(--body); font-size: 15px; color: var(--ink);
+  line-height: 1.5; margin: 0 0 12px;
+}
+.sc-blocked-suggest {
+  background: var(--surface); border: 2px solid var(--line);
+  border-radius: 6px; padding: 12px 16px;
+  font-family: var(--body); font-size: 14px; color: var(--ink);
+  margin: 16px 0;
+}
+.sc-blocked-actions, .sc-error-actions {
+  display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+  margin-top: 20px;
+}
+.sc-btn-primary {
+  padding: 12px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
+  text-decoration: none; cursor: pointer;
+  box-shadow: 4px 4px 0 var(--line);
+}
+.sc-btn-secondary {
+  padding: 12px 22px;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
+  text-decoration: none; cursor: pointer;
+}
+
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+@keyframes sc-pop { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+@media (max-width: 700px) {
+  .sc-header { padding: 16px 20px; }
+  .sc-main { padding: 8px 16px 40px; }
+  .sc-h1 { font-size: 28px; }
+  .sc-card { padding: 20px; box-shadow: 4px 4px 0 var(--line); }
+  .sc-tool-circle { width: 90px; height: 90px; }
+  .sc-tool-circle img { width: 54px; height: 54px; }
+  .sc-check-row { padding: 6px 8px; gap: 10px; }
+  .sc-check-row img { width: 22px; height: 22px; }
+  .sc-check-label { font-size: 13.5px; }
+}
+</style>
 </head>
 <body>
 
-<header>
-  <a href="/" class="logo">Builder<em>Audit</em></a>
-  <div class="tagline">Forensic trust analysis for UK construction websites</div>
-  <div class="user-menu" id="userMenu"></div>
+<header class="sc-header">
+  <a href="/" class="sc-brand">
+    <svg width="38" height="39" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block">
+      <rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/>
+      <circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/>
+      <path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/>
+      <rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/>
+      <path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/>
+      <rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/>
+      <path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/>
+      <path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/>
+      <path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/>
+      <path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/>
+    </svg>
+    <div class="sc-brand-name">BUILDERAUDIT</div>
+  </a>
+  <div class="sc-status-chip" id="statusChip">Auditing…</div>
 </header>
-<script>
-(async function(){
-  try{
-    var res=await fetch('/api/auth/me',{credentials:'include'});
-    var data=await res.json();
-    var menu=document.getElementById('userMenu');
-    if(!menu)return;
-    if(data.user){
-      var initial=(data.user.companyName||data.user.email||'?')[0].toUpperCase();
-      menu.innerHTML='<a href="/dashboard" class="user-menu-dashboard"><span class="user-avatar">'+initial+'</span>Dashboard</a>';
-    } else {
-      var nextParam=encodeURIComponent(window.location.pathname+window.location.search);
-      menu.innerHTML='<a href="/login?next='+nextParam+'" class="user-menu-login">Log in</a><a href="/signup" class="user-menu-signup">Sign up</a>';
-    }
-  }catch(e){}
-})();
-</script>
 
-<div class="hero">
-  <h1>Run your <em>forensic audit</em></h1>
-  <p>Enter your UK construction website. We will crawl it, verify every photo, and tell you exactly what is costing you jobs. Takes about 3 minutes.</p>
-  <div class="input-row">
-    <input type="url" id="urlInput" placeholder="https://yourbuilderwebsite.co.uk" autofocus />
-    <button id="auditBtn" onclick="startAudit()">Run audit &rarr;</button>
+<main class="sc-main">
+  <div class="sc-wrap">
+
+    <div class="sc-hero">
+      <div class="sc-tool-bubble">
+        <div class="sc-tool-circle">
+          <img id="activeToolIcon" src="/assets/icons/drill.png" alt="">
+        </div>
+        <div class="sc-orbit" id="orbit"></div>
+      </div>
+      <h1 class="sc-h1" id="heroH1">Auditing your site</h1>
+      <p class="sc-sub" id="heroSub">Starting up…</p>
+    </div>
+
+    <div class="sc-card" id="progressCard">
+      <div class="sc-card-top">
+        <div class="sc-url-row">
+          <span class="sc-url-dot" id="urlDot"></span>
+          <span class="sc-url" id="urlDisplay">https://…</span>
+        </div>
+        <span class="sc-pct" id="pctDisplay">0%</span>
+      </div>
+
+      <div class="sc-bar"><div class="sc-bar-fill" id="barFill"></div></div>
+
+      <div class="sc-check-list" id="checkList"></div>
+
+      <a class="sc-cta" id="ctaButton" href="#">See my results →</a>
+    </div>
+
+    <p class="sc-foot" id="footnote">This usually takes under a minute · no need to refresh</p>
+
+    <div class="sc-blocked" id="blockedCard" style="margin-top:18px">
+      <div class="sc-blocked-icon">⚠</div>
+      <h2 class="sc-blocked-title">We can't audit this site</h2>
+      <p class="sc-blocked-msg" id="blockedMsg"></p>
+      <div class="sc-blocked-suggest" id="blockedSuggest" style="display:none"></div>
+      <div class="sc-blocked-actions">
+        <a href="/" class="sc-btn-primary">Try a different site</a>
+        <a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20%E2%80%94%20Site%20blocked" class="sc-btn-secondary">Contact us</a>
+      </div>
+    </div>
+
+    <div class="sc-error" id="errorCard" style="margin-top:18px">
+      <div class="sc-error-icon">⚠</div>
+      <h2 class="sc-error-title">Audit failed</h2>
+      <p class="sc-error-msg" id="errorMsg"></p>
+      <div class="sc-error-actions">
+        <a href="/" class="sc-btn-primary">Try again</a>
+        <a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20%E2%80%94%20Audit%20error" class="sc-btn-secondary">Contact us</a>
+      </div>
+    </div>
   </div>
-</div>
-
-<main>
-  <div id="empty" style="display:none"></div>
-
-  <div class="scan-stage" id="scanStage">
-    <div class="scan-core">
-      <div class="scan-ring scan-ring-1"></div>
-      <div class="scan-ring scan-ring-2"></div>
-      <div class="scan-ring scan-ring-3"></div>
-      <div class="scan-center" id="scanIcon">&#9654;</div>
-    </div>
-    <div class="scan-phase" id="scanPhase">Phase 1 of 4</div>
-    <div class="scan-message" id="scanMessage">Starting audit...</div>
-    <div class="scan-timeline">
-      <div class="scan-tl-step" id="tl1"></div>
-      <div class="scan-tl-step" id="tl2"></div>
-      <div class="scan-tl-step" id="tl3"></div>
-      <div class="scan-tl-step" id="tl4"></div>
-    </div>
-    <div class="scan-tl-labels">
-      <div class="scan-tl-label" id="tll1">Crawl</div>
-      <div class="scan-tl-label" id="tll2">Verify images</div>
-      <div class="scan-tl-label" id="tll3">Analyse</div>
-      <div class="scan-tl-label" id="tll4">Save report</div>
-    </div>
-  </div>
-
-  <div id="errorArea" style="max-width:600px;margin:2rem auto"></div>
 </main>
 
 <script>
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+/* The 9 visual checks. Each maps to a backend phase. */
+var CHECKS = [
+  { icon: 'drill',       label: 'Site speed',        line: 'Timing how fast your pages load on 4G…' },
+  { icon: 'tape',        label: 'Mobile friendly',   line: 'Shrinking down to a 6-inch screen…' },
+  { icon: 'hardhat',     label: 'Photo quality',     line: 'Reverse-image searching your job photos…' },
+  { icon: 'gear',        label: 'Trust signals',     line: 'Looking for insurance, reviews and trade badges…' },
+  { icon: 'toolbox',     label: 'Services clarity',  line: 'Reading what you say you actually do…' },
+  { icon: 'screwdriver', label: 'Quote flow',        line: 'Counting the fields in your quote form…' },
+  { icon: 'ladder',      label: 'SEO & Google',      line: 'Checking where you rank locally…' },
+  { icon: 'roller',      label: 'Copy & tone',       line: 'Listening for robot-speak in your copy…' },
+  { icon: 'cone',        label: 'Real vs AI photos', line: 'Sniffing out stock and AI-generated images…' },
+];
 
-async function startAudit(){
-  var url=document.getElementById('urlInput').value.trim();
-  if(!url||!url.startsWith('http')){alert('Please enter a full URL starting with https://');return;}
-  document.getElementById('auditBtn').disabled=true;
-  document.getElementById('errorArea').innerHTML='';
-  document.getElementById('scanStage').classList.add('active');
-  setStatus('Connecting...',1);
-  document.getElementById('scanStage').scrollIntoView({behavior:'smooth',block:'center'});
-  try{await runSSE(url);}catch(e){showError(e.message);}
+function renderCheckList() {
+  var list = document.getElementById('checkList');
+  list.innerHTML = CHECKS.map(function(c, i){
+    return '<div class="sc-check-row" data-idx="' + i + '">' +
+      '<img src="/assets/icons/' + c.icon + '.png" alt="">' +
+      '<span class="sc-check-label">' + c.label + '</span>' +
+      '<div class="sc-status"><div class="sc-status-pending"></div></div>' +
+    '</div>';
+  }).join('');
+}
+renderCheckList();
+
+function setActiveIdx(idx, done) {
+  var rows = document.querySelectorAll('.sc-check-row');
+  rows.forEach(function(row, i){
+    row.classList.remove('active', 'done');
+    var statusEl = row.querySelector('.sc-status');
+    if (done || i < idx) {
+      row.classList.add('done');
+      statusEl.innerHTML = '<div class="sc-status-done">✓</div>';
+    } else if (i === idx) {
+      row.classList.add('active');
+      statusEl.innerHTML = '<span class="sc-status-active">Checking…</span>';
+    } else {
+      statusEl.innerHTML = '<div class="sc-status-pending"></div>';
+    }
+  });
+  var current = CHECKS[Math.min(idx, CHECKS.length - 1)];
+  document.getElementById('activeToolIcon').src = '/assets/icons/' + (done ? 'clipboard' : current.icon) + '.png';
+  if (done) {
+    document.getElementById('heroH1').textContent = 'Your audit is ready';
+    document.getElementById('heroSub').textContent = "We've finished going through " + displayUrl + ' like a homeowner would.';
+  } else {
+    document.getElementById('heroH1').textContent = 'Auditing your site';
+    document.getElementById('heroSub').textContent = current.line;
+  }
 }
 
-async function runSSE(url){
-  var res=await fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
-  var reader=res.body.getReader(),dec=new TextDecoder(),buf='';
-  while(true){
-    var _ref=await reader.read(),done=_ref.done,value=_ref.value;
-    if(done)break;
-    buf+=dec.decode(value,{stream:true});
-    var lines=buf.split('\n');
-    buf=lines.pop();
-    var lastEvt=null;
-    for(var i=0;i<lines.length;i++){
-      var line=lines[i];
-      if(line.startsWith('event: ')){lastEvt=line.slice(7).trim();continue;}
-      if(line.startsWith('data: ')){
-        try{
-          var d=JSON.parse(line.slice(6));
-          var evt=lastEvt||(d.step?'status':d.id?'complete':d.message?'error':null);
-          if(evt)handle(evt,d);
-        }catch(e){}
-        lastEvt=null;
+function setProgress(pct, done) {
+  var p = Math.max(0, Math.min(100, pct));
+  document.getElementById('pctDisplay').textContent = Math.round(p) + '%';
+  var bar = document.getElementById('barFill');
+  bar.style.width = p + '%';
+  bar.classList.toggle('done', done);
+  document.getElementById('urlDot').classList.toggle('done', done);
+  document.getElementById('statusChip').classList.toggle('done', done);
+  document.getElementById('statusChip').textContent = done ? 'Audit complete' : 'Auditing…';
+  if (done) {
+    document.getElementById('orbit').style.display = 'none';
+    document.getElementById('footnote').textContent = 'Free, forever · re-scan any time';
+  }
+}
+
+var params = new URLSearchParams(window.location.search);
+var rawUrl = params.get('url') || '';
+var audience = params.get('audience') || params.get('role') || 'builder';
+var displayUrl = rawUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+document.getElementById('urlDisplay').textContent = displayUrl || 'your site';
+
+if (!rawUrl) { window.location.href = '/'; }
+
+var currentPhase = 0;
+var smoothInterval = null;
+
+function phaseToPct(phase, top) {
+  if (phase <= 0) return 0;
+  var bands = [[0,5], [5,30], [30,55], [55,90], [90,99]];
+  var band = bands[phase] || [0, 5];
+  return top ? band[1] : band[0];
+}
+function phaseToActiveCheckIdx(phase) {
+  if (phase <= 1) return 0;
+  if (phase === 2) return 3;
+  if (phase === 3) return 5;
+  if (phase === 4) return 8;
+  return CHECKS.length - 1;
+}
+
+function startSmoothTick() {
+  if (smoothInterval) return;
+  smoothInterval = setInterval(function(){
+    var ceiling = phaseToPct(currentPhase, true);
+    var floor = phaseToPct(currentPhase, false);
+    var displayed = parseFloat(document.getElementById('pctDisplay').textContent) || 0;
+    if (displayed < ceiling - 0.5) {
+      var step = Math.max(0.2, (ceiling - floor) / 90);
+      setProgress(Math.min(ceiling, displayed + step), false);
+    }
+  }, 100);
+}
+function stopSmoothTick() {
+  if (smoothInterval) clearInterval(smoothInterval);
+  smoothInterval = null;
+}
+
+function handle(name, data) {
+  if (name === 'status') {
+    var step = data.step || 1;
+    if (step > currentPhase) {
+      currentPhase = step;
+      setProgress(phaseToPct(step, false), false);
+      setActiveIdx(phaseToActiveCheckIdx(step), false);
+    }
+  } else if (name === 'complete') {
+    stopSmoothTick();
+    setProgress(100, true);
+    setActiveIdx(CHECKS.length, true);
+    var cta = document.getElementById('ctaButton');
+    cta.href = '/report/' + data.id;
+    cta.classList.add('on');
+    setTimeout(function(){ window.location.href = '/report/' + data.id; }, 1500);
+  } else if (name === 'blocked') {
+    showBlocked(data);
+  } else if (name === 'error') {
+    showError(data.message);
+  }
+}
+
+function showBlocked(data) {
+  stopSmoothTick();
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('footnote').style.display = 'none';
+  document.querySelector('.sc-hero').style.display = 'none';
+  document.getElementById('statusChip').textContent = 'Blocked';
+  document.getElementById('blockedMsg').textContent = data.message || 'Bot protection prevented us from analysing this website.';
+  if (data.suggestion) {
+    var s = document.getElementById('blockedSuggest');
+    s.textContent = data.suggestion;
+    s.style.display = 'block';
+  }
+  document.getElementById('blockedCard').classList.add('on');
+}
+
+function showError(msg) {
+  stopSmoothTick();
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('footnote').style.display = 'none';
+  document.querySelector('.sc-hero').style.display = 'none';
+  document.getElementById('statusChip').textContent = 'Failed';
+  document.getElementById('errorMsg').textContent = msg || 'Something went wrong running the audit. Please try again.';
+  document.getElementById('errorCard').classList.add('on');
+}
+
+async function runAudit() {
+  setProgress(2, false);
+  setActiveIdx(0, false);
+  startSmoothTick();
+  try {
+    var res = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ url: rawUrl, audience: audience }),
+    });
+    if (!res.body) {
+      var errText = await res.text().catch(function(){ return 'Network error'; });
+      throw new Error(errText.slice(0, 200));
+    }
+    var reader = res.body.getReader();
+    var dec = new TextDecoder();
+    var buf = '';
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buf += dec.decode(chunk.value, { stream: true });
+      var lines = buf.split('\n');
+      buf = lines.pop();
+      var lastEvt = null;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('event: ')) { lastEvt = line.slice(7).trim(); continue; }
+        if (line.startsWith('data: ')) {
+          try {
+            var d = JSON.parse(line.slice(6));
+            var evt = lastEvt || (d.step ? 'status' : d.id ? 'complete' : d.message ? 'error' : null);
+            if (evt) handle(evt, d);
+          } catch(e) {}
+          lastEvt = null;
+        }
       }
     }
+  } catch (e) {
+    showError(e.message || 'Could not connect to the audit service.');
   }
 }
 
-function handle(name,data){
-  if(name==='status')setStatus(data.message,data.step||0);
-  else if(name==='complete'){
-    setStatus('Done!',4);
-    /* Redirect to the report URL */
-    setTimeout(function(){window.location.href='/report/'+data.id;},600);
-  }
-  else if(name==='blocked')showBlocked(data);
-  else if(name==='error')showError(data.message);
-}
-
-function setStatus(msg,step){
-  document.getElementById('scanMessage').textContent=msg;
-  document.getElementById('scanPhase').textContent='Phase '+Math.max(1,step)+' of 4';
-  var icons=['','\u2315','\u25A3','\u2742','\u2713'];
-  document.getElementById('scanIcon').innerHTML=icons[step]||'\u2315';
-  for(var j=1;j<=4;j++){
-    var tl=document.getElementById('tl'+j);
-    var tll=document.getElementById('tll'+j);
-    tl.classList.remove('done','active');tll.classList.remove('done','active');
-    if(j<step){tl.classList.add('done');tll.classList.add('done');}
-    else if(j===step){tl.classList.add('active');tll.classList.add('active');}
-  }
-}
-
-function showError(msg){
-  document.getElementById('scanStage').classList.remove('active');
-  document.getElementById('auditBtn').disabled=false;
-  document.getElementById('errorArea').innerHTML='<div class="error-card">Audit failed: '+esc(msg)+'</div>';
-}
-
-function showBlocked(data){
-  document.getElementById('scanStage').classList.remove('active');
-  document.getElementById('auditBtn').disabled=false;
-  var html=
-    '<div class="blocked-card">'+
-      '<div class="blocked-icon">\u26A0</div>'+
-      '<div class="blocked-title">We can\u2019t audit this site</div>'+
-      '<div class="blocked-message">'+esc(data.message||'Bot protection prevented us from analysing this website.')+'</div>'+
-      (data.suggestion?'<div class="blocked-suggestion">'+esc(data.suggestion)+'</div>':'')+
-      '<div class="blocked-actions">'+
-        '<a href="/" class="blocked-btn-primary">Try a different site</a>'+
-        '<a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20\u2014%20Site%20blocked" class="blocked-btn-secondary">Contact us</a>'+
-      '</div>'+
-    '</div>';
-  document.getElementById('errorArea').innerHTML=html;
-}
+runAudit();
 </script>
-<script src="/assets/text-effect.js" defer></script>
+
 </body>
 </html>

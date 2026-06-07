@@ -1,350 +1,1706 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your dashboard — BuilderAudit</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — BuilderAudit</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
-.dash-wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
-.dash-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2.5rem; }
-.dash-hello { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--slate-text); font-weight: 600; margin-bottom: 4px; }
-.dash-name { font-size: 32px; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; }
-.dash-name em { font-style: normal; color: var(--coral); }
-.dash-actions { display: flex; gap: 10px; align-items: center; }
-.dash-cta { padding: 12px 20px; background: var(--coral); color: #fff; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 600; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; }
-.dash-cta:hover { background: var(--red-signal); transform: translateY(-1px); box-shadow: 0 8px 20px -6px rgba(255,92,51,.4); }
-.dash-ghost { padding: 12px 18px; background: #fff; color: var(--slate-deep); border: 1px solid var(--ice); border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font); }
-.dash-ghost:hover { background: var(--mist); }
+/* ════════════════════════════════════════════════════════════════
+   BA3 DASHBOARD · 6 pages · client-side routed · mock data
+   Faithful port of /tmp/ba3-handoff/ba3/project/src/dashboard.jsx
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --fill:    #FFD24D;
+  --accent:  #5247B8;
+  --surface: #FBF5E1;
+  --ink:     #1B1A17;
+  --line:    #1B1A17;
+  --muted:   #5C5851;
+  --good:    #1F8A5B;
+  --warn:    #FFD24D;
+  --bad:     #D9534F;
+  --ai:      #7A1FA0;
+  --display: 'Archivo','Archivo Black',-apple-system,sans-serif;
+  --body:    'IBM Plex Sans',-apple-system,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  min-height: 100vh; background: var(--surface);
+  font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased;
+}
 
-.section-h { font-size: 18px; font-weight: 700; margin-bottom: 1rem; letter-spacing: -.015em; }
-.section-h span { font-size: 13px; color: var(--slate-text); font-weight: 500; margin-left: 8px; }
+/* ─── Top nav ─── */
+.db-nav {
+  background: #fff;
+  border-bottom: 3px solid var(--line);
+  padding: 16px 36px;
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex-shrink: 0; }
+.brand-mark {
+  width: 38px; height: 38px; border-radius: 4px;
+  background: var(--accent); border: 2px solid var(--line);
+  display: grid; place-items: center;
+  color: #fff; font-weight: 800; font-size: 17px; font-family: var(--display);
+}
+.brand-name {
+  font-family: var(--display); font-weight: 800; font-size: 20px;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+.db-nav-links {
+  display: flex; gap: 22px; flex: 1;
+  font-family: var(--body); font-size: 13.5px; color: var(--ink); font-weight: 600;
+  flex-wrap: wrap;
+}
+.db-nav-links a {
+  color: var(--muted); text-decoration: none;
+  border-bottom: 2px solid transparent; padding-bottom: 4px;
+  white-space: nowrap; cursor: pointer;
+}
+.db-nav-links a.on { color: var(--ink); border-bottom-color: var(--ink); }
 
-.audit-row { background: #fff; border: 1px solid var(--ice); border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 10px; display: flex; align-items: center; gap: 18px; text-decoration: none; color: inherit; transition: all .25s; }
-.audit-row:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -10px rgba(15,23,42,.12); border-color: rgba(47,107,255,.25); }
-.audit-score { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: -.02em; flex-shrink: 0; }
-.audit-score.g { background: var(--green-light); color: var(--green); }
-.audit-score.a { background: var(--amber-tint); color: var(--orange-deep); }
-.audit-score.r { background: var(--red-tint); color: var(--red-signal); }
-.audit-body { flex: 1; min-width: 0; }
-.audit-url { font-size: 15px; font-weight: 600; color: var(--ink); letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.audit-meta { font-size: 12px; color: var(--slate-text); margin-top: 2px; }
-.audit-arrow { color: var(--slate); font-size: 18px; flex-shrink: 0; }
+.db-role-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface); border: 2px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--body); font-weight: 700; font-size: 12.5px;
+  color: var(--ink); white-space: nowrap;
+}
+.db-role-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.db-role-pill.homeowner .dot { background: var(--good); }
+.db-account { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.db-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--fill); border: 2px solid var(--line);
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink);
+}
+.db-signout {
+  font-family: var(--body); font-size: 13px; color: var(--muted);
+  text-decoration: none; font-weight: 600; cursor: pointer;
+}
+.db-signout:hover { color: var(--ink); }
 
-.empty { text-align: center; padding: 3rem 1.5rem; background: #fff; border: 1px dashed var(--ice); border-radius: 16px; margin-bottom: 2rem; }
-.empty-icon { font-size: 40px; color: var(--slate); margin-bottom: 10px; }
-.empty-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
-.empty-sub { font-size: 14px; color: var(--slate-deep); margin-bottom: 1rem; }
+/* ─── Main containers ─── */
+main { padding: 40px 36px; max-width: 1400px; margin: 0 auto; }
+main.narrow { max-width: 1200px; }
+main.medium { max-width: 1300px; }
+
+.db-kicker {
+  display: inline-block; padding: 4px 10px;
+  background: var(--accent); color: #fff;
+  border-radius: 999px; font-family: var(--body);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.db-kicker.ink { background: var(--ink); color: #fff; }
+.db-kicker.fill { background: var(--fill); color: var(--ink); }
+
+.page-head { margin-bottom: 28px; }
+.page-h1 {
+  font-family: var(--display); font-weight: 900;
+  font-size: 44px; line-height: 1;
+  color: var(--ink); text-transform: uppercase;
+  letter-spacing: -0.02em; margin: 10px 0 6px;
+}
+.page-h1.smaller { font-size: 40px; }
+.page-sub {
+  font-family: var(--body); font-size: 15px; color: var(--muted);
+  margin: 0; max-width: 760px;
+}
+
+/* ─── Cards ─── */
+.db-card {
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  padding: 28px;
+  box-shadow: 5px 5px 0 var(--line);
+}
+.db-card.small { padding: 20px; box-shadow: 3px 3px 0 var(--line); }
+.db-card.medium { padding: 22px; }
+.db-card.fill { background: var(--fill); }
+.db-card.surface { background: var(--surface); }
+.db-card.ink { background: var(--ink); color: #fff; }
+.db-card.dashed { border-style: dashed; box-shadow: none; border-width: 2.5px; }
+.db-card.good { background: rgba(31,138,91,0.08); border-color: var(--good); box-shadow: 4px 4px 0 var(--line); }
+.db-card.bad { background: rgba(217,83,79,0.08); border-color: var(--bad); box-shadow: 4px 4px 0 var(--line); }
+.db-card.ai { background: rgba(122,31,160,0.06); border-color: var(--ai); }
+
+/* ─── Buttons ─── */
+.db-btn {
+  padding: 12px 18px;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 14px;
+  cursor: pointer; white-space: nowrap;
+  transition: transform .12s, box-shadow .12s;
+}
+.db-btn.primary { background: var(--accent); color: #fff; box-shadow: 4px 4px 0 var(--line); }
+.db-btn.primary:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
+.db-btn.primary:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--line); }
+.db-btn.small { padding: 6px 12px; font-size: 12px; box-shadow: none; }
+.db-btn.medium { padding: 8px 12px; font-size: 12.5px; box-shadow: none; }
+
+/* ─── Score donut ─── */
+.score-donut { display: inline-block; }
+
+/* ─── Section labels ─── */
+.section-label {
+  font-family: var(--body); font-size: 11px; font-weight: 700;
+  color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.section-h3 {
+  font-family: var(--display); font-weight: 800; font-size: 18px;
+  color: var(--ink); margin: 0 0 18px;
+  text-transform: uppercase; letter-spacing: -0.01em;
+}
+
+/* ─── Stat cards ─── */
+.stat-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+.stat-num {
+  font-family: var(--display); font-weight: 900; font-size: 40px;
+  color: var(--ink); line-height: 1;
+}
+.stat-num .light { font-size: 22px; color: var(--muted); font-weight: 600; }
+.stat-note { font-family: var(--body); font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+/* ─── Scan URL input ─── */
+.scan-input {
+  display: flex; align-items: stretch;
+  background: #fff; border: 2px solid var(--line);
+  border-radius: 6px; padding: 6px;
+  max-width: 560px; box-shadow: 4px 4px 0 var(--line);
+}
+.scan-input .prefix {
+  padding: 0 14px; display: flex; align-items: center;
+  color: var(--muted); font-family: var(--body);
+  font-size: 14px; font-weight: 600;
+}
+.scan-input input {
+  flex: 1; min-width: 0; border: none; outline: none;
+  background: transparent;
+  font-family: var(--body); font-size: 16px; color: var(--ink);
+  padding: 10px 4px;
+}
+.scan-input button {
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 4px;
+  padding: 10px 18px;
+  font-family: var(--body); font-weight: 700; font-size: 14px;
+  cursor: pointer; white-space: nowrap;
+}
+
+/* ─── Pills/tags ─── */
+.tag {
+  display: inline-block; padding: 2px 8px;
+  background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--body); font-size: 10.5px; font-weight: 700;
+  color: var(--ink); letter-spacing: 0.04em; text-transform: uppercase;
+}
+.pill-good {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; background: var(--good); color: #fff;
+  border-radius: 999px; font-size: 12px; font-weight: 700;
+}
+.pill-impact {
+  padding: 6px 12px;
+  background: var(--good); color: #fff;
+  border: 2px solid var(--line); border-radius: 999px;
+  font-family: var(--display); font-weight: 800; font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ─── Pages (only active one visible) ─── */
+.db-page { display: none; }
+.db-page.on { display: block; }
+
+/* ═════════ PAGE-SPECIFIC ═════════ */
+
+/* DASHBOARD MAIN */
+.db-top-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; margin-bottom: 24px; }
+.db-score-card { display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: center; }
+.db-history-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+
+/* Score history bar chart */
+.history-bars {
+  display: flex; align-items: flex-end; justify-content: space-around;
+  gap: 12px; height: 180px; padding: 0 8px;
+  border-bottom: 2px solid var(--line);
+}
+.history-bars .col {
+  display: flex; flex-direction: column; align-items: center;
+  flex: 1; height: 100%; justify-content: flex-end; position: relative;
+}
+.history-bars .label {
+  position: absolute;
+  font-family: var(--display); font-weight: 800; font-size: 18px;
+  color: var(--ink); margin-bottom: 6px;
+}
+.history-bars .bar {
+  width: 100%; max-width: 56px;
+  border: 2px solid var(--line); border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+.history-dates {
+  display: flex; justify-content: space-around; gap: 12px; padding: 10px 8px 0;
+}
+.history-dates .date {
+  flex: 1; text-align: center;
+  font-family: var(--body); font-size: 12px; color: var(--muted); font-weight: 600;
+}
+
+/* Category breakdown rows */
+.cat-row {
+  display: grid; grid-template-columns: 150px 1fr 36px;
+  align-items: center; gap: 14px; margin-bottom: 11px;
+}
+.cat-name { font-family: var(--body); font-weight: 600; font-size: 13.5px; color: var(--ink); }
+.cat-bar { height: 12px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; }
+.cat-bar > div { height: 100%; }
+.cat-score { font-family: var(--body); font-weight: 700; font-size: 13px; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Fix-it list */
+.fix-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 6px;
+}
+.fix-row.done { background: var(--surface); opacity: 0.55; }
+.fix-row.done .fix-text { text-decoration: line-through; }
+.fix-icon-box {
+  flex: 0 0 auto; width: 40px; height: 40px;
+  display: grid; place-items: center;
+}
+.fix-icon-box img { width: 40px; height: 40px; object-fit: contain; }
+.fix-text { flex: 1; font-family: var(--body); font-size: 14.5px; color: var(--ink); }
+.fix-impact {
+  font-family: var(--body); font-weight: 700; font-size: 12px;
+  color: var(--good); background: rgba(31,138,91,0.1);
+  padding: 4px 10px; border-radius: 999px;
+}
+.fix-row.done .fix-impact { color: var(--muted); background: var(--surface); }
+
+/* ABOUT YOUR BUSINESS */
+.about-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; margin-bottom: 24px; }
+.about-field {
+  display: grid; grid-template-columns: 160px 1fr; gap: 18px;
+  padding: 12px 0; border-bottom: 1px solid var(--surface);
+}
+.about-field .lbl {
+  font-family: var(--body); font-size: 12px; font-weight: 700;
+  color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.about-field .val {
+  font-family: var(--body); font-size: 15px; color: var(--ink); font-weight: 500;
+}
+.director-row {
+  display: flex; align-items: center; gap: 12px;
+}
+.director-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--fill); border: 2px solid var(--line);
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 800; font-size: 12px; color: var(--ink);
+  flex: 0 0 auto;
+}
+.accred-row {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--body); font-size: 14px; color: var(--ink);
+  margin-bottom: 8px;
+}
+.accred-mark {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  font-size: 13px; font-weight: 800;
+}
+.accred-mark.yes { background: var(--good); color: #fff; border: 2px solid var(--good); }
+.accred-mark.no  { background: transparent; color: var(--bad); border: 2px solid var(--bad); }
+
+/* SCORES & REVIEW — expandable rows */
+.review-row {
+  border: 2px solid var(--line); border-radius: 6px;
+  background: #fff; overflow: hidden;
+  margin-bottom: 6px;
+  transition: background .15s;
+}
+.review-row.open { background: var(--surface); }
+.review-row-head {
+  width: 100%;
+  display: grid; grid-template-columns: 170px 60px 1fr auto;
+  gap: 18px; align-items: center;
+  padding: 14px 16px;
+  background: transparent; border: none; text-align: left;
+  cursor: pointer; font-family: inherit;
+}
+.review-row-name {
+  font-family: var(--display); font-weight: 800; font-size: 14px;
+  color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em;
+}
+.review-row-score {
+  width: 50px; padding: 6px 4px;
+  color: #fff; border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--display); font-weight: 900; font-size: 16px; text-align: center;
+}
+.review-row-verdict {
+  font-family: var(--body); font-size: 14px; color: var(--ink);
+  font-style: italic; line-height: 1.4; padding-right: 12px;
+}
+.review-row-plus {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--line);
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink);
+  transition: transform .15s;
+}
+.review-row.open .review-row-plus { transform: rotate(45deg); }
+.review-row-body {
+  display: none;
+  padding: 4px 18px 20px 198px;
+  flex-direction: column; gap: 14px;
+}
+.review-row.open .review-row-body { display: flex; }
+.review-evidence-row {
+  display: flex; gap: 10px;
+  font-family: var(--body); font-size: 13.5px; color: var(--ink); line-height: 1.45;
+}
+.review-climb {
+  background: #fff; border: 2px solid var(--line);
+  border-radius: 6px; padding: 12px 14px;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.review-climb .arrow {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 800;
+}
+
+/* COMPETITORS */
+.competitors-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 24px; align-items: stretch; }
+.comp-slot-empty {
+  min-height: 320px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.comp-score-block {
+  flex: 0 0 auto; padding: 10px 14px;
+  color: #fff; border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--display); font-weight: 900; font-size: 24px;
+  line-height: 1; text-align: center;
+  box-shadow: 3px 3px 0 var(--line); min-width: 60px;
+}
+.comp-score-block .of100 {
+  font-size: 9px; font-weight: 700; margin-top: 2px;
+  opacity: 0.85; letter-spacing: 0.08em;
+}
+.comp-breakdown { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; margin-top: 14px; }
+.comp-cat-row { display: grid; grid-template-columns: 90px 1fr 30px; gap: 10px; align-items: center; }
+.comp-cat-row .name { font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--ink); }
+.comp-cat-row .bar { height: 8px; background: rgba(0,0,0,0.08); border: 1.5px solid var(--line); border-radius: 3px; overflow: hidden; }
+.comp-cat-row .bar > div { height: 100%; }
+.comp-cat-row .num { font-family: var(--body); font-size: 12px; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* PHOTOS */
+.photo-stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 18px; margin-bottom: 24px; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.photo-tile {
+  background: #fff; border: 2px solid var(--line);
+  border-radius: 6px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.photo-thumb {
+  position: relative; height: 140px;
+  border-bottom: 2px solid var(--line);
+  display: grid; place-items: center;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px; color: rgba(0,0,0,0.55); letter-spacing: 0.04em;
+}
+.photo-thumb::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px);
+}
+.photo-thumb .fname { position: relative; z-index: 1; }
+.photo-verdict-pill {
+  position: absolute; top: 10px; left: 10px; z-index: 1;
+  padding: 4px 10px; color: #fff;
+  border: 2px solid var(--line); border-radius: 999px;
+  font-family: var(--body); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.photo-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.photo-label {
+  font-family: var(--display); font-weight: 800; font-size: 14px;
+  color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em;
+}
+.photo-detail { font-family: var(--body); font-size: 13px; color: var(--ink); line-height: 1.4; }
+.photo-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.photo-hint {
+  border-radius: 4px; padding: 8px 10px;
+  font-family: var(--body); font-size: 12.5px; color: var(--ink); line-height: 1.4;
+  border: 1.5px solid;
+}
+.photo-hint.real { background: rgba(31,138,91,0.08); border-color: var(--good); }
+.photo-hint.flag { background: rgba(217,83,79,0.06); border-color: var(--bad); }
+.photo-hint b {
+  display: block; font-size: 10.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 2px;
+}
+.photo-hint.real b { color: var(--good); }
+.photo-hint.flag b { color: var(--bad); }
+
+/* FIXES TOP 10 */
+.fixes-progress-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 24px; }
+.progress-bar {
+  height: 8px; margin-top: 10px;
+  background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: 4px; overflow: hidden;
+}
+.progress-bar > div { height: 100%; background: var(--good); transition: width .25s; }
+
+.fix10-item {
+  border: 2px solid var(--line); border-radius: 6px;
+  background: #fff; overflow: hidden;
+  transition: opacity .2s, background .2s;
+  margin-bottom: 10px;
+}
+.fix10-item.done { background: var(--surface); opacity: 0.68; }
+.fix10-head {
+  display: grid; grid-template-columns: auto 40px 1fr auto auto; gap: 14px;
+  align-items: center; padding: 14px 16px;
+}
+.fix10-check {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 5px;
+  background: #fff; border: 2.4px solid var(--line);
+  cursor: pointer; padding: 0;
+  display: grid; place-items: center;
+  color: #fff; font-weight: 900; font-size: 14px; font-family: var(--display);
+  transition: background .15s, border-color .15s;
+}
+.fix10-item.done .fix10-check { background: var(--good); border-color: var(--good); }
+.fix10-title {
+  font-family: var(--body); font-size: 14.5px; font-weight: 600; color: var(--ink);
+  line-height: 1.35;
+}
+.fix10-item.done .fix10-title { text-decoration: line-through; }
+.fix10-rank {
+  display: inline-block; margin-right: 8px; padding: 1px 7px;
+  background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: 999px; font-family: var(--display);
+  font-weight: 800; font-size: 11px; color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.fix10-meta {
+  display: flex; align-items: center; gap: 10px; margin-top: 6px;
+  font-family: var(--body); font-size: 12px; color: var(--muted); flex-wrap: wrap;
+}
+.fix10-diff-dot { display: inline-flex; align-items: center; gap: 4px; }
+.fix10-diff-dot > span:first-child { width: 6px; height: 6px; border-radius: 50%; }
+.fix10-why {
+  padding: 0 16px 14px 102px;
+  font-family: var(--body); font-size: 13.5px; color: var(--muted); line-height: 1.5;
+}
+.fix10-support {
+  display: none;
+  border-top: 2px solid var(--line);
+  background: rgba(82, 71, 184, 0.06);
+  padding: 18px 16px 18px 102px;
+}
+.fix10-item.support-open .fix10-support { display: block; }
+.fix10-support textarea {
+  width: 100%; max-width: 560px;
+  font-family: var(--body); font-size: 14px; color: var(--ink);
+  padding: 10px 12px;
+  border: 2px solid var(--line); border-radius: 4px;
+  background: #fff; outline: none; resize: vertical;
+}
+.fix10-requested {
+  padding: 8px 12px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 4px;
+  font-family: var(--body); font-weight: 700; font-size: 12px;
+  letter-spacing: 0.04em; white-space: nowrap;
+}
+
+/* HOMEOWNER DASHBOARD */
+.shortlist-head, .shortlist-row {
+  display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto;
+  gap: 16px; align-items: center;
+}
+.shortlist-head {
+  padding: 0 12px 10px;
+  border-bottom: 1.5px solid var(--line); margin-bottom: 8px;
+  font-family: var(--body); font-size: 11px; font-weight: 700;
+  color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;
+}
+.shortlist-row {
+  padding: 14px 12px; border-radius: 6px;
+  border-bottom: 1px solid var(--surface);
+}
+.shortlist-row.top { background: rgba(255,210,77,0.22); }
+.shortlist-name {
+  font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink);
+}
+.top-pick-badge {
+  margin-left: 6px; padding: 2px 8px;
+  background: var(--ink); color: #fff;
+  border-radius: 999px; font-size: 10px; letter-spacing: 0.06em;
+  font-weight: 800; font-family: var(--body);
+}
+.shortlist-url {
+  font-family: var(--body); font-size: 12.5px; color: var(--muted); margin-top: 2px;
+}
+.shortlist-score {
+  margin: 0 auto; width: 60px; padding: 8px 4px;
+  color: #fff; border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--display); font-weight: 900; font-size: 18px; text-align: center;
+}
+
+/* ─── Mobile ─── */
+@media (max-width: 1100px) {
+  .db-top-row, .db-history-grid, .about-grid { grid-template-columns: 1fr; }
+  .competitors-grid { grid-template-columns: 1fr; }
+  .photo-stats-grid { grid-template-columns: 1fr 1fr; }
+  .photo-grid { grid-template-columns: 1fr 1fr; }
+  .fixes-progress-grid { grid-template-columns: 1fr; }
+  .shortlist-head, .shortlist-row { grid-template-columns: 1fr 80px auto; gap: 12px; }
+  .shortlist-head > div:nth-child(2), .shortlist-head > div:nth-child(4),
+  .shortlist-row > div:nth-child(2), .shortlist-row > div:nth-child(4) { display: none; }
+}
+@media (max-width: 700px) {
+  .db-nav { padding: 12px 18px; }
+  .db-nav-links { width: 100%; order: 3; gap: 14px; font-size: 13px; }
+  main { padding: 24px 18px; }
+  .page-h1 { font-size: 30px; }
+  .stat-grid { grid-template-columns: 1fr; }
+  .db-score-card { grid-template-columns: 1fr; text-align: center; }
+  .photo-grid, .photo-stats-grid { grid-template-columns: 1fr; }
+  .review-row-head { grid-template-columns: 1fr 50px auto; }
+  .review-row-verdict { display: none; }
+  .review-row-body { padding-left: 18px; }
+  .fix10-head { grid-template-columns: auto 1fr; }
+  .fix10-head .fix-icon-box, .fix10-head .pill-impact, .fix10-head .fix10-actions { grid-column: 1 / -1; }
+  .fix10-why { padding-left: 18px; }
+  .fix10-support { padding-left: 18px; }
+}
 </style>
 </head>
 <body>
 
-<header>
-  <a href="/" class="logo">Builder<em>Audit</em></a>
-  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+<!-- ═══════════ TOP NAV ═══════════ -->
+<header class="db-nav">
+  <a href="/" class="brand">
+    <div class="brand-mark">BA</div>
+    <div class="brand-name">BUILDERAUDIT</div>
+  </a>
+
+  <nav class="db-nav-links" id="navLinks">
+    <!-- Populated by JS based on role -->
+  </nav>
+
+  <div class="db-role-pill" id="rolePill">
+    <span class="dot"></span>
+    <span id="roleLabel">Builder account</span>
+  </div>
+
+  <div class="db-account">
+    <div class="db-avatar" id="userAvatar">HB</div>
+    <a href="#" class="db-signout" onclick="signOut(event)">Sign out</a>
+  </div>
 </header>
 
-<div class="dash-wrap">
-  <div class="dash-top">
-    <div>
-      <div class="dash-hello">Your dashboard</div>
-      <div class="dash-name" id="dashName">Welcome</div>
-    </div>
-    <div class="dash-actions">
-      <a href="/audit" class="dash-cta">Run new audit &rarr;</a>
-      <button class="dash-ghost" onclick="logout()">Log out</button>
-    </div>
+<!-- ═══════════ PAGE: DASHBOARD (BUILDER) ═══════════ -->
+<main class="db-page on" data-page="dashboard" data-role="builder">
+  <div class="page-head">
+    <span class="db-kicker">Welcome back</span>
+    <h1 class="page-h1">Heartly Builders Ltd</h1>
+    <p class="page-sub">heartlybuilders.co.uk · Last scanned 2 days ago · 3 fixes outstanding</p>
   </div>
 
-  <div class="section-h">Your audits <span id="auditCount"></span></div>
-  <div id="auditsList"></div>
-
-  <!-- SETTINGS: weekly email + agency partner consent -->
-  <div class="settings-section" id="settingsSection" style="display:none">
-    <div class="section-h">Email &amp; data preferences</div>
-
-    <div class="settings-card" id="settingsCard">
-      <div class="settings-row">
-        <div class="settings-text">
-          <div class="settings-title">Weekly check-in email</div>
-          <div class="settings-desc">Every Monday morning, we'll re-analyse your most recent audit and email you if anything has changed — score delta, new issues, resolved issues. Takes 30 seconds to read.</div>
-          <div class="settings-last" id="settingsLast"></div>
+  <div class="db-top-row">
+    <div class="db-card">
+      <div class="db-score-card">
+        <div class="score-donut" id="dashScoreDonut"></div>
+        <div>
+          <div class="section-label">Latest audit</div>
+          <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);margin-bottom:6px">Could be better — climbing fast</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+            <span class="pill-good">↑ +6 since last scan</span>
+            <span style="color:var(--muted);font-family:var(--body);font-size:14px">· best score yet</span>
+          </div>
+          <button class="db-btn primary">Re-scan now</button>
         </div>
-        <button class="settings-toggle" id="weeklyToggle" onclick="toggleWeekly()" role="switch" aria-checked="false"></button>
       </div>
     </div>
 
-    <div class="settings-card" id="agencyCard">
-      <div class="settings-row">
-        <div class="settings-text">
-          <div class="settings-title">Agency partner introductions</div>
-          <div class="settings-desc">Allow us to share your contact details with vetted agency partners (web design, SEO, photography, branding, CRM) when relevant to issues found in your reports. You can withdraw this at any time.</div>
-          <div class="settings-last" id="agencyLast"></div>
+    <div class="stat-grid">
+      <div class="db-card small">
+        <div class="section-label">Best ever</div>
+        <div class="stat-num">64</div>
+        <div class="stat-note">out of 100</div>
+      </div>
+      <div class="db-card small">
+        <div class="section-label">Audits run</div>
+        <div class="stat-num">4</div>
+        <div class="stat-note">in the last 30 days</div>
+      </div>
+      <div class="db-card small">
+        <div class="section-label">Fixes applied</div>
+        <div class="stat-num">2<span class="light"> / 5</span></div>
+        <div class="stat-note">3 still outstanding</div>
+      </div>
+      <div class="db-card small fill">
+        <div class="section-label" style="color:var(--ink)">Next milestone</div>
+        <div class="stat-num">75+</div>
+        <div class="stat-note" style="color:var(--ink)">"Solid" tier — 11 pts away</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="db-history-grid">
+    <div class="db-card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:22px">
+        <h3 class="section-h3" style="margin:0">Score history</h3>
+        <span style="font-family:var(--body);font-size:12px;color:var(--muted)">Last 4 scans</span>
+      </div>
+      <div class="history-bars" id="historyBars"></div>
+      <div class="history-dates" id="historyDates"></div>
+    </div>
+
+    <div class="db-card">
+      <h3 class="section-h3">Score by category</h3>
+      <div id="categoryBars"></div>
+    </div>
+  </div>
+
+  <div class="db-card" style="margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px">
+      <h3 class="section-h3" style="margin:0">Your fix-it list</h3>
+      <span style="font-family:var(--body);font-size:12px;color:var(--muted)">3 outstanding · 2 done</span>
+    </div>
+    <ul id="fixList" style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px"></ul>
+  </div>
+
+  <div class="db-card fill">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center">
+      <div>
+        <span class="db-kicker ink">Ready for a fresh scan?</span>
+        <h3 style="font-family:var(--display);font-weight:900;font-size:28px;color:var(--ink);margin:10px 0 6px;text-transform:uppercase;letter-spacing:-0.02em">Check another site</h3>
+        <p style="font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0;opacity:0.75">Adding multiple sites is on your plan. Paste a URL to start a new audit.</p>
+      </div>
+      <form class="scan-input" onsubmit="return scanNew(event)">
+        <div class="prefix">https://</div>
+        <input type="text" placeholder="yourothersite.co.uk" id="scanNewInput">
+        <button type="submit">Run audit →</button>
+      </form>
+    </div>
+  </div>
+</main>
+
+<!-- ═══════════ PAGE: ABOUT YOUR BUSINESS ═══════════ -->
+<main class="db-page" data-page="about" data-role="builder">
+  <div class="page-head">
+    <span class="db-kicker">About your business</span>
+    <h1 class="page-h1 smaller">What we know about you</h1>
+    <p class="page-sub">This is what BuilderAudit picks up about your business from heartlybuilders.co.uk. The bits in red are missing or weak — fixing them lifts your trust score.</p>
+  </div>
+
+  <div class="about-grid">
+    <div class="db-card">
+      <h3 class="section-h3" style="margin-bottom:8px">Business details</h3>
+
+      <div class="about-field"><div class="lbl">Trading name</div><div class="val">Heartly Builders Ltd</div></div>
+      <div class="about-field"><div class="lbl">Website</div><div class="val">heartlybuilders.co.uk</div></div>
+      <div class="about-field"><div class="lbl">Location</div><div class="val">Bath, Somerset</div></div>
+      <div class="about-field"><div class="lbl">Founded</div><div class="val">2012</div></div>
+      <div class="about-field"><div class="lbl">Team size</div><div class="val">8 people</div></div>
+
+      <div class="about-field">
+        <div class="lbl">Directors</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="director-row">
+            <div class="director-avatar">MH</div>
+            <div>
+              <div style="font-family:var(--body);font-size:15px;color:var(--ink);font-weight:600">Mark Heartly</div>
+              <div style="font-family:var(--body);font-size:12.5px;color:var(--muted);margin-top:1px">Managing Director · since 2012</div>
+            </div>
+          </div>
+          <div class="director-row">
+            <div class="director-avatar">SH</div>
+            <div>
+              <div style="font-family:var(--body);font-size:15px;color:var(--ink);font-weight:600">Sarah Heartly</div>
+              <div style="font-family:var(--body);font-size:12.5px;color:var(--muted);margin-top:1px">Operations Director · since 2014</div>
+            </div>
+          </div>
         </div>
-        <button class="settings-toggle" id="agencyToggle" onclick="toggleAgency()" role="switch" aria-checked="false"></button>
+      </div>
+
+      <div class="about-field"><div class="lbl">Services</div><div class="val">Extensions, Loft conversions, Full refurbs, Kitchens &amp; bathrooms</div></div>
+      <div class="about-field"><div class="lbl">Bio</div><div class="val">Family-run building company working across Bath, Bristol and the Mendips. Specialising in period-property extensions and loft conversions.</div></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="db-card medium">
+        <div class="section-label" style="margin-bottom:12px">Accreditations</div>
+        <div class="accred-row"><span class="accred-mark yes">✓</span><span>TrustMark</span></div>
+        <div class="accred-row"><span class="accred-mark no">✗</span><span style="color:var(--muted)">FMB (Federation of Master Builders)</span></div>
+        <div class="accred-row"><span class="accred-mark no">✗</span><span style="color:var(--muted)">CHAS</span></div>
+        <div class="accred-row"><span class="accred-mark yes">✓</span><span>NICEIC (for electrical works)</span></div>
+      </div>
+
+      <div class="db-card medium">
+        <div class="section-label" style="margin-bottom:8px">Insurance</div>
+        <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);line-height:1.1">£5,000,000</div>
+        <div style="font-family:var(--body);font-size:13px;color:var(--muted);margin-top:4px">Public liability · shown on site</div>
+      </div>
+
+      <div class="db-card medium">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px">
+          <div class="section-label">Testimonials</div>
+          <span style="font-family:var(--body);font-size:11px;font-weight:700;color:#fff;background:var(--good);padding:2px 8px;border-radius:999px;letter-spacing:0.04em">14 verified</span>
+        </div>
+        <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);line-height:1.1">23 total <span style="color:var(--muted);font-size:15px;font-weight:600">· 14 from verified sources</span></div>
+        <ul style="margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px">
+          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
+            <span class="accred-mark yes" style="width:18px;height:18px;font-size:10px">✓</span>
+            <span style="flex:1">Google reviews</span><span style="font-variant-numeric:tabular-nums;font-weight:700">9</span>
+          </li>
+          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
+            <span class="accred-mark yes" style="width:18px;height:18px;font-size:10px">✓</span>
+            <span style="flex:1">Trustpilot</span><span style="font-variant-numeric:tabular-nums;font-weight:700">4</span>
+          </li>
+          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
+            <span class="accred-mark yes" style="width:18px;height:18px;font-size:10px">✓</span>
+            <span style="flex:1">Checkatrade</span><span style="font-variant-numeric:tabular-nums;font-weight:700">1</span>
+          </li>
+          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:transparent;border:2px solid var(--muted);color:var(--muted);font-size:10px;font-weight:800">·</span>
+            <span style="flex:1">On-site quotes</span><span style="font-variant-numeric:tabular-nums;font-weight:700">9</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="db-card medium bad">
+        <div class="section-label" style="color:var(--bad);margin-bottom:8px">⚠ Photo authenticity</div>
+        <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);line-height:1.1">3 real <span style="color:var(--bad)">· 6 flagged</span></div>
+        <div style="font-family:var(--body);font-size:13px;color:var(--muted);margin-top:4px">9 job photos on site. 6 look like stock or AI-generated.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="db-card fill">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:22px;align-items:center">
+      <div>
+        <h3 style="font-family:var(--display);font-weight:900;font-size:24px;color:var(--ink);margin:0 0 4px;text-transform:uppercase;letter-spacing:-0.02em">Something not right?</h3>
+        <p style="font-family:var(--body);font-size:14px;color:var(--ink);margin:0;opacity:0.75">Edit any of these details to keep your audits accurate.</p>
+      </div>
+      <button class="db-btn primary">Edit business info</button>
+    </div>
+  </div>
+</main>
+
+<!-- ═══════════ PAGE: SCORES & REVIEW ═══════════ -->
+<main class="db-page narrow" data-page="review" data-role="builder">
+  <div class="page-head">
+    <span class="db-kicker">Homeowner's view</span>
+    <h1 class="page-h1 smaller">What would a homeowner think of your website?</h1>
+    <p class="page-sub">We ran your site through the eyes of a fussy homeowner with a £40k extension to spend. Here's their honest take, category by category. Quotes are the kind of thing a real homeowner would say after 90 seconds on your site.</p>
+  </div>
+
+  <div class="db-card fill" style="margin-bottom:24px">
+    <div style="display:grid;grid-template-columns:170px 1fr;gap:24px;align-items:center">
+      <div class="score-donut" id="reviewScoreDonut"></div>
+      <div>
+        <div class="section-label" style="color:var(--ink)">The overall feel</div>
+        <h3 style="font-family:var(--display);font-weight:900;font-size:26px;color:var(--ink);margin:0 0 8px;text-transform:uppercase;letter-spacing:-0.02em">"I'd ring them — but I'd also ring two more first."</h3>
+        <p style="font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0;line-height:1.5;opacity:0.85">You don't look like a cowboy, but you don't quite look like the safe choice either. The stock photos and missing trade badges are the biggest tells. A homeowner shortlisting three builders would put you in the middle.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="db-card" style="margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px">
+      <h3 class="section-h3" style="margin:0">Category-by-category</h3>
+      <span style="font-family:var(--body);font-size:12px;color:var(--muted)">Tap any row for the deep dive</span>
+    </div>
+    <div id="reviewRows" style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+    <div class="db-card good" style="padding:24px">
+      <div class="section-label" style="color:var(--good);margin-bottom:12px">✓ What they'd like about you</div>
+      <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;font-family:var(--body);font-size:14px;color:var(--ink);line-height:1.5">
+        <li style="display:flex;gap:10px"><span style="color:var(--good);font-weight:800">✓</span> Mobile experience is genuinely good — buttons feel solid</li>
+        <li style="display:flex;gap:10px"><span style="color:var(--good);font-weight:800">✓</span> Copy sounds like a person, not corporate fluff</li>
+        <li style="display:flex;gap:10px"><span style="color:var(--good);font-weight:800">✓</span> Insurance amount is shown clearly on the contact page</li>
+      </ul>
+    </div>
+    <div class="db-card bad" style="padding:24px">
+      <div class="section-label" style="color:var(--bad);margin-bottom:12px">⚠ Red flags they'd notice</div>
+      <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;font-family:var(--body);font-size:14px;color:var(--ink);line-height:1.5">
+        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> Six of nine "past jobs" are stock photos — would they fake the work too?</li>
+        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> No FMB or TrustMark badge — looks less professional than rivals</li>
+        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> Quote form is too long — homeowners will bail before sending</li>
+        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> Homepage takes 4 seconds to load on a phone — first impression dies</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<!-- ═══════════ PAGE: PHOTO REVIEW ═══════════ -->
+<main class="db-page medium" data-page="photos" data-role="builder">
+  <div class="page-head">
+    <span class="db-kicker">Photo review</span>
+    <h1 class="page-h1 smaller">Every photo on your site, checked</h1>
+    <p class="page-sub">Reverse-image searched, AI-detected and EXIF-checked. Real photos build trust. Stock photos lose it. AI photos lose it twice.</p>
+  </div>
+
+  <div class="photo-stats-grid">
+    <div class="db-card medium">
+      <div class="section-label">Photos on site</div>
+      <div class="stat-num">9</div>
+      <div class="stat-note">across portfolio + pages</div>
+    </div>
+    <div class="db-card medium good">
+      <div class="section-label" style="color:var(--good)">✓ Real</div>
+      <div class="stat-num">3</div>
+      <div class="stat-note">33% of the lot</div>
+    </div>
+    <div class="db-card medium bad">
+      <div class="section-label" style="color:var(--bad)">✗ Stock</div>
+      <div class="stat-num">4</div>
+      <div class="stat-note">matched on stock sites</div>
+    </div>
+    <div class="db-card medium ai">
+      <div class="section-label" style="color:var(--ai)">✗ AI-generated</div>
+      <div class="stat-num">2</div>
+      <div class="stat-note">artefacts detected</div>
+    </div>
+  </div>
+
+  <div class="db-card ink" style="margin-bottom:24px">
+    <span class="db-kicker fill">Homeowner verdict</span>
+    <h3 style="font-family:var(--display);font-weight:900;font-size:24px;color:#fff;margin:12px 0 8px;text-transform:uppercase;letter-spacing:-0.02em;line-height:1.15">6 of your 9 photos would make a careful homeowner pause.</h3>
+    <p style="font-family:var(--body);font-size:14.5px;color:rgba(255,255,255,0.78);margin:0;max-width:800px;line-height:1.5">Replacing the 6 flagged photos with phone-quality shots of your actual jobs is the single biggest score lift on your dashboard — worth around +14 points overall.</p>
+  </div>
+
+  <div class="db-card" style="padding:26px">
+    <h3 class="section-h3">Photo-by-photo</h3>
+    <div class="photo-grid" id="photoGrid"></div>
+  </div>
+</main>
+
+<!-- ═══════════ PAGE: TOP 10 FIXES ═══════════ -->
+<main class="db-page narrow" data-page="fixes" data-role="builder">
+  <div class="page-head">
+    <span class="db-kicker">Your top 10 fixes</span>
+    <h1 class="page-h1 smaller">The to-do list, in priority order</h1>
+    <p class="page-sub">Sorted by impact — the biggest score lifts at the top. Tick them off as you go, or have the BuilderAudit team handle any of them for you.</p>
+  </div>
+
+  <div class="fixes-progress-grid">
+    <div class="db-card medium">
+      <div class="section-label">Ticked off</div>
+      <div class="stat-num"><span id="fixDoneCount">0</span><span class="light"> / 10</span></div>
+      <div class="progress-bar"><div id="fixProgressBar" style="width:0%"></div></div>
+    </div>
+    <div class="db-card medium">
+      <div class="section-label">Help requested</div>
+      <div class="stat-num" id="fixRequestedCount">0</div>
+      <div class="stat-note">BuilderAudit team will be in touch</div>
+    </div>
+    <div class="db-card medium fill">
+      <div class="section-label" style="color:var(--ink)">Points available</div>
+      <div class="stat-num">+<span id="fixRemainingImpact">59</span></div>
+      <div class="stat-note" style="color:var(--ink)">still on the table</div>
+    </div>
+  </div>
+
+  <div class="db-card medium" style="margin-bottom:24px">
+    <div id="fix10List"></div>
+  </div>
+
+  <div class="db-card ink">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center">
+      <div>
+        <span class="db-kicker fill">Want all 10 done by next month?</span>
+        <h3 style="font-family:var(--display);font-weight:900;font-size:26px;color:#fff;margin:12px 0 8px;text-transform:uppercase;letter-spacing:-0.02em">Hand the whole list to our team</h3>
+        <p style="font-family:var(--body);font-size:14.5px;color:rgba(255,255,255,0.78);margin:0;line-height:1.5">One quote, one project. We'll work through every item above and re-audit your site once it's done. Typical turnaround: 2-4 weeks.</p>
+      </div>
+      <button class="db-btn primary" style="padding:14px 22px;font-size:15px">Get a quote for all 10 →</button>
+    </div>
+  </div>
+</main>
+
+<!-- ═══════════ PAGE: COMPETITORS ═══════════ -->
+<main class="db-page medium" data-page="competitors" data-role="builder">
+  <div class="page-head">
+    <span class="db-kicker">Competitor audits</span>
+    <h1 class="page-h1 smaller">How you stack up</h1>
+    <p class="page-sub">Add up to two competitor websites. We'll audit them the same way we audited yours and sit them next to you so you can see where you win and where you'd lose the enquiry.</p>
+  </div>
+
+  <div class="competitors-grid" id="competitorsGrid"></div>
+
+  <div id="competitorVerdict"></div>
+</main>
+
+<!-- ═══════════ PAGE: HOMEOWNER DASHBOARD ═══════════ -->
+<main class="db-page" data-page="dashboard" data-role="homeowner">
+  <div class="page-head">
+    <span class="db-kicker">Welcome back, Alex</span>
+    <h1 class="page-h1">3 builders on your shortlist</h1>
+    <p class="page-sub">Average score 64 / 100 · Top pick is scoring 78</p>
+  </div>
+
+  <div class="db-top-row">
+    <div class="db-card">
+      <div class="section-label" style="margin-bottom:10px">Latest builder checked</div>
+      <div class="db-score-card">
+        <div class="score-donut" id="homeownerScoreDonut"></div>
+        <div>
+          <div style="font-family:var(--display);font-weight:800;font-size:24px;color:var(--ink);margin-bottom:4px;letter-spacing:-0.01em">Heartly Builders Ltd</div>
+          <div style="font-family:var(--body);font-size:14px;color:var(--muted);margin-bottom:14px">heartlybuilders.co.uk · Bath</div>
+          <div style="background:rgba(217,83,79,0.08);border:1.5px solid var(--bad);border-radius:4px;padding:10px 12px;margin-bottom:14px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
+            <b style="color:var(--bad);text-transform:uppercase;font-size:11px;letter-spacing:0.06em;margin-right:8px">⚠ Watch out</b>
+            Stock photos · no accreditations shown
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="db-btn primary">See full audit</button>
+            <button class="db-btn">Re-check</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="settings-fineprint">
-      Want a copy of your data, or want to delete your account? Email <a href="mailto:gthangavel1@gmail.com">gthangavel1@gmail.com</a> and we'll handle it within 30 days as required by UK GDPR.
+    <div class="stat-grid">
+      <div class="db-card small">
+        <div class="section-label">Saved</div>
+        <div class="stat-num">3</div>
+        <div class="stat-note">builders on shortlist</div>
+      </div>
+      <div class="db-card small">
+        <div class="section-label">Average score</div>
+        <div class="stat-num">64<span class="light"> / 100</span></div>
+        <div class="stat-note">across your shortlist</div>
+      </div>
+      <div class="db-card small">
+        <div class="section-label">Total audits</div>
+        <div class="stat-num">4</div>
+        <div class="stat-note">builders checked overall</div>
+      </div>
+      <div class="db-card small fill">
+        <div class="section-label" style="color:var(--ink)">Top pick</div>
+        <div style="font-family:var(--display);font-weight:900;font-size:28px;color:var(--ink);line-height:1.1">Greenfield</div>
+        <div class="stat-note" style="color:var(--ink)">scoring 78 / 100</div>
+      </div>
     </div>
   </div>
 
-  <div class="my-enquiries" id="enquiriesSection" style="display:none">
-    <div class="section-h">Service enquiries <span id="enqCount"></span></div>
-    <div id="enquiriesList"></div>
+  <div class="db-card" style="margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px">
+      <h3 class="section-h3" style="margin:0">Your shortlist</h3>
+      <span style="font-family:var(--body);font-size:12px;color:var(--muted)">Sorted by score</span>
+    </div>
+    <div class="shortlist-head">
+      <div>Builder</div>
+      <div>Location</div>
+      <div style="text-align:center">Score</div>
+      <div>Last checked</div>
+      <div></div>
+    </div>
+    <div id="shortlistRows"></div>
   </div>
-</div>
 
-<style>
-/* Settings panel */
-/* Settings section (wraps multiple cards) */
-.settings-section {
-  margin: 2.5rem 0;
-}
-.settings-fineprint {
-  font-size: 12px;
-  color: var(--fg3);
-  line-height: 1.6;
-  text-align: center;
-  margin-top: 1rem;
-  padding: 0 1rem;
-}
-.settings-fineprint a { color: var(--peach-d); font-weight: 600; text-decoration: underline; }
+  <div class="db-card fill">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center">
+      <div>
+        <span class="db-kicker ink">Got another quote?</span>
+        <h3 style="font-family:var(--display);font-weight:900;font-size:28px;color:var(--ink);margin:10px 0 6px;text-transform:uppercase;letter-spacing:-0.02em">Check a new builder</h3>
+        <p style="font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0;opacity:0.75">Paste their site URL. We'll add them to your shortlist with a fresh audit.</p>
+      </div>
+      <form class="scan-input" onsubmit="return scanNew(event)">
+        <div class="prefix">https://</div>
+        <input type="text" placeholder="abuildersite.co.uk">
+        <button type="submit">Add &amp; audit →</button>
+      </form>
+    </div>
+  </div>
+</main>
 
-.settings-card {
-  background: #fff;
-  border: 1px solid var(--brd);
-  border-radius: 16px;
-  padding: 1.5rem 1.75rem;
-  margin: 0 0 .75rem;
-  box-shadow: 0 1px 2px rgba(58,46,51,.03);
-  transition: box-shadow .2s;
-}
-.settings-card:hover { box-shadow: var(--shadow); }
-.settings-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-}
-.settings-text { flex: 1; }
-.settings-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--fg);
-  margin-bottom: 4px;
-  letter-spacing: -.01em;
-}
-.settings-desc {
-  font-size: 13px;
-  color: var(--fg2);
-  line-height: 1.55;
-}
-.settings-last {
-  font-size: 11px;
-  color: var(--fg3);
-  margin-top: 8px;
-  font-weight: 500;
-}
+<!-- ═══════════ PAGE: SAVED BUILDERS (HOMEOWNER) ═══════════ -->
+<main class="db-page" data-page="shortlist" data-role="homeowner">
+  <div class="page-head">
+    <span class="db-kicker">Saved builders</span>
+    <h1 class="page-h1 smaller">Your shortlist — head to head</h1>
+    <p class="page-sub">Every builder you've audited, ranked by score with the headline they'd notice as a homeowner.</p>
+  </div>
+  <div class="db-card">
+    <p style="font-family:var(--body);color:var(--muted);text-align:center;padding:40px">More detail coming soon. Use the Dashboard to manage your shortlist.</p>
+  </div>
+</main>
 
-.settings-toggle {
-  flex-shrink: 0;
-  position: relative;
-  width: 52px;
-  height: 30px;
-  background: var(--fg3);
-  border-radius: 99px;
-  cursor: pointer;
-  transition: background .25s, box-shadow .2s;
-  border: none;
-  padding: 0;
-  box-shadow: 0 1px 2px rgba(58,46,51,.2) inset;
-}
-.settings-toggle::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 24px; height: 24px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
-  box-shadow: 0 2px 4px rgba(58,46,51,.3);
-}
-.settings-toggle.on {
-  background: var(--grn);
-  box-shadow: 0 1px 2px rgba(58,46,51,.15) inset, 0 0 0 3px var(--grn-b);
-}
-.settings-toggle.on::after { transform: translateX(22px); }
-.settings-toggle:disabled { opacity: .5; cursor: wait; }
-</style>
+<!-- ═══════════ PAGE: ACCOUNT (HOMEOWNER + BUILDER) ═══════════ -->
+<main class="db-page" data-page="account" data-role="homeowner">
+  <div class="page-head">
+    <span class="db-kicker">Account</span>
+    <h1 class="page-h1 smaller">Account settings</h1>
+    <p class="page-sub">Your details, consents and notifications. Update anything that's changed.</p>
+  </div>
+  <div class="db-card">
+    <p style="font-family:var(--body);color:var(--muted);text-align:center;padding:40px">Account settings coming in the next update. Use /api/account for direct changes.</p>
+  </div>
+</main>
 
 <script>
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function sc(n){return n>=70?'g':n>=45?'a':'r'}
+/* ════════════════════════════════════════════════════════════════
+   ROUTING + DATA + INTERACTION
+   ════════════════════════════════════════════════════════════════ */
 
-(async function init(){
-  try{
-    var meRes=await fetch('/api/auth/me',{credentials:'include'});
-    var me=await meRes.json();
-    if(!me.user){window.location.href='/login';return;}
-    document.getElementById('dashName').innerHTML='Hi <em>'+esc(me.user.companyName||me.user.email.split('@')[0])+'</em>';
+/* Read role + page from URL params; default builder + dashboard */
+var urlParams = new URLSearchParams(window.location.search);
+var ROLE = urlParams.get('role') === 'homeowner' ? 'homeowner' : 'builder';
+var PAGE = urlParams.get('page') || 'dashboard';
 
-    /* Show settings section (wraps both cards) */
-    var section = document.getElementById('settingsSection');
-    section.style.display = 'block';
+/* ─── Top nav setup ─── */
+var BUILDER_NAV = [
+  { k: 'dashboard',   label: 'Dashboard' },
+  { k: 'about',       label: 'About your business' },
+  { k: 'review',      label: 'Scores & review' },
+  { k: 'photos',      label: 'Photo review' },
+  { k: 'fixes',       label: 'Your top 10 fixes' },
+  { k: 'competitors', label: 'Competitor audits' },
+];
+var HOMEOWNER_NAV = [
+  { k: 'dashboard', label: 'Dashboard' },
+  { k: 'shortlist', label: 'Saved builders' },
+  { k: 'account',   label: 'Account' },
+];
 
-    /* Weekly email toggle initial state */
-    var weeklyToggle = document.getElementById('weeklyToggle');
-    if (me.user.weeklyEmailOptIn) weeklyToggle.classList.add('on');
-    weeklyToggle.setAttribute('aria-checked', me.user.weeklyEmailOptIn ? 'true' : 'false');
-
-    var weeklyLast = document.getElementById('settingsLast');
-    if (me.user.lastWeeklyEmailAt) {
-      var d = new Date(me.user.lastWeeklyEmailAt);
-      weeklyLast.textContent = 'Last check-in sent: ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    } else if (me.user.weeklyEmailOptIn) {
-      weeklyLast.textContent = 'Your first check-in will arrive next Monday';
-    }
-
-    /* Agency partner consent initial state */
-    var agencyToggle = document.getElementById('agencyToggle');
-    if (me.user.consentAgency) agencyToggle.classList.add('on');
-    agencyToggle.setAttribute('aria-checked', me.user.consentAgency ? 'true' : 'false');
-    var agencyLast = document.getElementById('agencyLast');
-    if (me.user.consentAgencyAt) {
-      var ad = new Date(me.user.consentAgencyAt);
-      agencyLast.textContent = 'Consent given: ' + ad.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    }
-
-    /* If the URL has ?setting=weekly_email, smooth-scroll into view (from email footer link) */
-    var settingParam = new URLSearchParams(window.location.search).get('setting');
-    if (settingParam === 'weekly_email' || settingParam === 'agency') {
-      setTimeout(function() { section.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
-    }
-
-    var [auditsRes,enqRes]=await Promise.all([
-      fetch('/api/my/audits',{credentials:'include'}),
-      fetch('/api/my/enquiries',{credentials:'include'}),
-    ]);
-    var audits=(await auditsRes.json()).audits||[];
-    var enquiries=(await enqRes.json()).enquiries||[];
-
-    renderAudits(audits);
-    renderEnquiries(enquiries);
-  }catch(e){
-    document.getElementById('auditsList').innerHTML='<div class="empty"><div class="empty-title">Could not load your dashboard</div><div class="empty-sub">'+esc(e.message)+'</div></div>';
-  }
-})();
-
-async function toggleWeekly(){
-  var toggle = document.getElementById('weeklyToggle');
-  var willBeOn = !toggle.classList.contains('on');
-  toggle.disabled = true;
-  try {
-    var res = await fetch('/api/auth/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ weeklyEmailOptIn: willBeOn }),
+function renderNav() {
+  var nav = ROLE === 'builder' ? BUILDER_NAV : HOMEOWNER_NAV;
+  var container = document.getElementById('navLinks');
+  container.innerHTML = nav.map(function(it){
+    var cls = it.k === PAGE ? 'on' : '';
+    return '<a href="#" class="' + cls + '" data-page="' + it.k + '">' + it.label + '</a>';
+  }).join('');
+  /* Wire click handlers */
+  container.querySelectorAll('a').forEach(function(a){
+    a.addEventListener('click', function(e){
+      e.preventDefault();
+      navigateTo(a.dataset.page);
     });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not update setting');
+  });
+}
 
-    toggle.classList.toggle('on', willBeOn);
-    toggle.setAttribute('aria-checked', willBeOn ? 'true' : 'false');
+function navigateTo(page) {
+  PAGE = page;
+  /* Show only the page matching the role + page */
+  document.querySelectorAll('.db-page').forEach(function(p){
+    var match = p.dataset.page === page && p.dataset.role === ROLE;
+    p.classList.toggle('on', match);
+  });
+  /* Update nav highlight */
+  document.querySelectorAll('#navLinks a').forEach(function(a){
+    a.classList.toggle('on', a.dataset.page === page);
+  });
+  /* Update URL */
+  var p = new URLSearchParams(window.location.search);
+  p.set('role', ROLE); p.set('page', page);
+  window.history.replaceState({}, '', window.location.pathname + '?' + p.toString());
+  /* Scroll to top */
+  window.scrollTo(0, 0);
+}
 
-    var lastEl = document.getElementById('settingsLast');
-    if (willBeOn && !lastEl.textContent.startsWith('Last')) {
-      lastEl.textContent = 'Your first check-in will arrive next Monday';
-    } else if (!willBeOn && lastEl.textContent.startsWith('Your first')) {
-      lastEl.textContent = '';
-    }
-  } catch (err) {
-    alert('Could not save: ' + err.message);
-  } finally {
-    toggle.disabled = false;
+function renderRolePill() {
+  var pill = document.getElementById('rolePill');
+  var label = document.getElementById('roleLabel');
+  var avatar = document.getElementById('userAvatar');
+  if (ROLE === 'homeowner') {
+    pill.classList.add('homeowner');
+    label.textContent = 'Homeowner account';
+    avatar.textContent = 'AT';
+  } else {
+    pill.classList.remove('homeowner');
+    label.textContent = 'Builder account';
+    avatar.textContent = 'HB';
   }
 }
 
-async function toggleAgency(){
-  var toggle = document.getElementById('agencyToggle');
-  var willBeOn = !toggle.classList.contains('on');
-  toggle.disabled = true;
-  try {
-    var res = await fetch('/api/auth/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ consentAgency: willBeOn }),
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not update setting');
-
-    toggle.classList.toggle('on', willBeOn);
-    toggle.setAttribute('aria-checked', willBeOn ? 'true' : 'false');
-
-    var lastEl = document.getElementById('agencyLast');
-    if (willBeOn) {
-      lastEl.textContent = 'Consent given: ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    } else {
-      lastEl.textContent = 'Consent withdrawn — we will stop sharing immediately';
-    }
-  } catch (err) {
-    alert('Could not save: ' + err.message);
-  } finally {
-    toggle.disabled = false;
-  }
+function showInitialPage() {
+  /* Hide all, show first matching */
+  document.querySelectorAll('.db-page').forEach(function(p){
+    var match = p.dataset.page === PAGE && p.dataset.role === ROLE;
+    p.classList.toggle('on', match);
+  });
 }
 
-function renderAudits(audits){
-  var list=document.getElementById('auditsList');
-  document.getElementById('auditCount').textContent=audits.length?audits.length+' total':'';
-  if(audits.length===0){
-    list.innerHTML='<div class="empty"><div class="empty-icon">\u25CE</div><div class="empty-title">No audits yet</div><div class="empty-sub">Run your first forensic audit to see exactly what\'s costing you jobs.</div><a href="/audit" class="dash-cta">Run your first audit &rarr;</a></div>';
+function signOut(e) {
+  e.preventDefault();
+  fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    .finally(function(){ window.location.href = '/login'; });
+}
+
+function scanNew(e) {
+  e.preventDefault();
+  var input = e.target.querySelector('input');
+  var url = input.value.trim();
+  if (!url) return false;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  window.location.href = '/audit?url=' + encodeURIComponent(url) + '&audience=' + ROLE;
+  return false;
+}
+
+/* ════════ COLOUR HELPERS ════════ */
+function scoreColor(s) {
+  if (s >= 75) return '#1F8A5B';
+  if (s >= 55) return '#FFD24D';
+  return '#D9534F';
+}
+
+/* ════════ SCORE DONUT (SVG) ════════ */
+function buildDonut(elId, score, size) {
+  size = size || 170;
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var sw = size * 0.1;
+  var r = (size - sw) / 2 - 2;
+  var c = 2 * Math.PI * r;
+  var color = scoreColor(score);
+  el.innerHTML =
+    '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
+      '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="#1B1A17" stroke-width="' + sw + '" opacity="0.12"/>' +
+      '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '"' +
+      ' stroke-dasharray="' + (c * score/100) + ' ' + c + '" stroke-dashoffset="' + (c/4) + '"' +
+      ' transform="rotate(-90 ' + size/2 + ' ' + size/2 + ')" stroke-linecap="round"/>' +
+      '<text x="' + size/2 + '" y="' + (size/2 - size*0.02) + '" text-anchor="middle" dominant-baseline="middle"' +
+      ' style="font-family:Archivo,sans-serif;font-weight:900;font-size:' + (size*0.3) + 'px;fill:#1B1A17;letter-spacing:-0.02em">' + score + '</text>' +
+      '<text x="' + size/2 + '" y="' + (size/2 + size*0.18) + '" text-anchor="middle" dominant-baseline="middle"' +
+      ' style="font-family:IBM Plex Sans,sans-serif;font-weight:700;font-size:' + (size*0.09) + 'px;fill:#5C5851;letter-spacing:0.1em">/ 100</text>' +
+    '</svg>';
+}
+
+/* ════════ DASHBOARD PAGE — score history + categories + fix list ════════ */
+function renderDashboard() {
+  /* Donut */
+  buildDonut('dashScoreDonut', 64, 170);
+
+  /* Score history bars */
+  var history = [
+    { date: 'Feb 14', score: 42 },
+    { date: 'Feb 28', score: 51 },
+    { date: 'Mar 18', score: 58 },
+    { date: 'Apr 02', score: 64 },
+  ];
+  document.getElementById('historyBars').innerHTML = history.map(function(h){
+    return '<div class="col">' +
+      '<div class="label" style="top:' + (100 - h.score) + '%;transform:translateY(-100%)">' + h.score + '</div>' +
+      '<div class="bar" style="height:' + h.score + '%;background:' + scoreColor(h.score) + '"></div>' +
+    '</div>';
+  }).join('');
+  document.getElementById('historyDates').innerHTML = history.map(function(h){
+    return '<div class="date">' + h.date + '</div>';
+  }).join('');
+
+  /* Categories */
+  var categories = [
+    { name: 'Photo quality', s: 48 },
+    { name: 'Trust signals', s: 72 },
+    { name: 'Mobile friendly', s: 86 },
+    { name: 'Site speed', s: 54 },
+    { name: 'Services clarity', s: 58 },
+    { name: 'Quote flow', s: 68 },
+    { name: 'SEO & Google', s: 62 },
+    { name: 'Copy & tone', s: 70 },
+  ];
+  document.getElementById('categoryBars').innerHTML = categories.map(function(c){
+    return '<div class="cat-row">' +
+      '<div class="cat-name">' + c.name + '</div>' +
+      '<div class="cat-bar"><div style="width:' + c.s + '%;background:' + scoreColor(c.s) + '"></div></div>' +
+      '<div class="cat-score">' + c.s + '</div>' +
+    '</div>';
+  }).join('');
+
+  /* Fix list */
+  var fixes = [
+    { icon: 'hammer', text: 'Swap in real before/after shots from your phone', done: false, impact: '+8 pts' },
+    { icon: 'gear', text: 'Add FMB / TrustMark badges near the top of every page', done: false, impact: '+6 pts' },
+    { icon: 'screwdriver', text: 'Cut the quote form down to: name, postcode, job', done: false, impact: '+5 pts' },
+    { icon: 'roller', text: 'Compress your homepage hero image (currently 2.1MB)', done: true, impact: '+3 pts' },
+    { icon: 'tape', text: 'Add a phone number to the header on mobile', done: true, impact: '+2 pts' },
+  ];
+  document.getElementById('fixList').innerHTML = fixes.map(function(f){
+    return '<li class="fix-row' + (f.done ? ' done' : '') + '">' +
+      '<div class="fix-icon-box"><img src="/assets/icons/' + f.icon + '.png" alt=""></div>' +
+      '<div class="fix-text">' + f.text + '</div>' +
+      '<span class="fix-impact">' + f.impact + '</span>' +
+      '<button class="db-btn small">' + (f.done ? 'Done' : 'Mark done') + '</button>' +
+    '</li>';
+  }).join('');
+}
+
+/* ════════ SCORES & REVIEW — expandable category rows ════════ */
+function renderReview() {
+  buildDonut('reviewScoreDonut', 64, 150);
+
+  var categories = [
+    {
+      name: 'Photo quality', s: 48,
+      verdict: '"Looks a bit dodgy — most of these photos are clearly stock images. Are these even their jobs?"',
+      why: 'We scanned 9 photos labelled as past work. 6 of them appear in reverse-image searches on stock sites; 2 show telltale AI artefacts (warped door frames, six-fingered hands).',
+      evidence: ['6 of 9 photos detected as stock', '2 of 9 photos detected as AI-generated', 'Only 1 photo has EXIF metadata consistent with a real job', 'No before/after pairs anywhere on the site'],
+      fix: 'Replace at least 5 portfolio photos with phone shots from real jobs. Before/afters are highest impact.',
+    },
+    {
+      name: 'Trust signals', s: 72,
+      verdict: '"They show insurance, but no FMB or TrustMark. Where are the trade body badges?"',
+      why: 'Public liability insurance is clearly disclosed (£5M, on the contact page). However, the page is missing accreditations homeowners now expect for a job over £10k.',
+      evidence: ['Insurance amount visible on contact page', 'No FMB or TrustMark badges anywhere', 'Reviews exist but are hidden behind a 3rd-page link', 'Companies House registration date not shown'],
+      fix: 'Apply for FMB or TrustMark — both let you display their badges in your footer. Surface your best reviews on the homepage.',
+    },
+    {
+      name: 'Mobile friendly', s: 86,
+      verdict: '"Works great on my phone. Buttons are easy to tap. Nice."',
+      why: 'Site renders cleanly at all common phone sizes. CTAs are appropriately sized; nothing overflows; no horizontal scroll.',
+      evidence: ['All tap targets ≥ 44px', 'No layout breaks at 360px width', 'Menu collapses to hamburger correctly', 'Minor: contact form labels disappear below the field on focus'],
+      fix: "Tiny win: keep field labels visible during focus so people remember what they're typing.",
+    },
+    {
+      name: 'Site speed', s: 54,
+      verdict: '"Hangs for a few seconds when I land. I almost left."',
+      why: 'Homepage takes 4.2s to become interactive on a typical 4G phone. The hero image alone is 2.1MB unoptimised.',
+      evidence: ['Largest Contentful Paint: 4.2s (target: under 2.5s)', 'Hero image: 2.1MB (should be < 200KB)', '14 render-blocking scripts before first paint', 'No image lazy-loading on portfolio page'],
+      fix: 'Compress the hero image and convert it to WebP. Defer non-critical scripts. Worth around +12 points by itself.',
+    },
+    {
+      name: 'Services clarity', s: 58,
+      verdict: "\"They say 'Our work' — what does that actually mean? Do they do my kitchen?\"",
+      why: 'Services live on a single page titled "Our work" with no individual sub-pages. A homeowner searching for "kitchen fitter Bath" wouldn\'t connect their need to your offer.',
+      evidence: ['"Services" page titled "Our work" — unclear', 'No individual landing pages per service', 'No pricing guidance or "from £X" indicators', 'Kitchen and bathroom services mentioned in bio but not on services page'],
+      fix: 'Create one page per service (Extensions, Loft conversions, Kitchens, Bathrooms). Each one titled clearly with a from-price guide.',
+    },
+    {
+      name: 'Quote flow', s: 68,
+      verdict: '"The form asks for 11 things. I gave up halfway. Just want a price."',
+      why: 'The quote form is feature-complete but heavy. Drop-off testing on similar sites shows 60%+ abandonment past 6 fields.',
+      evidence: ['11 fields requested up front', 'No "request callback" alternative', "Phone number isn't clickable on mobile", 'No expected response time given'],
+      fix: 'Cut to name, postcode, job type, and an optional note. Capture the rest after first contact. Add a clear callback option.',
+    },
+    {
+      name: 'SEO & Google', s: 62,
+      verdict: "\"Found them on page two for 'Bath builder' — surprised they're not higher.\"",
+      why: 'Site is indexed and has reasonable on-page basics. Local SEO signals are weak — no Google Business Profile link, no embedded map, location keywords are sparse.',
+      evidence: ['Ranks #14 for "Bath builder"', 'No Google Business Profile linked', 'Missing meta titles on 4 of 12 pages', 'No embedded location map on contact page'],
+      fix: 'Claim and link your Google Business Profile. Add the city/town name in your page titles where natural.',
+    },
+    {
+      name: 'Copy & tone', s: 70,
+      verdict: '"Reads alright. Sounds like a real builder, not a robot. Good."',
+      why: 'Voice is conversational and human. The hero copy could lead with the homeowner\'s problem rather than your services list, but nothing reads as AI-written or corporate fluff.',
+      evidence: ['Reading age: 14 (good for homeowners)', 'Zero AI-tells in the copy', 'Hero leads with "we" instead of "you"', 'Services described in builder-jargon in two places ("RSJ", "screed")'],
+      fix: 'Rewrite the hero around the homeowner\'s outcome ("Add a kitchen-diner without losing your garden"). Translate jargon.',
+    },
+  ];
+
+  var rows = document.getElementById('reviewRows');
+  rows.innerHTML = categories.map(function(c, idx){
+    var color = scoreColor(c.s);
+    var openCls = idx === 0 ? ' open' : '';
+    return '<div class="review-row' + openCls + '" data-idx="' + idx + '">' +
+      '<button class="review-row-head" onclick="toggleReviewRow(' + idx + ')">' +
+        '<div class="review-row-name">' + c.name + '</div>' +
+        '<div class="review-row-score" style="background:' + color + '">' + c.s + '</div>' +
+        '<div class="review-row-verdict">' + c.verdict + '</div>' +
+        '<div class="review-row-plus">+</div>' +
+      '</button>' +
+      '<div class="review-row-body">' +
+        '<div>' +
+          '<div class="section-label" style="margin-bottom:6px">Why this score</div>' +
+          '<p style="font-family:var(--body);font-size:14px;color:var(--ink);margin:0;line-height:1.55">' + c.why + '</p>' +
+        '</div>' +
+        '<div>' +
+          '<div class="section-label" style="margin-bottom:6px">What we found</div>' +
+          '<ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px">' +
+          c.evidence.map(function(e){
+            return '<li class="review-evidence-row"><span style="flex:0 0 auto;color:var(--muted);font-weight:700">·</span>' + e + '</li>';
+          }).join('') +
+          '</ul>' +
+        '</div>' +
+        '<div class="review-climb">' +
+          '<span class="arrow">↑</span>' +
+          '<div style="font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45">' +
+            '<b style="text-transform:uppercase;letter-spacing:0.05em;font-size:11px;color:var(--muted);display:block;margin-bottom:4px">How to climb</b>' +
+            c.fix +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleReviewRow(idx) {
+  var row = document.querySelector('.review-row[data-idx="' + idx + '"]');
+  if (row) row.classList.toggle('open');
+}
+
+/* ════════ PHOTOS ════════ */
+function renderPhotos() {
+  var photos = [
+    { id: 1, label: 'Homepage hero', verdict: 'real', detail: 'Real job photo, well-lit, taken on a phone in 2023.', tags: ['Genuine', 'Good light'], hint: 'Highlight reel — keep this as your hero.', accent: '#FFD24D' },
+    { id: 2, label: 'Portfolio · Kitchen 01', verdict: 'stock', detail: 'Reverse-image match found on Shutterstock (2019). Used on 312 other UK builder sites.', tags: ['Stock photo', 'Heavily reused'], hint: 'Replace with a real shot from a kitchen job — even a phone snap.', accent: '#cfcfcf' },
+    { id: 3, label: 'Portfolio · Kitchen 02', verdict: 'stock', detail: 'Reverse-image match found on Pexels.', tags: ['Stock photo'], hint: 'Replace urgently — this is a tell to any homeowner doing a Google reverse image lookup.', accent: '#A8C4E8' },
+    { id: 4, label: 'Portfolio · Loft conversion', verdict: 'ai', detail: 'AI-generated. Telltale artefacts: warped door frame, repeating ceiling pattern, impossible roofline angle.', tags: ['AI-generated', 'Anatomical artefacts'], hint: 'Homeowners are increasingly spotting these — remove or replace.', accent: '#E0BFFF' },
+    { id: 5, label: 'Portfolio · Extension', verdict: 'stock', detail: 'Reverse-image match. Originally listed as a Polish home renovation.', tags: ['Stock photo', 'Wrong region'], hint: 'Even worse — the original is clearly not a UK building.', accent: '#cfe6f5' },
+    { id: 6, label: 'Portfolio · Bathroom', verdict: 'stock', detail: 'Manufacturer marketing image (Mira showers product page).', tags: ['Manufacturer image'], hint: 'OK for inspiration boards. Not OK as a job you completed.', accent: '#FBF5E1' },
+    { id: 7, label: 'About · Team shot', verdict: 'real', detail: 'Genuine team photo. EXIF data consistent with site visit in March 2024.', tags: ['Genuine', 'Recent'], hint: 'Keep — adds trust. Could be slightly sharper.', accent: '#FFD24D' },
+    { id: 8, label: 'Portfolio · Driveway', verdict: 'ai', detail: 'AI-generated. Bricks tile incorrectly along the curve, sun direction inconsistent with shadows.', tags: ['AI-generated'], hint: 'Replace with a real driveway job photo.', accent: '#D9E2D8' },
+    { id: 9, label: 'Contact · Office', verdict: 'real', detail: 'Real photo of the office front. Could be sharper.', tags: ['Genuine'], hint: 'Add a phone-quality replacement on a sunny day.', accent: '#C9CBE0' },
+  ];
+  var labels = { real: { label: 'Real', color: '#1F8A5B' }, stock: { label: 'Stock', color: '#D9534F' }, ai: { label: 'AI-generated', color: '#7A1FA0' } };
+
+  document.getElementById('photoGrid').innerHTML = photos.map(function(p){
+    var v = labels[p.verdict];
+    var hintCls = p.verdict === 'real' ? 'real' : 'flag';
+    var hintTitle = p.verdict === 'real' ? '✓ Keep it' : '↑ Replace it';
+    return '<div class="photo-tile">' +
+      '<div class="photo-thumb" style="background:' + p.accent + '">' +
+        '<span class="photo-verdict-pill" style="background:' + v.color + '">' + v.label + '</span>' +
+        '<span class="fname">photo-' + String(p.id).padStart(2, '0') + '.jpg</span>' +
+      '</div>' +
+      '<div class="photo-body">' +
+        '<div class="photo-label">' + p.label + '</div>' +
+        '<div class="photo-detail">' + p.detail + '</div>' +
+        '<div class="photo-tags">' + p.tags.map(function(t){ return '<span class="tag">' + t + '</span>'; }).join('') + '</div>' +
+        '<div style="flex:1"></div>' +
+        '<div class="photo-hint ' + hintCls + '"><b>' + hintTitle + '</b>' + p.hint + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ════════ TOP 10 FIXES ════════ */
+var FIXES_STATE = [
+  { id: 1, icon: 'hammer', title: 'Replace 6 stock photos with real before/after job shots', impact: 14, difficulty: 'Medium', est: '1 hour', category: 'Photos', why: 'Six of your nine portfolio images are flagged as stock. Replacing them with phone-quality shots of real jobs is the single biggest score lift.', done: false, requested: false, supportOpen: false },
+  { id: 2, icon: 'gear', title: 'Apply for FMB or TrustMark accreditation', impact: 9, difficulty: 'Medium', est: '2-3 weeks', category: 'Trust', why: 'You currently show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.', done: false, requested: false, supportOpen: false },
+  { id: 3, icon: 'screwdriver', title: 'Cut quote form to 4 fields: name, postcode, job type, note', impact: 7, difficulty: 'Easy', est: '20 min', category: 'Quote flow', why: 'Your form has 11 fields. Industry drop-off testing shows abandonment doubles past 6.', done: false, requested: false, supportOpen: false },
+  { id: 4, icon: 'roller', title: 'Compress homepage hero image (currently 2.1MB)', impact: 6, difficulty: 'Easy', est: '10 min', category: 'Speed', why: 'Convert to WebP and target under 200KB. Cuts your Largest Contentful Paint from 4.2s to ~1.8s.', done: false, requested: false, supportOpen: false },
+  { id: 5, icon: 'saw', title: 'Add 2 AI-generated photos to the replace list (loft + driveway)', impact: 5, difficulty: 'Medium', est: '30 min', category: 'Photos', why: 'Both flagged by AI-detector: warped door frame on loft, brickwork misalignment on driveway.', done: false, requested: false, supportOpen: false },
+  { id: 6, icon: 'hardhat', title: 'Create one landing page per service (Extensions, Lofts, Kitchens, Bathrooms)', impact: 5, difficulty: 'Hard', est: '1 day', category: 'Clarity', why: 'Your services live on a single "Our work" page. Per-service pages help homeowners self-identify AND lift local SEO.', done: false, requested: false, supportOpen: false },
+  { id: 7, icon: 'cone', title: 'Claim & link Google Business Profile from the contact page', impact: 4, difficulty: 'Easy', est: '20 min', category: 'SEO', why: 'You\'re ranking #14 for "Bath builder". A linked GBP is the fastest way into the local 3-pack.', done: false, requested: false, supportOpen: false },
+  { id: 8, icon: 'clipboard', title: 'Surface 3 best reviews on the homepage', impact: 4, difficulty: 'Easy', est: '30 min', category: 'Trust', why: 'Reviews are buried on a third-level page. Move three to the homepage above the fold.', done: false, requested: false, supportOpen: false },
+  { id: 9, icon: 'wrench', title: 'Rewrite hero headline around the homeowner outcome', impact: 3, difficulty: 'Medium', est: '45 min', category: 'Copy', why: 'Hero currently says "We build extensions across Bath." Try "Add a kitchen-diner without losing your garden."', done: false, requested: false, supportOpen: false },
+  { id: 10, icon: 'level', title: 'Add visible field labels during focus on the quote form', impact: 2, difficulty: 'Easy', est: '10 min', category: 'Mobile', why: 'Labels disappear when typing on mobile, so people forget what each field is. Tiny but worth the points.', done: false, requested: false, supportOpen: false },
+];
+
+function diffColor(d) {
+  if (d === 'Easy') return 'var(--good)';
+  if (d === 'Medium') return 'var(--fill)';
+  return 'var(--bad)';
+}
+
+function renderFix10() {
+  var doneCount = FIXES_STATE.filter(function(f){ return f.done; }).length;
+  var requestedCount = FIXES_STATE.filter(function(f){ return f.requested; }).length;
+  var remainingImpact = FIXES_STATE.filter(function(f){ return !f.done; }).reduce(function(a, b){ return a + b.impact; }, 0);
+
+  document.getElementById('fixDoneCount').textContent = doneCount;
+  document.getElementById('fixRequestedCount').textContent = requestedCount;
+  document.getElementById('fixRemainingImpact').textContent = remainingImpact;
+  document.getElementById('fixProgressBar').style.width = (doneCount / FIXES_STATE.length * 100) + '%';
+
+  document.getElementById('fix10List').innerHTML = FIXES_STATE.map(function(f, idx){
+    var doneCls = f.done ? ' done' : '';
+    var supportCls = f.supportOpen ? ' support-open' : '';
+    var actionHtml = f.requested
+      ? '<span class="fix10-requested">✓ Help requested</span>'
+      : '<button class="db-btn medium" onclick="toggleSupport(' + f.id + ')">' + (f.supportOpen ? 'Cancel' : 'Get help') + '</button>';
+
+    return '<div class="fix10-item' + doneCls + supportCls + '" data-id="' + f.id + '">' +
+      '<div class="fix10-head">' +
+        '<button class="fix10-check" onclick="toggleFixDone(' + f.id + ')" aria-label="' + (f.done ? 'Mark not done' : 'Mark done') + '">' + (f.done ? '✓' : '') + '</button>' +
+        '<div class="fix-icon-box"><img src="/assets/icons/' + f.icon + '.png" alt=""></div>' +
+        '<div style="min-width:0">' +
+          '<div class="fix10-title"><span class="fix10-rank">#' + (idx + 1) + '</span>' + f.title + '</div>' +
+          '<div class="fix10-meta">' +
+            '<span>' + f.category + '</span><span>·</span><span>' + f.est + '</span><span>·</span>' +
+            '<span class="fix10-diff-dot"><span style="background:' + diffColor(f.difficulty) + '"></span>' + f.difficulty + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<span class="pill-impact">+' + f.impact + ' pts</span>' +
+        '<div class="fix10-actions" style="display:flex;gap:6px;flex:0 0 auto">' + actionHtml + '</div>' +
+      '</div>' +
+      '<div class="fix10-why">' + f.why + '</div>' +
+      '<div class="fix10-support">' +
+        '<div class="section-label" style="color:var(--accent);margin-bottom:8px">Request support from BuilderAudit</div>' +
+        '<p style="font-family:var(--body);font-size:14px;color:var(--ink);margin:0 0 14px;line-height:1.5;max-width:640px">Our team will reach out within 1 working day with a quote to handle this for you. Most fixes in this band are £' +
+          (f.difficulty === 'Easy' ? '40-60' : f.difficulty === 'Medium' ? '120-200' : '300+') +
+          ' including a free re-audit afterwards.</p>' +
+        '<div style="display:flex;flex-direction:column;gap:10px;max-width:560px">' +
+          '<textarea rows="3">Hi BuilderAudit team — could you help with: "' + f.title + '"? </textarea>' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<button class="db-btn primary" onclick="submitSupport(' + f.id + ')">Send request</button>' +
+            '<button class="db-btn" onclick="toggleSupport(' + f.id + ')">Cancel</button>' +
+            '<span style="font-family:var(--body);font-size:12px;color:var(--muted)">We\'ll email you at your account email</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleFixDone(id) {
+  FIXES_STATE = FIXES_STATE.map(function(f){
+    return f.id === id ? Object.assign({}, f, { done: !f.done }) : f;
+  });
+  renderFix10();
+}
+function toggleSupport(id) {
+  FIXES_STATE = FIXES_STATE.map(function(f){
+    return f.id === id ? Object.assign({}, f, { supportOpen: !f.supportOpen }) : f;
+  });
+  renderFix10();
+}
+function submitSupport(id) {
+  FIXES_STATE = FIXES_STATE.map(function(f){
+    return f.id === id ? Object.assign({}, f, { requested: true, supportOpen: false }) : f;
+  });
+  renderFix10();
+}
+
+/* ════════ COMPETITORS ════════ */
+var YOU = {
+  name: 'Heartly Builders Ltd', url: 'heartlybuilders.co.uk', loc: 'Bath', score: 64,
+  breakdown: [
+    { name: 'Photos', s: 48 }, { name: 'Trust', s: 72 }, { name: 'Mobile', s: 86 },
+    { name: 'Speed', s: 54 }, { name: 'Clarity', s: 58 }, { name: 'Quote flow', s: 68 },
+  ],
+  good: 'Mobile experience and copy feel like a real, human builder — homeowners notice.',
+  bad: 'Stock photos and missing trade badges undermine the trust the rest of the site builds.',
+};
+var KNOWN_COMPS = {
+  'greenfieldconstruction.co.uk': {
+    name: 'Greenfield Construction', loc: 'Bristol', score: 78,
+    breakdown: [
+      { name: 'Photos', s: 88 }, { name: 'Trust', s: 92 }, { name: 'Mobile', s: 74 },
+      { name: 'Speed', s: 70 }, { name: 'Clarity', s: 80 }, { name: 'Quote flow', s: 58 },
+    ],
+    good: 'Strong trade badges (FMB + TrustMark) and 14 real before/after photos give instant trust.',
+    bad: 'Quote form asks for too much up front — they lose homeowners on the second screen.',
+  },
+  'pearceandsons.co.uk': {
+    name: 'Pearce & Sons Builders', loc: 'Bath', score: 41,
+    breakdown: [
+      { name: 'Photos', s: 20 }, { name: 'Trust', s: 18 }, { name: 'Mobile', s: 82 },
+      { name: 'Speed', s: 88 }, { name: 'Clarity', s: 56 }, { name: 'Quote flow', s: 44 },
+    ],
+    good: 'Clean, modern design and the homepage loads in under a second.',
+    bad: 'No insurance shown, no accreditations, and every job photo looks like a stock image.',
+  },
+};
+
+function fakeAudit(rawUrl) {
+  var url = rawUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+  if (KNOWN_COMPS[url]) return KNOWN_COMPS[url];
+  var h = 0;
+  for (var i = 0; i < url.length; i++) h = (h * 31 + url.charCodeAt(i)) | 0;
+  var k = 0;
+  function seed() { h = (h * 1103515245 + 12345 + (k++)) | 0; return ((h >>> 0) % 56) + 35; }
+  var breakdown = ['Photos', 'Trust', 'Mobile', 'Speed', 'Clarity', 'Quote flow'].map(function(n){
+    return { name: n, s: seed() };
+  });
+  var score = Math.round(breakdown.reduce(function(a, b){ return a + b.s; }, 0) / breakdown.length);
+  var goods = ['Loads fast and the navigation is dead easy to follow.', 'Real before/after photos and clearly listed services.', 'Mobile experience is solid and the contact details are obvious.', 'Trade accreditations are right there on the homepage.'];
+  var bads = ['Quote form is far too long for a homeowner on a phone.', 'Mix of stock and real photos makes the portfolio confusing.', 'No insurance or accreditation badges visible anywhere.', 'Homepage tells you what they do, but not where or for who.'];
+  var niceName = url.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  return {
+    name: niceName, loc: 'Unknown', score: score, breakdown: breakdown,
+    good: goods[Math.abs(h) % goods.length],
+    bad: bads[Math.abs(h >> 4) % bads.length],
+  };
+}
+
+var COMP_SLOTS = [
+  { url: '', audited: false, data: null, draft: '' },
+  { url: '', audited: false, data: null, draft: '' },
+];
+
+function renderCompetitors() {
+  var grid = document.getElementById('competitorsGrid');
+  /* slot 0, you, slot 1 */
+  grid.innerHTML = renderSlot(0) + renderYouCard() + renderSlot(1);
+  renderCompetitorVerdict();
+}
+
+function renderSlot(idx) {
+  var s = COMP_SLOTS[idx];
+  if (s.audited && s.data) return renderFilledSlot(idx);
+
+  return '<div class="db-card dashed comp-slot-empty">' +
+    '<div class="section-label" style="margin-bottom:10px">Competitor slot</div>' +
+    '<h3 style="font-family:var(--display);font-weight:900;font-size:22px;color:var(--ink);margin:0 0 6px;text-transform:uppercase;letter-spacing:-0.02em">Who are you up against?</h3>' +
+    '<p style="font-family:var(--body);font-size:13.5px;color:var(--muted);margin:0 0 18px;line-height:1.5">Paste a competitor\'s website. We\'ll audit it the same way we audited yours, and you can compare side by side.</p>' +
+    '<form onsubmit="event.preventDefault();runCompAudit(' + idx + ')" style="display:flex;align-items:center;background:#fff;border:2px solid var(--line);border-radius:6px;padding:4px;box-shadow:4px 4px 0 var(--line)">' +
+      '<span style="padding:0 12px;color:var(--muted);font-family:var(--body);font-size:14px;font-weight:600">https://</span>' +
+      '<input type="text" placeholder="theirsite.co.uk" value="' + (s.draft || '') + '"' +
+      ' oninput="updateCompDraft(' + idx + ', this.value)"' +
+      ' style="flex:1;border:none;outline:none;background:transparent;font-family:var(--body);font-size:15px;color:var(--ink);padding:10px 4px;min-width:0">' +
+      '<button type="submit" style="background:var(--accent);color:#fff;border:2px solid var(--line);border-radius:4px;padding:10px 16px;font-family:var(--body);font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap">Run audit →</button>' +
+    '</form>' +
+    '<div style="margin-top:14px;font-family:var(--body);font-size:12px;color:var(--muted)">Takes about 60 seconds. They won\'t be told.</div>' +
+  '</div>';
+}
+
+function renderYouCard() {
+  var color = scoreColor(YOU.score);
+  return '<div class="db-card medium fill">' +
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">' +
+      '<div>' +
+        '<div class="section-label">You · ' + YOU.loc + '</div>' +
+        '<div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);line-height:1.1">' + YOU.name + '</div>' +
+        '<div style="font-family:var(--body);font-size:12.5px;color:var(--muted);margin-top:4px">' + YOU.url + '</div>' +
+      '</div>' +
+      '<div class="comp-score-block" style="background:' + color + '">' + YOU.score + '<div class="of100">/ 100</div></div>' +
+    '</div>' +
+    '<div class="comp-breakdown">' +
+      YOU.breakdown.map(function(cat){
+        var cc = scoreColor(cat.s);
+        return '<div class="comp-cat-row">' +
+          '<div class="name">' + cat.name + '</div>' +
+          '<div class="bar"><div style="width:' + cat.s + '%;background:' + cc + '"></div></div>' +
+          '<div class="num">' + cat.s + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--good);font-weight:800">✓</span>' + YOU.good + '</div>' +
+    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--bad);font-weight:800">!</span>' + YOU.bad + '</div>' +
+  '</div>';
+}
+
+function renderFilledSlot(idx) {
+  var s = COMP_SLOTS[idx];
+  var b = s.data;
+  var color = scoreColor(b.score);
+  var locTxt = b.loc && b.loc !== 'Unknown' ? '· ' + b.loc : '';
+  return '<div class="db-card medium">' +
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">' +
+      '<div style="min-width:0;flex:1">' +
+        '<div class="section-label">Competitor ' + locTxt + '</div>' +
+        '<div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + b.name + '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+          '<span style="font-family:var(--body);font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.url + '</span>' +
+          '<button onclick="editCompSlot(' + idx + ')" style="background:transparent;border:none;cursor:pointer;color:var(--accent);font-family:var(--body);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:0">Change</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="comp-score-block" style="background:' + color + '">' + b.score + '<div class="of100">/ 100</div></div>' +
+    '</div>' +
+    '<div class="comp-breakdown">' +
+      b.breakdown.map(function(cat){
+        var cc = scoreColor(cat.s);
+        return '<div class="comp-cat-row">' +
+          '<div class="name">' + cat.name + '</div>' +
+          '<div class="bar"><div style="width:' + cat.s + '%;background:' + cc + '"></div></div>' +
+          '<div class="num">' + cat.s + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--good);font-weight:800">✓</span>' + b.good + '</div>' +
+    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--bad);font-weight:800">!</span>' + b.bad + '</div>' +
+  '</div>';
+}
+
+function renderCompetitorVerdict() {
+  var audited = COMP_SLOTS.filter(function(s){ return s.audited && s.data; });
+  var box = document.getElementById('competitorVerdict');
+  if (audited.length === 0) {
+    box.innerHTML = '<div class="db-card dashed surface" style="box-shadow:none">' +
+      '<p style="font-family:var(--body);font-size:14px;color:var(--muted);margin:0;text-align:center">Add at least one competitor above to see the head-to-head verdict.</p>' +
+    '</div>';
     return;
   }
-  var html='';
-  audits.forEach(function(a){
-    var domain='';try{domain=new URL(a.url).hostname.replace(/^www\./,'');}catch(e){domain=a.url;}
-    var date=new Date(a.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
-    var score=a.score||0;
-    html+='<a href="/report/'+a.id+'" class="audit-row">';
-    html+='<div class="audit-score '+sc(score)+'">'+score+'</div>';
-    html+='<div class="audit-body"><div class="audit-url">'+esc(domain)+'</div><div class="audit-meta">Audited '+date+'</div></div>';
-    html+='<div class="audit-arrow">\u2192</div>';
-    html+='</a>';
-  });
-  list.innerHTML=html;
+  var ranked = [YOU].concat(audited.map(function(s){ return s.data; })).sort(function(a, b){ return b.score - a.score; });
+  var top = ranked[0];
+  var youRank = ranked.findIndex(function(x){ return x === YOU; }) + 1;
+  var youWin = top === YOU;
+  var h2 = youWin ? "You'd win the enquiry." : "A homeowner would most likely ring " + top.name + " first.";
+  var sub = youWin
+    ? 'Your site reads as the safest of the ' + ranked.length + '. Keep the photo and trust signals up to stay ahead.'
+    : "You're currently " + (youRank === 2 ? 'second' : youRank === 3 ? 'third' : 'behind') + " — closing the photo and trust-badge gap is the fastest way to flip that. This is the gut-feel a homeowner forms in their first 60 seconds on each site.";
+
+  box.innerHTML = '<div class="db-card ink">' +
+    '<span class="db-kicker fill">Who\'d win the business?</span>' +
+    '<h3 style="font-family:var(--display);font-weight:900;font-size:28px;color:#fff;margin:12px 0 8px;text-transform:uppercase;letter-spacing:-0.02em;line-height:1.1">' + h2 + '</h3>' +
+    '<p style="font-family:var(--body);font-size:14.5px;color:rgba(255,255,255,0.78);margin:0;max-width:800px;line-height:1.5">' + sub + '</p>' +
+    '<div style="margin-top:18px;display:flex;gap:10px"><button class="db-btn primary" onclick="navigateTo(\'fixes\')">See my fix-it list</button></div>' +
+  '</div>';
 }
 
-function renderEnquiries(enquiries){
-  if(enquiries.length===0)return;
-  document.getElementById('enquiriesSection').style.display='block';
-  document.getElementById('enqCount').textContent=enquiries.length+' total';
-
-  var labels={web_rebuild:'Web design / rebuild',seo:'SEO services',photography:'Professional photography',testimonials:'Testimonial & review gathering',managed_service:'Full done-for-you fix'};
-
-  var html='';
-  enquiries.forEach(function(e){
-    var date=new Date(e.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
-    var statusClass=e.status==='responded'?'responded':'new';
-    html+='<div class="enq-row">';
-    html+='<div><div class="enq-service">'+esc(labels[e.service]||e.service)+'</div><div class="enq-meta">Requested '+date+'</div></div>';
-    html+='<div style="margin-left:auto"><span class="enq-status '+statusClass+'">'+esc(e.status||'new')+'</span></div>';
-    html+='</div>';
-  });
-  document.getElementById('enquiriesList').innerHTML=html;
+function updateCompDraft(idx, v) { COMP_SLOTS[idx].draft = v; }
+function runCompAudit(idx) {
+  var url = (COMP_SLOTS[idx].draft || '').trim();
+  if (!url) return;
+  COMP_SLOTS[idx] = { url: url, audited: true, data: fakeAudit(url), draft: '' };
+  renderCompetitors();
+}
+function editCompSlot(idx) {
+  COMP_SLOTS[idx] = Object.assign({}, COMP_SLOTS[idx], { audited: false, draft: COMP_SLOTS[idx].url });
+  renderCompetitors();
 }
 
-async function logout(){
-  await fetch('/api/auth/logout',{method:'POST',credentials:'include'});
-  window.location.href='/';
+/* ════════ HOMEOWNER DASHBOARD ════════ */
+function renderHomeownerDashboard() {
+  buildDonut('homeownerScoreDonut', 64, 160);
+  var builders = [
+    { name: 'Greenfield Construction', url: 'greenfieldconstruction.co.uk', loc: 'Bristol', score: 78, lastChecked: '5 days ago' },
+    { name: 'Marlow Renovations', url: 'marlow-renovations.co.uk', loc: 'Bath', score: 71, lastChecked: '2 weeks ago' },
+    { name: 'Heartly Builders Ltd', url: 'heartlybuilders.co.uk', loc: 'Bath', score: 64, lastChecked: '2 days ago' },
+    { name: 'Pearce & Sons Builders', url: 'pearceandsons.co.uk', loc: 'Bath', score: 41, lastChecked: '1 week ago' },
+  ];
+  document.getElementById('shortlistRows').innerHTML = builders.map(function(b, i){
+    var color = scoreColor(b.score);
+    var topCls = i === 0 ? ' top' : '';
+    var topBadge = i === 0 ? '<span class="top-pick-badge">TOP PICK</span>' : '';
+    return '<div class="shortlist-row' + topCls + '">' +
+      '<div>' +
+        '<div class="shortlist-name">' + b.name + topBadge + '</div>' +
+        '<div class="shortlist-url">' + b.url + '</div>' +
+      '</div>' +
+      '<div style="font-family:var(--body);font-size:13.5px;color:var(--ink)">' + b.loc + '</div>' +
+      '<div class="shortlist-score" style="background:' + color + '">' + b.score + '</div>' +
+      '<div style="font-family:var(--body);font-size:13.5px;color:var(--muted)">' + b.lastChecked + '</div>' +
+      '<div style="display:flex;gap:6px"><button class="db-btn small">View</button><button class="db-btn small">Re-check</button></div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ════════ BOOT ════════ */
+renderNav();
+renderRolePill();
+showInitialPage();
+
+/* Render all interactive content (cheap to do up-front, mock data) */
+if (ROLE === 'builder') {
+  renderDashboard();
+  renderReview();
+  renderPhotos();
+  renderFix10();
+  renderCompetitors();
+} else {
+  renderHomeownerDashboard();
 }
 </script>
-<script src="/assets/text-effect.js" defer></script>
+
 </body>
 </html>

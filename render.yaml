@@ -3,6 +3,9 @@
 #
 # When you create a new Blueprint on Render and point it at this repo,
 # Render reads this file and sets up everything automatically.
+#
+# NOTE: Primary deployment is Railway. This file is kept as disaster-recovery
+# config; if Railway has issues you can spin up on Render quickly.
 
 databases:
   - name: builderaudit-db
@@ -16,7 +19,7 @@ services:
     name: builderaudit
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter             # $7/mo — needed because Playwright requires more RAM than free tier allows
+    plan: starter             # $7/mo — modest RAM is plenty since crawling is delegated to ScrapFly
     healthCheckPath: /
     envVars:
       - key: NODE_ENV
@@ -25,8 +28,10 @@ services:
         fromDatabase:
           name: builderaudit-db
           property: connectionString
-      # ── These four you'll set manually in the Render UI ──
+      # ── These you'll set manually in the Render UI ──
       - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SCRAPFLY_API_KEY
         sync: false
       - key: SERPAPI_KEY
         sync: false
@@ -58,6 +63,11 @@ services:
           type: web
           name: builderaudit
           envVarKey: ANTHROPIC_API_KEY
+      - key: SCRAPFLY_API_KEY
+        fromService:
+          type: web
+          name: builderaudit
+          envVarKey: SCRAPFLY_API_KEY
       - key: SERPAPI_KEY
         fromService:
           type: web

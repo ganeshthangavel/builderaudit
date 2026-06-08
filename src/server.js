@@ -790,6 +790,14 @@ app.get('/api/report/:id/data', async (req, res) => {
       });
     }
 
+    /* Extract real image URLs from raw_data pages so the dashboard can show
+       actual photos rather than placeholder boxes. We pair AI analysis descriptions
+       with the actual scraped image src URLs by position. */
+    const rawPages = audit.raw_data?.pages || [];
+    const allImageUrls = rawPages.flatMap(p =>
+      (p.images || []).map(img => ({ src: img.src, alt: img.alt || '', pageUrl: p.url }))
+    ).filter(img => /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src));
+
     res.json({
       locked: false,
       id: audit.id,
@@ -798,6 +806,7 @@ app.get('/api/report/:id/data', async (req, res) => {
       overrides: audit.overrides || {},
       audience: audit.audience || 'builder',
       scannedAt: audit.created_at,
+      imageUrls: allImageUrls.slice(0, 30), /* Cap at 30 to keep response lean */
     });
   } catch (err) {
     console.error('GET /api/report/' + id + '/data failed:', err);

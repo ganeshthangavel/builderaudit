@@ -204,7 +204,9 @@ function BuilderDashboard({ auditData, latestAudit }) {
 
   const fixes = report?.top_actions?.slice(0,5).map((a,i)=>{
     const icons = ['hammer','gear','screwdriver','roller','tape'];
-    return { icon:icons[i%icons.length], text:a, done:false, impact:`+${[8,6,5,3,2][i]} pts` };
+    const text = typeof a === 'string' ? a : (a.title || a.why || JSON.stringify(a));
+    const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i];
+    return { icon:icons[i%icons.length], text, done:false, impact:`+${pts} pts` };
   }) || [
     { icon:'hammer',     text:'Swap in real before/after shots from your phone',          done:false, impact:'+8 pts' },
     { icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',   done:false, impact:'+6 pts' },
@@ -715,11 +717,19 @@ function BuilderFixes({ latestAudit }) {
 
   const baseFixes = report?.top_actions?.map((a,i)=>{
     const cats = ['Photos','Trust','Quote flow','Speed','Clarity','SEO','Copy','Mobile','Trust','Speed'];
-    const diffs = ['Medium','Medium','Easy','Easy','Medium','Easy','Medium','Hard','Easy','Easy'];
-    const ests = ['1 hour','2-3 weeks','20 min','10 min','30 min','20 min','45 min','1 day','30 min','10 min'];
-    const impacts = [14,9,7,6,5,5,4,4,3,2];
     const cat = cats[i%cats.length];
-    return { id:i+1, icon:iconForCategory(cat), title:a, impact:impacts[i]||2, difficulty:diffs[i%diffs.length], est:ests[i%ests.length], category:cat, why:'This fix directly addresses a trust concern that homeowners notice within the first 90 seconds on your site.' };
+    const isObj = typeof a === 'object' && a !== null;
+    return {
+      id: i+1,
+      icon: iconForCategory(isObj ? (a.title || '') : a),
+      title: isObj ? (a.title || `Action ${i+1}`) : a,
+      impact: isObj ? (a.impact_pts || [14,9,7,6,5,5,4,4,3,2][i] || 2) : ([14,9,7,6,5,5,4,4,3,2][i] || 2),
+      difficulty: 'Medium',
+      est: isObj ? (a.time || '—') : '—',
+      category: cat,
+      why: isObj ? (a.why || 'This fix directly addresses a trust concern homeowners notice.') : 'This fix directly addresses a trust concern homeowners notice.',
+      how: isObj ? (a.how || null) : null,
+    };
   }) || [
     { id:1,  icon:'hammer',     title:'Replace 6 stock photos with real before/after job shots',             impact:14, difficulty:'Medium', est:'1 hour',    category:'Photos',     why:'Six of your nine portfolio images are flagged as stock. Real photos are the single biggest score lift.' },
     { id:2,  icon:'gear',       title:'Apply for FMB or TrustMark accreditation',                           impact:9,  difficulty:'Medium', est:'2-3 weeks', category:'Trust',      why:'You show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.' },
@@ -795,6 +805,7 @@ function BuilderFixes({ latestAudit }) {
                 </div>
               </div>
               <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13.5, color:P.muted, lineHeight:1.5 }}>{f.why}</div>
+              {f.how && <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13, color:P.accent, lineHeight:1.5 }}><b style={{ textTransform:'uppercase', fontSize:10, letterSpacing:'0.07em', display:'block', marginBottom:3 }}>How</b>{f.how}</div>}
               {f.requestOpen && (
                 <div style={{ borderTop:`2px solid ${P.line}`, background:'rgba(82,71,184,0.06)', padding:'18px 16px 18px 102px' }}>
                   <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Request support from BuilderAudit</div>

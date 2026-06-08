@@ -483,9 +483,11 @@ app.post('/api/audit', async (req, res) => {
 
     send('status', { message: 'Saving your report...', step: 4, total: 4 });
 
-    /* Save to database using the ID we generated up front */
+    /* Save to database using the ID we generated up front.
+       rawData includes the crawled pages + image URLs — stored so the dashboard
+       can show real photo thumbnails and link back to the page they're on. */
     if (db.isEnabled()) {
-      await db.saveAudit({ id: auditId, url, report });
+      await db.saveAudit({ id: auditId, url, report, rawData: { pages, imageVerification } });
     }
 
     /* Notify the user if they opted in via /api/audit/notify */

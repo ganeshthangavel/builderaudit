@@ -7,10 +7,8 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('./config');
+const { extractSiteFacts } = require('./site-facts');
 
-/* Lazy-initialised Anthropic client. We don't instantiate at module load because
-   that can run before env vars are available (and it lets us give a clearer error
-   message if the key is genuinely missing). */
 let _client = null;
 function getClient() {
   if (_client) return _client;
@@ -25,14 +23,32 @@ function getClient() {
   return _client;
 }
 
+async function ensureImageWithinLimits(base64Data) {
+  if (!base64Data) return null;
+  try {
+    const sharp = require('sharp');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const metadata = await sharp(buffer).metadata();
+    const MAX_DIM = 7800;
+    if ((metadata.width || 0) <= MAX_DIM && (metadata.height || 0) <= MAX_DIM) {
+      return base64Data;
+    }
+    console.log(`[scorer-ai] Resizing oversize screenshot ${metadata.width}x${metadata.height} -> max ${MAX_DIM}px`);
+    const resized = await sharp(buffer)
+      .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return resized.toString('base64');
+  } catch (err) {
+    console.warn('[scorer-ai] Image resize failed, skipping screenshot:', err.message);
+    return null;
+  }
+}
+
 async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext, audience) {
   const client = getClient();
   audience = audience || 'builder';
 
-  /* Classify each crawled page by URL pattern. This lets the AI know what pages
-     EXIST on the site, even if their content was truncated out of the text budget below.
-     Without this, the AI sometimes mistakenly says "no team page" when the team page
-     was crawled but its body text didn't make it into the 6000-char window. */
   const pageMap = pages.map(p => {
     const url = p.url;
     const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch (e) { return url.toLowerCase(); } })();
@@ -50,8 +66,6 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     return { url: p.url, kind, textLength: (p.textContent || '').length };
   });
 
-  /* Order pages so important ones (about, team, services, contact) appear first
-     in the text budget. The AI gets the full text of these before it gets sliced. */
   const priority = { home: 0, about: 1, team: 1, services: 2, contact: 3, testimonials: 4,
     portfolio: 5, pricing: 5, faq: 6, blog: 7, other: 8 };
   const sortedPages = [...pages].sort((a, b) => {
@@ -64,7 +78,19 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
   const allMeta = pages.map(p => p.meta);
   const allImages = pages.flatMap(p => p.images);
 
-  /* Apply overrides — user has said these flagged images are actually theirs, so remove them from evidence */
+  const teamPage = pages.find(p => {
+    const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return ''; } })();
+    return /team|staff|people|meet|who-?we-?are/.test(path);
+  });
+  const testimonialsPage = pages.find(p => {
+    const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return ''; } })();
+    return /testimonial|review/.test(path);
+  });
+  const aboutPage = pages.find(p => {
+    const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return ''; } })();
+    return /about|our-story|who-we-are/.test(path);
+  });
+
   overrides = overrides || {};
   const filteredVerification = imageVerification ? {
     ...imageVerification,
@@ -72,25 +98,14 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     duplicatedImages: (imageVerification.duplicatedImages || []).filter(img => overrides[img.src] !== 'rejected'),
   } : null;
 
-  /* Only include image blocks for pages that have screenshots (fresh audits).
-     Replays use text-only analysis since screenshots arent stored.
-
-     Defensive size check: Claude's vision API rejects images where any dimension
-     exceeds 8000px or the file is larger than ~4MB. Rather than crashing the whole
-     audit if a screenshot is too big, we silently skip it. The text content from
-     that page is still analysed. */
-  const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024; // 4MB
-  const screenshotsToAnalyse = pages
-    .slice(0, 4)
-    .filter(p => p.screenshotB64)
-    .filter(p => {
-      const approxBytes = Math.floor(p.screenshotB64.length * 0.75);
-      if (approxBytes > MAX_SCREENSHOT_BYTES) {
-        console.warn(`[scorer-ai] Skipping oversize screenshot for ${p.url}: ~${(approxBytes/1024/1024).toFixed(1)}MB`);
-        return false;
-      }
-      return true;
-    });
+  const candidatePages = pages.slice(0, 4).filter(p => p.screenshotB64);
+  const safeScreenshots = await Promise.all(
+    candidatePages.map(async p => {
+      const safeB64 = await ensureImageWithinLimits(p.screenshotB64);
+      return safeB64 ? { ...p, screenshotB64: safeB64 } : null;
+    })
+  );
+  const screenshotsToAnalyse = safeScreenshots.filter(Boolean);
   const imageBlocks = screenshotsToAnalyse.map(p => ({
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
@@ -105,12 +120,16 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     userOverrideCount: Object.values(overrides).filter(v => v === 'rejected').length,
   } : null;
 
+  /* Extract deterministic site facts — these override AI guesses */
+  const siteFacts = extractSiteFacts(pages);
+
   const aggregatedSignals = {
     totalPages: pages.length,
-    /* Crawled URLs by classification — tells the AI which pages exist on the site
-       so it can verify claims like "they don't have a team page" against actual data. */
     pagesCrawled: pageMap.map(p => ({ url: p.url, kind: p.kind })),
     pageKindsPresent: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
+    teamPageContent: teamPage ? { url: teamPage.url, fullText: teamPage.textContent } : null,
+    testimonialsPageContent: testimonialsPage ? { url: testimonialsPage.url, fullText: testimonialsPage.textContent } : null,
+    aboutPageContent: aboutPage ? { url: aboutPage.url, fullText: aboutPage.textContent } : null,
     totalImages: allImages.length,
     pagesWithPhone: allMeta.filter(m => m.hasPhone).length,
     pagesWithAddress: allMeta.filter(m => m.hasAddress).length,
@@ -126,68 +145,209 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     imageVerification: imgVerifySummary,
   };
 
-  /* Build a user-context line that tailors the AI feedback */
   let contextLine = '';
-  if (userContext && userContext.businessType) {
+
+  if (userContext) {
     const typeLabels = {
-      ltd: 'Limited Company (Ltd) — homeowners expect Companies House number, VAT number, registered office address, director names',
-      sole_trader: 'Sole Trader — homeowners expect UTR or trading name, physical business address, insurance details; Companies House is NOT applicable',
-      partnership: 'Partnership — homeowners expect trading name, partner names, registered address, partnership agreement reference',
-      llp: 'Limited Liability Partnership (LLP) — homeowners expect Companies House LLP number, registered address, members names',
+      sole_trader: 'Sole Trader',
+      limited_company: 'Limited Company',
+      partnership: 'Partnership',
+      other: 'building company',
     };
-    contextLine += '\n\nBUSINESS CONTEXT: This website belongs to a ' + (typeLabels[userContext.businessType] || userContext.businessType) + '.';
-    if (userContext.region) {
-      contextLine += '\nRegion: ' + userContext.region + '. Consider regional accreditations (e.g. local FMB chapter, Trading Standards) and regional homeowner expectations.';
+    if (userContext.businessType) {
+      contextLine += '\n\nBUSINESS CONTEXT: This website belongs to a ' + (typeLabels[userContext.businessType] || userContext.businessType) + '.';
+      if (userContext.region) {
+        contextLine += '\nRegion (from user signup): ' + userContext.region + '. Consider regional accreditations (e.g. local FMB chapter, Trading Standards) and regional homeowner expectations.';
+      }
+      contextLine += '\nYour feedback MUST acknowledge this business type. For example: do not penalise a Sole Trader for not having a Companies House number. Do not expect regional Ltd accreditations if they are a Partnership. Tailor the trust_questions, trust_breakpoints, and scoring accordingly.';
     }
-    contextLine += '\nYour feedback MUST acknowledge this business type. For example: do not penalise a Sole Trader for not having a Companies House number. Do not expect regional Ltd accreditations if they are a Partnership. Tailor the trust_questions, trust_breakpoints, and scoring accordingly.';
   }
 
-  /* Pick the AI persona based on audience */
-  const builderPrompt = `You are a forensic conversion analyst for UK construction companies.
-Your job is NOT to produce a generic audit.
-Your job is to simulate:
-- how a homeowner experiences this website
-- where trust is lost
-- why enquiries are not happening
-- and what the business must fix immediately
+  if (siteFacts && siteFacts.location && siteFacts.location.primary) {
+    const otherLocs = siteFacts.location.allMentioned.slice(1, 5);
+    contextLine += '\n\nBUILDER\'S OPERATING REGION (DETERMINISTICALLY EXTRACTED): The site primarily references ' + siteFacts.location.primary +
+      (otherLocs.length > 0 ? ' (also mentions: ' + otherLocs.join(', ') + ')' : '') + '.' +
+      '\nDo NOT reference cities or regions the builder does not operate in (e.g. don\'t say "London homeowners" if the site references Yorkshire). ' +
+      'If you mention a city or region, it must be one of the detected locations above.';
+  }
 
-You must output structured JSON designed to power a highly engaging, narrative-driven UI.
-The tone should feel like a brutally honest consultant — commercially focused, emotionally persuasive, grounded in real homeowner psychology.
-Avoid generic or polite language. Be direct, specific, and evidence-based.
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SYSTEM PROMPTS — sharpened to reject generic output
+     ═══════════════════════════════════════════════════════════════════════════ */
 
-IMPORTANT: You have been given VERIFIED image data from a reverse image search engine. If images are confirmed as stock photos or found on other websites, treat this as hard evidence — not suspicion. Call it out explicitly and specifically.
+  const builderPrompt = `You are a forensic conversion analyst for UK construction companies. You are reviewing a SPECIFIC website — not a generic builder site.
+
+Your output must be hyper-specific to THIS site. Generic statements are not acceptable.
+
+BANNED PHRASES (do not use these or any paraphrase of them):
+- "Add more reviews" → instead: name the platform, quote the count you found, describe the specific gap
+- "Improve your photos" → instead: name which page, describe the specific image, explain exactly what's wrong
+- "Get accreditations" → instead: name which ones are missing, say whether the site mentions them at all, give the application URL
+- "Make your site faster" → instead: name the specific page and the specific file causing the slowdown
+- "Add a team page" → instead: check pagesCrawled first — if it exists, describe what's MISSING from it
+- Any sentence that would be equally true for a different UK builder
+
+Every finding must reference something you actually found on THIS site:
+- Quote exact text from the site (wrapped in quotes)
+- Name specific URLs from pagesCrawled
+- Reference specific images by their alt text or description
+- Use exact numbers (e.g. "9 testimonials" not "some testimonials", "4.2s load time" not "slow")
+- Name the city/region from siteFacts, not generic "UK homeowners"
+
+Your job is to simulate how a homeowner experiences THIS website — where trust is lost, why enquiries are not happening, and what must be fixed immediately.
+
+Tone: brutally honest consultant — commercially focused, emotionally persuasive, grounded in real homeowner psychology.
+
+IMPORTANT: You have been given VERIFIED image data from a reverse image search engine. If images are confirmed as stock photos or found on other websites, treat this as hard evidence — reference the specific image URL and where it was found.
 
 CONTEXT: A homeowner is considering spending £10k-£250k on a project. They are cautious, risk-aware, and comparing multiple builders.
 
 Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + contextLine;
 
-  const homeownerPrompt = `You are a forensic consumer-protection analyst helping a UK homeowner decide whether to hire a specific builder. Your audience is NOT the builder — it is the homeowner about to spend £10k-£250k on building work.
+  const homeownerPrompt = `You are a forensic consumer-protection analyst helping a UK homeowner decide whether to hire a SPECIFIC builder. Your audience is NOT the builder — it is the homeowner about to spend £10k-£250k.
 
-Your tone should be:
-- Protective of the homeowner (like a friend who is an expert)
-- Evidence-based — flag concrete red flags, don't speculate
-- Fair — acknowledge positive signs too
-- Practical — give questions they should ask before signing
+You are reviewing a SPECIFIC website. Generic observations are useless to this homeowner. They need to know what YOU found on THIS site.
+
+Every finding must be specific:
+- Quote exact text, name specific pages, reference specific images
+- Use exact numbers from the data provided
+- Name the location from siteFacts
+- Reference the actual accreditations (or lack thereof) found
+
+Tone: protective friend who is an expert — evidence-based, fair, practical.
 
 CONTEXT: A homeowner has typed in a builder's website to check whether the builder stands up to scrutiny. They want the truth before they write a cheque.
 
-Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
+Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + contextLine;
 
   const systemPrompt = audience === 'homeowner' ? homeownerPrompt : builderPrompt;
 
-  const userPrompt = 'Website being audited: ' + targetUrl + '\n\n' +
-    'EXTRACTED SIGNALS:\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\n' +
-    'CRITICAL: Before stating that the site lacks any kind of page (e.g. "no team page", "no about page"), CHECK the `pagesCrawled` list above. ' +
-    'If a URL like /our-team or /about exists in that list, the page DOES exist on the site even if its content is truncated below — do not claim it is missing.\n\n' +
-    'FULL PAGE TEXT (' + pages.length + ' pages crawled, prioritising about/team/services/contact):\n' + allText.slice(0, 12000) + '\n\n' +
+  /* ═══════════════════════════════════════════════════════════════════════════
+     USER PROMPT — site data + JSON schema
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  const jsonSchema = `{
+  "business_snapshot": {
+    "company_name": "<the business name as shown>",
+    "one_liner": "<1 sentence describing what they do>",
+    "established": "<year founded if mentioned, or not stated>",
+    "years_trading": "<e.g. 20+ years if mentioned, else null>",
+    "location": "<where they are based>",
+    "service_area": "<where they cover>",
+    "work_types": ["<main project types>"],
+    "project_value_range": "<if mentioned e.g. £20k-£500k or null>",
+    "team": {
+      "owners": ["<names of owners/directors if mentioned>"],
+      "team_size": "<if mentioned else null>",
+      "key_people": ["<named team members and their role>"]
+    },
+    "accreditations": ["<every accreditation found>"],
+    "awards": ["<any awards or recognition>"],
+    "notable_clients": ["<notable clients or architects>"],
+    "unique_selling_points": ["<2-4 differentiators they emphasise>"],
+    "contact": {
+      "phone": "<phone if visible>",
+      "email": "<email if visible>",
+      "address": "<address if visible>"
+    },
+    "what_we_could_not_find": ["<expected info the site does not mention>"]
+  },
+  "hero": {
+    "score": 0,
+    "headline": "<confronting but fair — specific to THIS site>",
+    "subtext": "<1 sentence specific to what you found on THIS site>",
+    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings from THIS site>"
+  },
+  "homeowner_journey": [
+    {"stage": "first_impression", "thought": "<first person homeowner — reference something specific on the homepage>"},
+    {"stage": "scrolling", "thought": "<doubt as they scroll — reference a specific page or element they found>"},
+    {"stage": "decision_moment", "thought": "<the moment they decide — reference the specific trust signal that tipped them>"}
+  ],
+  "live_audit_feed": [{"status": "success|warning|critical", "message": "<punchy specific finding — include a number or quote>"}],
+  "trust_breakpoints": [
+    {
+      "title": "<specific trust failure — name the exact issue, not a category>",
+      "homeowner_reaction": "<first-person inner monologue — must reference something specific on the site>",
+      "evidence": "<exact evidence: quote text, name the URL, give a count, reference specific images>",
+      "impact": "critical|high|medium|low",
+      "fix": "<specific action: name the tool/platform/badge, give a URL if relevant, estimate time and cost>"
+    }
+  ],
+  "photo_analysis": {
+    "summary": "<verdict specific to THIS site — mention the actual count and which pages>",
+    "strong_images": [{"description": "<specific description of what the image shows>", "why_it_works": "<specific reason — mention visual trust signals it contains>"}],
+    "weak_images": [{"description": "<specific description>", "issue": "<exact problem — if stock, name where it was found>", "impact": "<specific homeowner consequence>", "confirmed_stock": false, "stock_source": "<if confirmed>"}]
+  },
+  "trust_questions": [
+    {"question": "Can I verify this is a legitimate registered business?", "score": 0, "explanation": "<specific evidence from THIS site — company number, address, VAT etc>"},
+    {"question": "Do I believe these are real projects by this company?", "score": 0, "explanation": "<reference specific images or project pages found>"},
+    {"question": "Do other homeowners trust and recommend this company?", "score": 0, "explanation": "<quote count, platform names, or absence thereof>"},
+    {"question": "Do they have credentials to handle my project safely?", "score": 0, "explanation": "<list every accreditation found or specifically missing>"},
+    {"question": "Will they be easy to contact and communicate with?", "score": 0, "explanation": "<specific contact details found or missing>"},
+    {"question": "Is this business actively trading right now?", "score": 0, "explanation": "<recent content, dates, copyright year etc>"}
+  ],
+  "competitor_gap": {
+    "summary": "<1-2 sentences specific to THIS builder's positioning>",
+    "they_have": ["<specific thing a well-optimised UK builder shows that THIS site lacks>"],
+    "you_have": ["<genuine specific strength found on THIS site>"]
+  },
+  "top_actions": [
+    {
+      "title": "<specific action — not a category>",
+      "why": "<specific reason grounded in THIS site — quote text or give a number>",
+      "how": "<concrete steps — name tools, URLs, or services where relevant>",
+      "time": "<realistic time estimate>",
+      "impact_pts": 5
+    }
+  ]
+}`;
+
+  const homeownerAddendum = audience === 'homeowner' ? `
+
+IMPORTANT: Frame every section from the HOMEOWNER point of view.
+- hero.headline should be a verdict on THIS BUILDER (e.g. "Proceed with caution — several red flags")
+- hero.ai_voice_intro speaks TO the homeowner, not the builder
+- homeowner_journey thoughts are what the homeowner thinks as they decide whether to hire
+- trust_breakpoints are red flags the homeowner should notice, with "fix" replaced by "question to ask the builder before signing"
+- top_actions are QUESTIONS the homeowner should ask the builder, not fixes
+- competitor_gap compares this builder to what a trustworthy builder would show
+Do NOT advise the homeowner to fix the builder's website. Advise them on what to ask, what to verify, and what should make them walk away.` : '';
+
+  const criticalRules = `CRITICAL FACT-EXTRACTION RULES:
+1. If teamPageContent is non-null, read its fullText and extract every named individual into business_snapshot.team.key_people.
+2. If testimonialsPageContent is non-null with substantial content, the business HAS testimonials.
+3. If aboutPageContent is non-null, use it to identify the company story, year founded, and key milestones.
+4. Before claiming the site lacks any page, CHECK pagesCrawled. If a relevant URL exists, the page DOES exist.
+5. siteFacts is AUTHORITATIVE — the truncated text below is just for tone and missed nuance.
+6. DO NOT contradict siteFacts. If siteFacts says the team has named members, do NOT call the business "anonymous".`;
+
+  const imageVerifSection = (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0))
+    ? 'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n'
+    : '';
+
+  const userPrompt =
+    'Website being audited: ' + targetUrl + '\n\n' +
+    '════ AUTHORITATIVE SITE FACTS (extracted programmatically — TREAT AS GROUND TRUTH) ════\n' +
+    JSON.stringify(siteFacts, null, 2) + '\n\n' +
+    'CRITICAL — HOW TO USE THE FACTS ABOVE:\n' +
+    '- These facts have been extracted by deterministic code (regex/heuristics), not by guessing. They are MORE RELIABLE than the truncated text below.\n' +
+    '- For business_snapshot.location: use siteFacts.location.primary and siteFacts.location.allMentioned.\n' +
+    '- For business_snapshot.team.key_people: use siteFacts.team.namedPeople. If empty, the site genuinely lacks named individuals.\n' +
+    '- For business_snapshot.team.owners: use siteFacts.team.ownerName.\n' +
+    '- For business_snapshot.contact.address: use siteFacts.location.streetAddress and siteFacts.location.postcode if present.\n' +
+    '- For accreditations: use siteFacts.accreditations.\n' +
+    '- For company number / VAT / founded year: use siteFacts.companyIdentity.\n' +
+    '- For testimonials: use siteFacts.testimonials.quoteCount and siteFacts.testimonials.sampleQuotes.\n' +
+    '- For external review links: use siteFacts.externalReviews.platformsLinked.\n' +
+    '- For insurance: use siteFacts.insurance. If mentioned: false, flag it.\n' +
+    '- For automatic red flags: use siteFacts.flags.\n\n' +
+    'EXTRACTED SIGNALS (additional context):\n' + JSON.stringify(aggregatedSignals, null, 2) + '\n\n' +
+    criticalRules + '\n\n' +
+    'FULL PAGE TEXT (' + pages.length + ' pages crawled, prioritising about/team/services/contact):\n' +
+    allText.slice(0, 18000) + '\n\n' +
     'I have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
-  (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0) ?
-    'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n' : '') +
-  (audience === 'homeowner'
-    ? 'Return this exact JSON structure (HOMEOWNER VIEW):\n\n{\n  "business_snapshot": {'
-    : 'Return this exact JSON structure:\n\n{\n  "business_snapshot": {'
-  ) + '\n    "company_name": "<the business name as shown>",\n    "one_liner": "<1 sentence describing what they do>",\n    "established": "<year founded if mentioned, or \\"not stated\\">",\n    "years_trading": "<e.g. \\"20+ years\\" if mentioned, else null>",\n    "location": "<where they are based>",\n    "service_area": "<where they cover>",\n    "work_types": ["<main project types>"],\n    "project_value_range": "<if mentioned e.g. \\"£20k-£500k\\" or null>",\n    "team": {\n      "owners": ["<names of owners/directors if mentioned>"],\n      "team_size": "<if mentioned else null>",\n      "key_people": ["<named team members and their role>"]\n    },\n    "accreditations": ["<every accreditation found>"],\n    "awards": ["<any awards or recognition>"],\n    "notable_clients": ["<notable clients or architects>"],\n    "unique_selling_points": ["<2-4 differentiators they emphasise>"],\n    "contact": {\n      "phone": "<phone if visible>",\n      "email": "<email if visible>",\n      "address": "<address if visible>"\n    },\n    "what_we_could_not_find": ["<expected info the site does not mention>"]\n  },\n  "hero": {\n    "score": <0-100 integer>,\n    "headline": "<confronting but fair>",\n    "subtext": "<1 sentence specific to what you found>",\n    "ai_voice_intro": "<2-3 sentences speaking directly to the business owner, referencing specific findings>"\n  },\n  "homeowner_journey": [\n    {"stage": "first_impression", "thought": "<first person homeowner>"},\n    {"stage": "scrolling", "thought": "<doubt as they scroll>"},\n    {"stage": "decision_moment", "thought": "<the moment they decide>"}\n  ],\n  "live_audit_feed": [{"status": "success|warning|critical", "message": "<punchy finding>"}],\n  "trust_breakpoints": [\n    {\n      "title": "<trust failure title>",\n      "homeowner_reaction": "<inner monologue>",\n      "evidence": "<specific evidence>",\n      "impact": "critical|high|medium|low",\n      "fix": "<specific fix within days>"\n    }\n  ],\n  "photo_analysis": {\n    "summary": "<overall verdict>",\n    "strong_images": [{"description": "", "why_it_works": ""}],\n    "weak_images": [{"description": "", "issue": "", "impact": "", "confirmed_stock": true|false, "stock_source": "<if confirmed>"}]\n  },\n  "trust_questions": [\n    {"question": "Can I verify this is a legitimate registered business?", "score": <0-100>, "explanation": ""},\n    {"question": "Do I believe these are real projects by this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do other homeowners trust and recommend this company?", "score": <0-100>, "explanation": ""},\n    {"question": "Do they have credentials to handle my project safely?", "score": <0-100>, "explanation": ""},\n    {"question": "Will they be easy to contact and communicate with?", "score": <0-100>, "explanation": ""},\n    {"question": "Is this business actively trading right now?", "score": <0-100>, "explanation": ""}\n  ],\n  "competitor_gap": {\n    "summary": "<1-2 sentences>",\n    "they_have": ["<thing competitors have>"],\n    "you_have": ["<genuine strength>"]\n  },\n  "top_actions": [\n    "<action 1 most impactful>",\n    "<action 2>",\n    "<action 3>",\n    "<action 4>",\n    "<action 5>"\n  ]\n}' +
-  (audience === 'homeowner' ? '\n\nIMPORTANT: Frame every section from the HOMEOWNER point of view.\n- hero.headline should be a verdict on THIS BUILDER (e.g. "Proceed with caution — several red flags")\n- hero.ai_voice_intro speaks TO the homeowner, not the builder\n- homeowner_journey thoughts are what the homeowner thinks as they decide whether to hire\n- trust_breakpoints are red flags the homeowner should notice, with "fix" replaced by "question to ask the builder before signing"\n- top_actions are QUESTIONS the homeowner should ask the builder, not fixes\n- competitor_gap compares this builder to what a trustworthy builder would show\nDo NOT advise the homeowner to fix the builder\'s website. Advise them on what to ask, what to verify, and what should make them walk away.' : '');
+    imageVerifSection +
+    'Return this exact JSON structure:\n\n' + jsonSchema + homeownerAddendum;
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
@@ -205,8 +365,6 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.`;
     console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', clean.slice(-300));
     throw new Error('AI response was incomplete. Try again.');
   }
-  /* Attach the ORIGINAL (unfiltered) imageVerification so the UI can still show flags + overrides.
-     The AI has been shown the filtered version so its reasoning reflects the users overrides. */
   result.imageVerification = imageVerification;
   return result;
 }

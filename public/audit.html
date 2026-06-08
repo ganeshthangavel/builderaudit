@@ -189,7 +189,7 @@ a { -webkit-tap-highlight-color: transparent; }
   color: var(--ink); opacity: 0.6; margin-top: 18px;
 }
 
-.sc-blocked, .sc-error {
+.sc-blocked, .sc-error, .sc-waiting {
   display: none;
   background: #fff;
   border: 3px solid var(--line);
@@ -198,7 +198,7 @@ a { -webkit-tap-highlight-color: transparent; }
   box-shadow: 6px 6px 0 var(--line);
   text-align: center;
 }
-.sc-blocked.on, .sc-error.on { display: block; }
+.sc-blocked.on, .sc-error.on, .sc-waiting.on { display: block; }
 .sc-blocked-icon, .sc-error-icon { font-size: 48px; margin-bottom: 12px; }
 .sc-blocked-title, .sc-error-title {
   font-family: var(--display); font-weight: 900; font-size: 26px;
@@ -237,6 +237,15 @@ a { -webkit-tap-highlight-color: transparent; }
 
 @keyframes sc-spin { to { transform: rotate(360deg); } }
 @keyframes sc-pop { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes sc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.sc-spinner {
+  width: 40px; height: 40px;
+  border: 4px solid var(--surface);
+  border-top: 4px solid var(--accent);
+  border-radius: 50%;
+  animation: sc-spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
 
 @media (max-width: 700px) {
   .sc-header { padding: 16px 20px; }
@@ -425,6 +434,17 @@ a { -webkit-tap-highlight-color: transparent; }
         <a href="mailto:gthangavel1@gmail.com?subject=BuilderAudit%20%E2%80%94%20Audit%20error" class="sc-btn-secondary">Contact us</a>
       </div>
     </div>
+
+    <!-- Waiting card: shown when SSE drops but audit is still running server-side -->
+    <div class="sc-waiting" id="waitingCard" style="margin-top:18px">
+      <div class="sc-spinner"></div>
+      <h2 class="sc-error-title" style="color:var(--ink)">Still working on it…</h2>
+      <p class="sc-blocked-msg">Your audit is running in the background — this can take up to 10 minutes for some sites. We'll check back automatically every few seconds.</p>
+      <div id="waitingEmailNote" style="display:none;margin:14px 0;padding:12px 16px;background:var(--surface);border:2px solid var(--line);border-radius:6px;font-family:var(--body);font-size:14px;color:var(--ink)">
+        ✓ We'll email <strong id="waitingEmailAddr"></strong> when it's ready — you can close this tab.
+      </div>
+      <p style="font-family:var(--body);font-size:13px;color:var(--muted);margin:0">Checking for your report… <span id="waitingDots">.</span></p>
+    </div>
   </div>
 </main>
 
@@ -592,6 +612,74 @@ function showError(msg) {
   document.getElementById('errorCard').classList.add('on');
 }
 
+/* showWaiting — called when the SSE connection drops but we don't know if the
+   audit crashed or is just slow. Hides the progress UI and starts polling
+   /api/report/:id/meta until the score appears, then redirects. */
+var pollingInterval = null;
+function showWaiting() {
+  stopSmoothTick();
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('footnote').style.display = 'none';
+  document.querySelector('.sc-hero').style.display = 'none';
+  /* Hide the notify card if still visible */
+  var nc = document.getElementById('notifyCard'); if (nc) nc.style.display = 'none';
+  document.getElementById('statusChip').textContent = 'Running…';
+
+  var waiting = document.getElementById('waitingCard');
+  waiting.classList.add('on');
+
+  /* If user already opted in to email, show the reassurance note */
+  var sentCard = document.getElementById('notifySent');
+  var sentEmail = document.getElementById('notifySentEmail');
+  if (sentCard && sentCard.style.display !== 'none' && sentEmail && sentEmail.textContent) {
+    var noteEl = document.getElementById('waitingEmailNote');
+    var addrEl = document.getElementById('waitingEmailAddr');
+    if (noteEl && addrEl) {
+      addrEl.textContent = sentEmail.textContent;
+      noteEl.style.display = 'block';
+    }
+  }
+
+  /* Animated dots */
+  var dots = document.getElementById('waitingDots');
+  var dotCount = 1;
+  var dotInterval = setInterval(function(){
+    dotCount = dotCount >= 3 ? 1 : dotCount + 1;
+    if (dots) dots.textContent = '.'.repeat(dotCount);
+  }, 600);
+
+  /* If we don't have the audit ID yet, we can't poll — just wait */
+  if (!currentAuditId) return;
+
+  /* Poll every 5 seconds */
+  var pollCount = 0;
+  var MAX_POLLS = 120; /* 10 minutes max */
+  pollingInterval = setInterval(async function() {
+    pollCount++;
+    if (pollCount > MAX_POLLS) {
+      clearInterval(pollingInterval);
+      clearInterval(dotInterval);
+      /* Give up gracefully */
+      if (dots) dots.textContent = '';
+      document.querySelector('#waitingCard .sc-blocked-msg').textContent =
+        'The audit is taking longer than usual. If you entered your email, we\'ll send you the report when it\'s done.';
+      return;
+    }
+    try {
+      var r = await fetch('/api/report/' + currentAuditId + '/meta');
+      if (r.ok) {
+        var data = await r.json();
+        if (data && data.score != null) {
+          /* Report is ready — redirect */
+          clearInterval(pollingInterval);
+          clearInterval(dotInterval);
+          window.location.href = '/report/' + currentAuditId;
+        }
+      }
+    } catch(e) { /* network blip — try again next tick */ }
+  }, 5000);
+}
+
 async function runAudit() {
   setProgress(2, false);
   setActiveIdx(0, false);
@@ -631,7 +719,10 @@ async function runAudit() {
       }
     }
   } catch (e) {
-    showError(e.message || 'Could not connect to the audit service.');
+    /* Network error or connection drop — don't immediately show "AUDIT FAILED".
+       The server keeps running the audit even if the SSE connection drops.
+       Switch to the waiting state and poll for the result. */
+    showWaiting();
   }
 }
 
@@ -712,4 +803,3 @@ runAudit();
 
 </body>
 </html>
-

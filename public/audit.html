@@ -60,6 +60,20 @@ a { -webkit-tap-highlight-color: transparent; }
 }
 .sc-status-chip.done { background: var(--good); color: #fff; border-color: var(--line); }
 
+/* Timer pill — shown next to the status chip in the header */
+.sc-timer {
+  font-family: var(--body); font-size: 12.5px; font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  letter-spacing: 0.04em;
+  transition: color .3s;
+}
+.sc-timer.urgent { color: var(--ink); }
+.sc-timer.done   { display: none; }
+
 .sc-main {
   flex: 1; display: grid; place-items: center;
   padding: 20px 24px 60px;
@@ -357,7 +371,10 @@ a { -webkit-tap-highlight-color: transparent; }
     </svg>
     <span class="sc-brand-name"><span>Builder</span><span style="color:var(--accent)">Audit</span></span>
   </a>
-  <div class="sc-status-chip" id="statusChip">Auditing…</div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span class="sc-timer" id="timerDisplay"></span>
+    <div class="sc-status-chip" id="statusChip">Auditing…</div>
+  </div>
 </header>
 
 <main class="sc-main">
@@ -526,6 +543,74 @@ var currentPhase = 0;
 var smoothInterval = null;
 var currentAuditId = null;  /* Set when server sends 'audit_id' SSE event */
 
+/* ─── Timer system ───────────────────────────────────────────────────────────
+ * We estimate remaining time based on two things:
+ *   1. Phase milestones — when a real phase event arrives we recalibrate
+ *   2. Wall-clock elapsed time — we tick down 1s/sec against the estimate
+ *
+ * Phase-to-time mapping (based on observed production timings):
+ *   Phase 0→1 (crawl start):    remaining = 7 min  (worst-case hard site)
+ *   Phase 1→2 (crawl done):     recalibrate to 2 min (crawl was the long bit)
+ *   Phase 2→3 (images done):    recalibrate to 80s  (AI scoring left)
+ *   Phase 3→4 (scoring done):   recalibrate to 15s  (just saving)
+ *   Phase 4 (complete):         0 — redirect immediately
+ *
+ * The timer NEVER drops below 5s while the audit is still running (we clamp
+ * at "< 1 min remaining" if the estimate runs out before the real event). ─── */
+var timerSeconds = 0;
+var timerInterval = null;
+var auditStartTime = Date.now();
+
+function formatTime(s) {
+  if (s <= 0) return '< 1 min remaining';
+  if (s < 60) return s + 's remaining';
+  var m = Math.ceil(s / 60);
+  return m + ' min remaining';
+}
+
+function startTimer(seconds) {
+  timerSeconds = seconds;
+  var el = document.getElementById('timerDisplay');
+  if (el) {
+    el.textContent = formatTime(timerSeconds);
+    el.className = 'sc-timer' + (timerSeconds < 90 ? ' urgent' : '');
+  }
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(function(){
+    timerSeconds = Math.max(5, timerSeconds - 1);
+    var el = document.getElementById('timerDisplay');
+    if (el) {
+      el.textContent = formatTime(timerSeconds);
+      el.className = 'sc-timer' + (timerSeconds < 90 ? ' urgent' : '');
+    }
+  }, 1000);
+}
+
+function recalibrateTimer(phase) {
+  /* Remaining time estimates per phase completion (conservative, based on cityloftslondon timings) */
+  var remaining = { 1: 420, 2: 120, 3: 80, 4: 15 };
+  var secs = remaining[phase];
+  if (!secs) return;
+  /* Don't wind the timer UP — only recalibrate downward so it doesn't jump
+     to a higher number if the site was fast */
+  if (secs < timerSeconds || timerSeconds <= 5) {
+    startTimer(secs);
+  }
+}
+
+function stopTimer(done) {
+  if (timerInterval) clearInterval(timerInterval);
+  var el = document.getElementById('timerDisplay');
+  if (el) {
+    if (done) {
+      el.textContent = '';
+      el.className = 'sc-timer done';
+    } else {
+      el.textContent = formatTime(timerSeconds);
+    }
+  }
+}
+
 function phaseToPct(phase, top) {
   if (phase <= 0) return 0;
   var bands = [[0,5], [5,30], [30,55], [55,90], [90,99]];
@@ -567,9 +652,11 @@ function handle(name, data) {
       currentPhase = step;
       setProgress(phaseToPct(step, false), false);
       setActiveIdx(phaseToActiveCheckIdx(step), false);
+      recalibrateTimer(step);
     }
   } else if (name === 'complete') {
     stopSmoothTick();
+    stopTimer(true);
     setProgress(100, true);
     setActiveIdx(CHECKS.length, true);
     /* Hide notify banner — they're about to be redirected to the report anyway */
@@ -588,6 +675,7 @@ function handle(name, data) {
 
 function showBlocked(data) {
   stopSmoothTick();
+  stopTimer(true);
   document.getElementById('progressCard').style.display = 'none';
   document.getElementById('footnote').style.display = 'none';
   document.querySelector('.sc-hero').style.display = 'none';
@@ -603,6 +691,7 @@ function showBlocked(data) {
 
 function showError(msg) {
   stopSmoothTick();
+  stopTimer(true);
   document.getElementById('progressCard').style.display = 'none';
   document.getElementById('footnote').style.display = 'none';
   document.querySelector('.sc-hero').style.display = 'none';
@@ -617,6 +706,7 @@ function showError(msg) {
 var pollingInterval = null;
 function showWaiting() {
   stopSmoothTick();
+  stopTimer(false); /* keep last value visible briefly then hide via waiting card */
   document.getElementById('progressCard').style.display = 'none';
   document.getElementById('footnote').style.display = 'none';
   document.querySelector('.sc-hero').style.display = 'none';
@@ -683,6 +773,7 @@ async function runAudit() {
   setProgress(2, false);
   setActiveIdx(0, false);
   startSmoothTick();
+  startTimer(420); /* Start at 7 min — worst-case hard site */
   try {
     var res = await fetch('/api/audit', {
       method: 'POST',

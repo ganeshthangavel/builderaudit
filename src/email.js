@@ -236,7 +236,7 @@ async function sendAuditReady({ email, auditId, auditUrl, score, appBaseUrl }) {
   }
 
   const base = appBaseUrl || 'https://builderaudit.co.uk';
-  const reportUrl = `${base}/report/${auditId}`;
+  const reportUrl = `${base}/dashboard?id=${auditId}`;
 
   let domain = '';
   try { domain = new URL(auditUrl).hostname.replace(/^www\./, ''); }

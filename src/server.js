@@ -60,8 +60,11 @@ app.get('/audit', (req, res) => res.sendFile(path.join(PUBLIC, 'audit.html')));
 app.get('/signup', (req, res) => res.sendFile(path.join(PUBLIC, 'signup.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC, 'login.html')));
 app.get('/dashboard', (req, res) => res.sendFile(path.join(PUBLIC, 'dashboard.html')));
-app.get('/report/:id', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
-app.get('/report/:id/:section', (req, res) => res.sendFile(path.join(PUBLIC, 'report.html')));
+/* /report/:id used to serve report.html. Now we redirect to the dashboard
+   which loads the same audit data via /api/report/:id/data.
+   Old report links (emails, bookmarks) still work — they just land on the dashboard. */
+app.get('/report/:id', (req, res) => res.redirect(302, '/dashboard?id=' + req.params.id));
+app.get('/report/:id/:section', (req, res) => res.redirect(302, '/dashboard?id=' + req.params.id + '&page=' + req.params.section));
 app.get('/services', (req, res) => res.sendFile(path.join(PUBLIC, 'services.html')));
 app.get('/check-builder', (req, res) => res.sendFile(path.join(PUBLIC, 'check-builder.html')));
 app.get('/privacy', (req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')));
@@ -718,7 +721,7 @@ app.post('/api/enquiry', auth.requireAuth, async (req, res) => {
 
   const host = req.get('host') || 'builderaudit.co.uk';
   const protocol = req.protocol || 'https';
-  const reportUrl = auditId ? `${protocol}://${host}/report/${auditId}` : `${protocol}://${host}/dashboard`;
+  const reportUrl = auditId ? `${protocol}://${host}/dashboard?id=${auditId}` : `${protocol}://${host}/dashboard`;
 
   const userForEmail = {
     email: req.user.email,

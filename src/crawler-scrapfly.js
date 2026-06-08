@@ -25,7 +25,13 @@
 const config = require('./config');
 
 const SCRAPFLY_API_BASE = 'https://api.scrapfly.io/scrape';
-const MAX_PAGES = 20;
+const MAX_PAGES = 12;   /* Was 20. 10-12 pages gives the AI everything it needs for trust scoring.
+                           Pages beyond that are usually deep portfolio items with little new signal.
+                           Reducing from 20→12 cuts ~3-4 min off worst-case crawl time. */
+
+const THROTTLE_MS = 1500; /* Was 2500ms. ScrapFly's stated limit is ~25 req/min; at 1.5s we'd
+                              theoretically hit 40/min but real throughput (including render wait)
+                              is well under 25/min. This saves 1s per page = ~12-15s total. */
 
 /* Pages we want screenshots for (visual analysis) */
 const SCREENSHOT_PRIORITY = /\/(our-?team|team|about|meet|who-?we-?are|services|what-?we-?do|contact|home|index)?\/?$/i;
@@ -269,18 +275,24 @@ async function tryFetchSitemap(origin, debug) {
 
 /* Fetch a page with smart escalation. Tries 'standard' first; if the response
  * is suspiciously empty (likely a JS-heavy page that didn't finish rendering),
- * retries with 'stubborn' mode. Returns the better of the two results.
- * Never escalates to 'fortress' automatically — that's reserved for the
- * homepage retry path because it costs 5x more. */
-async function fetchPageWithEscalation(url, { withScreenshot, debug }) {
+ * retries with 'stubborn' mode — BUT only for key pages (homepage, about,
+ * services, contact). Deep portfolio/blog pages rarely benefit from retries
+ * and the extra 5-8 seconds per page adds up fast on large sites.
+ *
+ * Threshold raised from 800→2000 bytes: React/Vue SPAs can deliver a full
+ * meaningful page that's still under 2KB of text content after JS strips.
+ * 800 bytes was triggering retries on legitimately-loaded pages. */
+async function fetchPageWithEscalation(url, { withScreenshot, debug, isKeyPage }) {
   /* First attempt — cheap, fast */
   let result = await scrapflyFetch(url, { withScreenshot, debug, mode: 'standard' });
 
-  /* If the page came back near-empty AND status is OK, retry with stubborn mode.
-     "Near-empty" = under 800 bytes of content (a 200-OK with empty body is a
-     classic sign the JS didn't finish rendering in 3s). */
-  if (result.statusCode === 200 && (result.html || '').length < 800) {
-    if (debug) console.log(`[scrapfly] Sparse response from ${url} (${result.html.length} bytes), retrying with stubborn mode`);
+  /* Only retry if:
+     1. Page is a key page (homepage, about, services, contact)
+     2. Status was OK (4xx/5xx get no retry — they won't improve)
+     3. Content is genuinely sparse (<2000 bytes — well below a real rendered page) */
+  const isSparse = (result.html || '').length < 2000;
+  if (isKeyPage && result.statusCode === 200 && isSparse) {
+    if (debug) console.log(`[scrapfly] Sparse key page ${url} (${result.html.length} bytes), retrying with stubborn mode`);
     try {
       const retry = await scrapflyFetch(url, { withScreenshot, debug, mode: 'stubborn' });
       if ((retry.html || '').length > (result.html || '').length) {
@@ -338,13 +350,13 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
     /* Throttle ourselves: ScrapFly's free/starter plans cap at ~25 requests/min.
        2.5s between requests gives us max ~24/min, safely under the limit. */
     if (pages.length > 0) {
-      await new Promise(r => setTimeout(r, 2500));
+      await new Promise(r => setTimeout(r, THROTTLE_MS));
     }
 
     let homepageFortressTried = false;
 
     try {
-      let result = await fetchPageWithEscalation(url, { withScreenshot, debug });
+      let result = await fetchPageWithEscalation(url, { withScreenshot, debug, isKeyPage: isHomepage || isKeyPage });
       totalCost += result.cost;
 
       /* Homepage-specific: if standard + stubborn both failed (no HTML or 4xx/5xx),
@@ -489,5 +501,5 @@ module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
   /* Version stamp — bump when this file changes so we can see which build is live */
-  version: '2026-06-07-smart-fallback',
+  version: '2026-06-08-speed-tuned',
 };

@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
 <title>Auditing your site — BuilderAudit</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,7 +45,8 @@ a { -webkit-tap-highlight-color: transparent; }
 .sc-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .sc-brand-name {
   font-family: var(--display); font-weight: 800; font-size: 20px;
-  color: var(--ink); letter-spacing: -0.01em;
+  color: var(--ink); letter-spacing: -0.01em; line-height: 1;
+  white-space: nowrap;
 }
 .sc-status-chip {
   font-family: var(--body); font-size: 12.5px; font-weight: 700;
@@ -245,6 +249,86 @@ a { -webkit-tap-highlight-color: transparent; }
   .sc-check-row img { width: 22px; height: 22px; }
   .sc-check-label { font-size: 13.5px; }
 }
+
+/* ── EMAIL CAPTURE BANNER ── */
+/* Shown above the progress card. Lets the user enter their email so we can
+   mail them the report when the audit finishes (5-10 min for hostile sites).
+   They can close the tab and come back, or skip and wait. */
+.sc-notify {
+  background: #fff;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 6px 6px 0 var(--line);
+  margin-bottom: 22px;
+}
+.sc-notify-title {
+  font-family: var(--display); font-weight: 900;
+  font-size: 22px; line-height: 1.1;
+  text-transform: uppercase; letter-spacing: -0.01em;
+  color: var(--ink); margin: 0 0 8px;
+}
+.sc-notify-sub {
+  font-family: var(--body); font-size: 14.5px;
+  color: var(--ink); opacity: 0.78; line-height: 1.5;
+  margin: 0 0 16px;
+}
+.sc-notify-row {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.sc-notify-input {
+  flex: 1; min-width: 0;
+  padding: 12px 14px;
+  font-family: var(--body); font-size: 15px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+}
+.sc-notify-input:focus { border-color: var(--accent); }
+.sc-notify-btn {
+  padding: 12px 22px;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--body); font-weight: 700; font-size: 15px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--line);
+  white-space: nowrap;
+}
+.sc-notify-btn:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
+.sc-notify-btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--line); }
+.sc-notify-btn[disabled] { opacity: 0.7; cursor: default; transform: none; box-shadow: 4px 4px 0 var(--line); }
+.sc-notify-skip {
+  display: inline-block; margin-top: 14px;
+  font-family: var(--body); font-size: 13px; font-weight: 600;
+  color: var(--ink); opacity: 0.6;
+  background: transparent; border: 0; cursor: pointer;
+  text-decoration: underline;
+}
+.sc-notify-success {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface); border: 2px solid var(--line); border-radius: 6px;
+  font-family: var(--body); font-size: 14.5px; color: var(--ink);
+}
+.sc-notify-success-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--good); color: #fff;
+  display: grid; place-items: center;
+  font-weight: 800; font-size: 12px;
+  border: 2px solid var(--line); flex: 0 0 auto;
+}
+.sc-notify-error {
+  margin-top: 10px;
+  font-family: var(--body); font-size: 13px; color: var(--bad);
+}
+@media (max-width: 700px) {
+  .sc-notify { padding: 18px 18px; box-shadow: 4px 4px 0 var(--line); }
+  .sc-notify-title { font-size: 18px; }
+  .sc-notify-sub { font-size: 13.5px; }
+  .sc-notify-btn { width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -263,7 +347,7 @@ a { -webkit-tap-highlight-color: transparent; }
       <path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/>
       <path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/>
     </svg>
-    <div class="sc-brand-name">BUILDERAUDIT</div>
+    <span class="sc-brand-name"><span>Builder</span><span style="color:var(--accent)">Audit</span></span>
   </a>
   <div class="sc-status-chip" id="statusChip">Auditing…</div>
 </header>
@@ -280,6 +364,27 @@ a { -webkit-tap-highlight-color: transparent; }
       </div>
       <h1 class="sc-h1" id="heroH1">Auditing your site</h1>
       <p class="sc-sub" id="heroSub">Starting up…</p>
+    </div>
+
+    <!-- Email capture banner: lets the user opt-in to "email me when ready"
+         instead of waiting on the page. Hidden once they submit OR audit completes. -->
+    <div class="sc-notify" id="notifyCard">
+      <h2 class="sc-notify-title">This usually takes 5–10 minutes</h2>
+      <p class="sc-notify-sub">Don't fancy staring at a progress bar? Drop your email and we'll send the report straight to you when it's done. You can close this tab safely.</p>
+      <div class="sc-notify-row">
+        <input type="email" class="sc-notify-input" id="notifyEmail" placeholder="your@email.com" autocomplete="email">
+        <button class="sc-notify-btn" id="notifyBtn">Email me when ready</button>
+      </div>
+      <div class="sc-notify-error" id="notifyError" style="display:none"></div>
+      <button class="sc-notify-skip" id="notifySkip">No thanks, I'll wait here</button>
+    </div>
+
+    <!-- Success state for the email capture — replaces the form after submit -->
+    <div class="sc-notify" id="notifySent" style="display:none">
+      <div class="sc-notify-success">
+        <div class="sc-notify-success-icon">✓</div>
+        <div>We'll email <strong id="notifySentEmail"></strong> when your report is ready. Feel free to close this tab.</div>
+      </div>
     </div>
 
     <div class="sc-card" id="progressCard">
@@ -400,6 +505,7 @@ if (!rawUrl) { window.location.href = '/'; }
 
 var currentPhase = 0;
 var smoothInterval = null;
+var currentAuditId = null;  /* Set when server sends 'audit_id' SSE event */
 
 function phaseToPct(phase, top) {
   if (phase <= 0) return 0;
@@ -433,7 +539,10 @@ function stopSmoothTick() {
 }
 
 function handle(name, data) {
-  if (name === 'status') {
+  if (name === 'audit_id') {
+    /* Server sends this first so we know the ID for the email-notify POST */
+    currentAuditId = data.id;
+  } else if (name === 'status') {
     var step = data.step || 1;
     if (step > currentPhase) {
       currentPhase = step;
@@ -444,6 +553,9 @@ function handle(name, data) {
     stopSmoothTick();
     setProgress(100, true);
     setActiveIdx(CHECKS.length, true);
+    /* Hide notify banner — they're about to be redirected to the report anyway */
+    var nc = document.getElementById('notifyCard'); if (nc) nc.style.display = 'none';
+    var ns = document.getElementById('notifySent'); if (ns) ns.style.display = 'none';
     var cta = document.getElementById('ctaButton');
     cta.href = '/report/' + data.id;
     cta.classList.add('on');
@@ -523,8 +635,81 @@ async function runAudit() {
   }
 }
 
+/* ─── Email-capture form handlers ─── */
+(function setupNotify(){
+  var btn = document.getElementById('notifyBtn');
+  var input = document.getElementById('notifyEmail');
+  var errBox = document.getElementById('notifyError');
+  var skipBtn = document.getElementById('notifySkip');
+  var card = document.getElementById('notifyCard');
+  var sent = document.getElementById('notifySent');
+  var sentEmail = document.getElementById('notifySentEmail');
+
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  function clearError() {
+    errBox.style.display = 'none';
+  }
+
+  async function submitNotify() {
+    clearError();
+    var email = (input.value || '').trim();
+    /* Basic format check — match the server's regex */
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      showError('Please enter a valid email address.');
+      input.focus();
+      return;
+    }
+    /* If we don't have the audit ID yet, the server hasn't sent it. Wait a beat and retry. */
+    if (!currentAuditId) {
+      /* Poll up to 5 seconds for the ID, in case SSE hasn't delivered it yet */
+      var waited = 0;
+      while (!currentAuditId && waited < 5000) {
+        await new Promise(function(r){ setTimeout(r, 200); });
+        waited += 200;
+      }
+      if (!currentAuditId) {
+        showError('Still starting up — try again in a couple of seconds.');
+        return;
+      }
+    }
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      var res = await fetch('/api/audit/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auditId: currentAuditId, email: email }),
+      });
+      if (!res.ok) {
+        var data = await res.json().catch(function(){ return {}; });
+        throw new Error(data.error || 'Could not save your email.');
+      }
+      /* Show the success state */
+      card.style.display = 'none';
+      sentEmail.textContent = email;
+      sent.style.display = 'block';
+    } catch (err) {
+      showError(err.message || 'Could not save your email.');
+      btn.disabled = false;
+      btn.textContent = 'Email me when ready';
+    }
+  }
+
+  btn.addEventListener('click', submitNotify);
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') submitNotify();
+  });
+  skipBtn.addEventListener('click', function(){
+    card.style.display = 'none';
+  });
+})();
+
 runAudit();
 </script>
 
 </body>
 </html>
+

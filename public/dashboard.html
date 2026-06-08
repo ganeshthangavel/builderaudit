@@ -1,1705 +1,1079 @@
 <!doctype html>
+<!-- BA3 DASHBOARD · 6 pages · Builder + Homeowner · React/CDN -->
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
+<title>Dashboard — BuilderAudit</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
 <link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
-<title>Dashboard — BuilderAudit</title>
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <style>
-/* ════════════════════════════════════════════════════════════════
-   BA3 DASHBOARD · 6 pages · client-side routed · mock data
-   Faithful port of /tmp/ba3-handoff/ba3/project/src/dashboard.jsx
-   ════════════════════════════════════════════════════════════════ */
-:root {
-  --fill:    #FFD24D;
-  --accent:  #5247B8;
-  --surface: #FBF5E1;
-  --ink:     #1B1A17;
-  --line:    #1B1A17;
-  --muted:   #5C5851;
-  --good:    #1F8A5B;
-  --warn:    #FFD24D;
-  --bad:     #D9534F;
-  --ai:      #7A1FA0;
-  --display: 'Archivo','Archivo Black',-apple-system,sans-serif;
-  --body:    'IBM Plex Sans',-apple-system,sans-serif;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-  min-height: 100vh; background: var(--surface);
-  font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased;
-}
-
-/* ─── Top nav ─── */
-.db-nav {
-  background: #fff;
-  border-bottom: 3px solid var(--line);
-  padding: 16px 36px;
-  display: flex; align-items: center; justify-content: space-between; gap: 20px;
-  flex-wrap: wrap;
-}
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex-shrink: 0; }
-.brand-mark-svg { flex-shrink: 0; }
-.brand-name {
-  font-family: var(--display); font-weight: 800; font-size: 20px;
-  color: var(--ink); letter-spacing: -0.01em; line-height: 1;
-  white-space: nowrap;
-}
-.db-nav-links {
-  display: flex; gap: 22px; flex: 1;
-  font-family: var(--body); font-size: 13.5px; color: var(--ink); font-weight: 600;
-  flex-wrap: wrap;
-}
-.db-nav-links a {
-  color: var(--muted); text-decoration: none;
-  border-bottom: 2px solid transparent; padding-bottom: 4px;
-  white-space: nowrap; cursor: pointer;
-}
-.db-nav-links a.on { color: var(--ink); border-bottom-color: var(--ink); }
-
-.db-role-pill {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 12px;
-  background: var(--surface); border: 2px solid var(--line);
-  border-radius: 999px;
-  font-family: var(--body); font-weight: 700; font-size: 12.5px;
-  color: var(--ink); white-space: nowrap;
-}
-.db-role-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.db-role-pill.homeowner .dot { background: var(--good); }
-.db-account { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.db-avatar {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: var(--fill); border: 2px solid var(--line);
-  display: grid; place-items: center;
-  font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink);
-}
-.db-signout {
-  font-family: var(--body); font-size: 13px; color: var(--muted);
-  text-decoration: none; font-weight: 600; cursor: pointer;
-}
-.db-signout:hover { color: var(--ink); }
-
-/* ─── Main containers ─── */
-main { padding: 40px 36px; max-width: 1400px; margin: 0 auto; }
-main.narrow { max-width: 1200px; }
-main.medium { max-width: 1300px; }
-
-.db-kicker {
-  display: inline-block; padding: 4px 10px;
-  background: var(--accent); color: #fff;
-  border-radius: 999px; font-family: var(--body);
-  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.db-kicker.ink { background: var(--ink); color: #fff; }
-.db-kicker.fill { background: var(--fill); color: var(--ink); }
-
-.page-head { margin-bottom: 28px; }
-.page-h1 {
-  font-family: var(--display); font-weight: 900;
-  font-size: 44px; line-height: 1;
-  color: var(--ink); text-transform: uppercase;
-  letter-spacing: -0.02em; margin: 10px 0 6px;
-}
-.page-h1.smaller { font-size: 40px; }
-.page-sub {
-  font-family: var(--body); font-size: 15px; color: var(--muted);
-  margin: 0; max-width: 760px;
-}
-
-/* ─── Cards ─── */
-.db-card {
-  background: #fff;
-  border: 2px solid var(--line);
-  border-radius: 10px;
-  padding: 28px;
-  box-shadow: 5px 5px 0 var(--line);
-}
-.db-card.small { padding: 20px; box-shadow: 3px 3px 0 var(--line); }
-.db-card.medium { padding: 22px; }
-.db-card.fill { background: var(--fill); }
-.db-card.surface { background: var(--surface); }
-.db-card.ink { background: var(--ink); color: #fff; }
-.db-card.dashed { border-style: dashed; box-shadow: none; border-width: 2.5px; }
-.db-card.good { background: rgba(31,138,91,0.08); border-color: var(--good); box-shadow: 4px 4px 0 var(--line); }
-.db-card.bad { background: rgba(217,83,79,0.08); border-color: var(--bad); box-shadow: 4px 4px 0 var(--line); }
-.db-card.ai { background: rgba(122,31,160,0.06); border-color: var(--ai); }
-
-/* ─── Buttons ─── */
-.db-btn {
-  padding: 12px 18px;
-  background: #fff; color: var(--ink);
-  border: 2px solid var(--line); border-radius: 4px;
-  font-family: var(--body); font-weight: 700; font-size: 14px;
-  cursor: pointer; white-space: nowrap;
-  transition: transform .12s, box-shadow .12s;
-}
-.db-btn.primary { background: var(--accent); color: #fff; box-shadow: 4px 4px 0 var(--line); }
-.db-btn.primary:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); }
-.db-btn.primary:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--line); }
-.db-btn.small { padding: 6px 12px; font-size: 12px; box-shadow: none; }
-.db-btn.medium { padding: 8px 12px; font-size: 12.5px; box-shadow: none; }
-
-/* ─── Score donut ─── */
-.score-donut { display: inline-block; }
-
-/* ─── Section labels ─── */
-.section-label {
-  font-family: var(--body); font-size: 11px; font-weight: 700;
-  color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;
-  margin-bottom: 6px;
-}
-.section-h3 {
-  font-family: var(--display); font-weight: 800; font-size: 18px;
-  color: var(--ink); margin: 0 0 18px;
-  text-transform: uppercase; letter-spacing: -0.01em;
-}
-
-/* ─── Stat cards ─── */
-.stat-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-}
-.stat-num {
-  font-family: var(--display); font-weight: 900; font-size: 40px;
-  color: var(--ink); line-height: 1;
-}
-.stat-num .light { font-size: 22px; color: var(--muted); font-weight: 600; }
-.stat-note { font-family: var(--body); font-size: 13px; color: var(--muted); margin-top: 4px; }
-
-/* ─── Scan URL input ─── */
-.scan-input {
-  display: flex; align-items: stretch;
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 6px; padding: 6px;
-  max-width: 560px; box-shadow: 4px 4px 0 var(--line);
-}
-.scan-input .prefix {
-  padding: 0 14px; display: flex; align-items: center;
-  color: var(--muted); font-family: var(--body);
-  font-size: 14px; font-weight: 600;
-}
-.scan-input input {
-  flex: 1; min-width: 0; border: none; outline: none;
-  background: transparent;
-  font-family: var(--body); font-size: 16px; color: var(--ink);
-  padding: 10px 4px;
-}
-.scan-input button {
-  background: var(--accent); color: #fff;
-  border: 2px solid var(--line); border-radius: 4px;
-  padding: 10px 18px;
-  font-family: var(--body); font-weight: 700; font-size: 14px;
-  cursor: pointer; white-space: nowrap;
-}
-
-/* ─── Pills/tags ─── */
-.tag {
-  display: inline-block; padding: 2px 8px;
-  background: var(--surface); border: 1.5px solid var(--line);
-  border-radius: 999px;
-  font-family: var(--body); font-size: 10.5px; font-weight: 700;
-  color: var(--ink); letter-spacing: 0.04em; text-transform: uppercase;
-}
-.pill-good {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 10px; background: var(--good); color: #fff;
-  border-radius: 999px; font-size: 12px; font-weight: 700;
-}
-.pill-impact {
-  padding: 6px 12px;
-  background: var(--good); color: #fff;
-  border: 2px solid var(--line); border-radius: 999px;
-  font-family: var(--display); font-weight: 800; font-size: 13px;
-  white-space: nowrap;
-}
-
-/* ─── Pages (only active one visible) ─── */
-.db-page { display: none; }
-.db-page.on { display: block; }
-
-/* ═════════ PAGE-SPECIFIC ═════════ */
-
-/* DASHBOARD MAIN */
-.db-top-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; margin-bottom: 24px; }
-.db-score-card { display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: center; }
-.db-history-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
-
-/* Score history bar chart */
-.history-bars {
-  display: flex; align-items: flex-end; justify-content: space-around;
-  gap: 12px; height: 180px; padding: 0 8px;
-  border-bottom: 2px solid var(--line);
-}
-.history-bars .col {
-  display: flex; flex-direction: column; align-items: center;
-  flex: 1; height: 100%; justify-content: flex-end; position: relative;
-}
-.history-bars .label {
-  position: absolute;
-  font-family: var(--display); font-weight: 800; font-size: 18px;
-  color: var(--ink); margin-bottom: 6px;
-}
-.history-bars .bar {
-  width: 100%; max-width: 56px;
-  border: 2px solid var(--line); border-bottom: none;
-  border-radius: 6px 6px 0 0;
-}
-.history-dates {
-  display: flex; justify-content: space-around; gap: 12px; padding: 10px 8px 0;
-}
-.history-dates .date {
-  flex: 1; text-align: center;
-  font-family: var(--body); font-size: 12px; color: var(--muted); font-weight: 600;
-}
-
-/* Category breakdown rows */
-.cat-row {
-  display: grid; grid-template-columns: 150px 1fr 36px;
-  align-items: center; gap: 14px; margin-bottom: 11px;
-}
-.cat-name { font-family: var(--body); font-weight: 600; font-size: 13.5px; color: var(--ink); }
-.cat-bar { height: 12px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; }
-.cat-bar > div { height: 100%; }
-.cat-score { font-family: var(--body); font-weight: 700; font-size: 13px; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
-
-/* Fix-it list */
-.fix-row {
-  display: flex; align-items: center; gap: 14px;
-  padding: 12px 14px;
-  background: #fff;
-  border: 2px solid var(--line);
-  border-radius: 6px;
-}
-.fix-row.done { background: var(--surface); opacity: 0.55; }
-.fix-row.done .fix-text { text-decoration: line-through; }
-.fix-icon-box {
-  flex: 0 0 auto; width: 40px; height: 40px;
-  display: grid; place-items: center;
-}
-.fix-icon-box img { width: 40px; height: 40px; object-fit: contain; }
-.fix-text { flex: 1; font-family: var(--body); font-size: 14.5px; color: var(--ink); }
-.fix-impact {
-  font-family: var(--body); font-weight: 700; font-size: 12px;
-  color: var(--good); background: rgba(31,138,91,0.1);
-  padding: 4px 10px; border-radius: 999px;
-}
-.fix-row.done .fix-impact { color: var(--muted); background: var(--surface); }
-
-/* ABOUT YOUR BUSINESS */
-.about-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; margin-bottom: 24px; }
-.about-field {
-  display: grid; grid-template-columns: 160px 1fr; gap: 18px;
-  padding: 12px 0; border-bottom: 1px solid var(--surface);
-}
-.about-field .lbl {
-  font-family: var(--body); font-size: 12px; font-weight: 700;
-  color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;
-}
-.about-field .val {
-  font-family: var(--body); font-size: 15px; color: var(--ink); font-weight: 500;
-}
-.director-row {
-  display: flex; align-items: center; gap: 12px;
-}
-.director-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: var(--fill); border: 2px solid var(--line);
-  display: grid; place-items: center;
-  font-family: var(--display); font-weight: 800; font-size: 12px; color: var(--ink);
-  flex: 0 0 auto;
-}
-.accred-row {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--body); font-size: 14px; color: var(--ink);
-  margin-bottom: 8px;
-}
-.accred-mark {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 50%;
-  font-size: 13px; font-weight: 800;
-}
-.accred-mark.yes { background: var(--good); color: #fff; border: 2px solid var(--good); }
-.accred-mark.no  { background: transparent; color: var(--bad); border: 2px solid var(--bad); }
-
-/* SCORES & REVIEW — expandable rows */
-.review-row {
-  border: 2px solid var(--line); border-radius: 6px;
-  background: #fff; overflow: hidden;
-  margin-bottom: 6px;
-  transition: background .15s;
-}
-.review-row.open { background: var(--surface); }
-.review-row-head {
-  width: 100%;
-  display: grid; grid-template-columns: 170px 60px 1fr auto;
-  gap: 18px; align-items: center;
-  padding: 14px 16px;
-  background: transparent; border: none; text-align: left;
-  cursor: pointer; font-family: inherit;
-}
-.review-row-name {
-  font-family: var(--display); font-weight: 800; font-size: 14px;
-  color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em;
-}
-.review-row-score {
-  width: 50px; padding: 6px 4px;
-  color: #fff; border: 2px solid var(--line); border-radius: 6px;
-  font-family: var(--display); font-weight: 900; font-size: 16px; text-align: center;
-}
-.review-row-verdict {
-  font-family: var(--body); font-size: 14px; color: var(--ink);
-  font-style: italic; line-height: 1.4; padding-right: 12px;
-}
-.review-row-plus {
-  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
-  background: #fff; border: 2px solid var(--line);
-  display: grid; place-items: center;
-  font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink);
-  transition: transform .15s;
-}
-.review-row.open .review-row-plus { transform: rotate(45deg); }
-.review-row-body {
-  display: none;
-  padding: 4px 18px 20px 198px;
-  flex-direction: column; gap: 14px;
-}
-.review-row.open .review-row-body { display: flex; }
-.review-evidence-row {
-  display: flex; gap: 10px;
-  font-family: var(--body); font-size: 13.5px; color: var(--ink); line-height: 1.45;
-}
-.review-climb {
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 6px; padding: 12px 14px;
-  display: flex; gap: 10px; align-items: flex-start;
-}
-.review-climb .arrow {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--accent); color: #fff;
-  font-size: 12px; font-weight: 800;
-}
-
-/* COMPETITORS */
-.competitors-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 24px; align-items: stretch; }
-.comp-slot-empty {
-  min-height: 320px;
-  display: flex; flex-direction: column; justify-content: center;
-}
-.comp-score-block {
-  flex: 0 0 auto; padding: 10px 14px;
-  color: #fff; border: 2px solid var(--line); border-radius: 6px;
-  font-family: var(--display); font-weight: 900; font-size: 24px;
-  line-height: 1; text-align: center;
-  box-shadow: 3px 3px 0 var(--line); min-width: 60px;
-}
-.comp-score-block .of100 {
-  font-size: 9px; font-weight: 700; margin-top: 2px;
-  opacity: 0.85; letter-spacing: 0.08em;
-}
-.comp-breakdown { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; margin-top: 14px; }
-.comp-cat-row { display: grid; grid-template-columns: 90px 1fr 30px; gap: 10px; align-items: center; }
-.comp-cat-row .name { font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--ink); }
-.comp-cat-row .bar { height: 8px; background: rgba(0,0,0,0.08); border: 1.5px solid var(--line); border-radius: 3px; overflow: hidden; }
-.comp-cat-row .bar > div { height: 100%; }
-.comp-cat-row .num { font-family: var(--body); font-size: 12px; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
-
-/* PHOTOS */
-.photo-stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 18px; margin-bottom: 24px; }
-.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.photo-tile {
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 6px; overflow: hidden;
-  display: flex; flex-direction: column;
-}
-.photo-thumb {
-  position: relative; height: 140px;
-  border-bottom: 2px solid var(--line);
-  display: grid; place-items: center;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 11px; color: rgba(0,0,0,0.55); letter-spacing: 0.04em;
-}
-.photo-thumb::after {
-  content: ''; position: absolute; inset: 0;
-  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px);
-}
-.photo-thumb .fname { position: relative; z-index: 1; }
-.photo-verdict-pill {
-  position: absolute; top: 10px; left: 10px; z-index: 1;
-  padding: 4px 10px; color: #fff;
-  border: 2px solid var(--line); border-radius: 999px;
-  font-family: var(--body); font-size: 11px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase;
-}
-.photo-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.photo-label {
-  font-family: var(--display); font-weight: 800; font-size: 14px;
-  color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em;
-}
-.photo-detail { font-family: var(--body); font-size: 13px; color: var(--ink); line-height: 1.4; }
-.photo-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-.photo-hint {
-  border-radius: 4px; padding: 8px 10px;
-  font-family: var(--body); font-size: 12.5px; color: var(--ink); line-height: 1.4;
-  border: 1.5px solid;
-}
-.photo-hint.real { background: rgba(31,138,91,0.08); border-color: var(--good); }
-.photo-hint.flag { background: rgba(217,83,79,0.06); border-color: var(--bad); }
-.photo-hint b {
-  display: block; font-size: 10.5px; letter-spacing: 0.08em;
-  text-transform: uppercase; margin-bottom: 2px;
-}
-.photo-hint.real b { color: var(--good); }
-.photo-hint.flag b { color: var(--bad); }
-
-/* FIXES TOP 10 */
-.fixes-progress-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 24px; }
-.progress-bar {
-  height: 8px; margin-top: 10px;
-  background: var(--surface); border: 1.5px solid var(--line);
-  border-radius: 4px; overflow: hidden;
-}
-.progress-bar > div { height: 100%; background: var(--good); transition: width .25s; }
-
-.fix10-item {
-  border: 2px solid var(--line); border-radius: 6px;
-  background: #fff; overflow: hidden;
-  transition: opacity .2s, background .2s;
-  margin-bottom: 10px;
-}
-.fix10-item.done { background: var(--surface); opacity: 0.68; }
-.fix10-head {
-  display: grid; grid-template-columns: auto 40px 1fr auto auto; gap: 14px;
-  align-items: center; padding: 14px 16px;
-}
-.fix10-check {
-  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 5px;
-  background: #fff; border: 2.4px solid var(--line);
-  cursor: pointer; padding: 0;
-  display: grid; place-items: center;
-  color: #fff; font-weight: 900; font-size: 14px; font-family: var(--display);
-  transition: background .15s, border-color .15s;
-}
-.fix10-item.done .fix10-check { background: var(--good); border-color: var(--good); }
-.fix10-title {
-  font-family: var(--body); font-size: 14.5px; font-weight: 600; color: var(--ink);
-  line-height: 1.35;
-}
-.fix10-item.done .fix10-title { text-decoration: line-through; }
-.fix10-rank {
-  display: inline-block; margin-right: 8px; padding: 1px 7px;
-  background: var(--surface); border: 1.5px solid var(--line);
-  border-radius: 999px; font-family: var(--display);
-  font-weight: 800; font-size: 11px; color: var(--muted);
-  letter-spacing: 0.04em;
-}
-.fix10-meta {
-  display: flex; align-items: center; gap: 10px; margin-top: 6px;
-  font-family: var(--body); font-size: 12px; color: var(--muted); flex-wrap: wrap;
-}
-.fix10-diff-dot { display: inline-flex; align-items: center; gap: 4px; }
-.fix10-diff-dot > span:first-child { width: 6px; height: 6px; border-radius: 50%; }
-.fix10-why {
-  padding: 0 16px 14px 102px;
-  font-family: var(--body); font-size: 13.5px; color: var(--muted); line-height: 1.5;
-}
-.fix10-support {
-  display: none;
-  border-top: 2px solid var(--line);
-  background: rgba(82, 71, 184, 0.06);
-  padding: 18px 16px 18px 102px;
-}
-.fix10-item.support-open .fix10-support { display: block; }
-.fix10-support textarea {
-  width: 100%; max-width: 560px;
-  font-family: var(--body); font-size: 14px; color: var(--ink);
-  padding: 10px 12px;
-  border: 2px solid var(--line); border-radius: 4px;
-  background: #fff; outline: none; resize: vertical;
-}
-.fix10-requested {
-  padding: 8px 12px;
-  background: var(--accent); color: #fff;
-  border: 2px solid var(--line); border-radius: 4px;
-  font-family: var(--body); font-weight: 700; font-size: 12px;
-  letter-spacing: 0.04em; white-space: nowrap;
-}
-
-/* HOMEOWNER DASHBOARD */
-.shortlist-head, .shortlist-row {
-  display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto;
-  gap: 16px; align-items: center;
-}
-.shortlist-head {
-  padding: 0 12px 10px;
-  border-bottom: 1.5px solid var(--line); margin-bottom: 8px;
-  font-family: var(--body); font-size: 11px; font-weight: 700;
-  color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;
-}
-.shortlist-row {
-  padding: 14px 12px; border-radius: 6px;
-  border-bottom: 1px solid var(--surface);
-}
-.shortlist-row.top { background: rgba(255,210,77,0.22); }
-.shortlist-name {
-  font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink);
-}
-.top-pick-badge {
-  margin-left: 6px; padding: 2px 8px;
-  background: var(--ink); color: #fff;
-  border-radius: 999px; font-size: 10px; letter-spacing: 0.06em;
-  font-weight: 800; font-family: var(--body);
-}
-.shortlist-url {
-  font-family: var(--body); font-size: 12.5px; color: var(--muted); margin-top: 2px;
-}
-.shortlist-score {
-  margin: 0 auto; width: 60px; padding: 8px 4px;
-  color: #fff; border: 2px solid var(--line); border-radius: 6px;
-  font-family: var(--display); font-weight: 900; font-size: 18px; text-align: center;
-}
-
-/* ─── Mobile ─── */
-@media (max-width: 1100px) {
-  .db-top-row, .db-history-grid, .about-grid { grid-template-columns: 1fr; }
-  .competitors-grid { grid-template-columns: 1fr; }
-  .photo-stats-grid { grid-template-columns: 1fr 1fr; }
-  .photo-grid { grid-template-columns: 1fr 1fr; }
-  .fixes-progress-grid { grid-template-columns: 1fr; }
-  .shortlist-head, .shortlist-row { grid-template-columns: 1fr 80px auto; gap: 12px; }
-  .shortlist-head > div:nth-child(2), .shortlist-head > div:nth-child(4),
-  .shortlist-row > div:nth-child(2), .shortlist-row > div:nth-child(4) { display: none; }
-}
-@media (max-width: 700px) {
-  .db-nav { padding: 12px 18px; }
-  .db-nav-links { width: 100%; order: 3; gap: 14px; font-size: 13px; }
-  main { padding: 24px 18px; }
-  .page-h1 { font-size: 30px; }
-  .stat-grid { grid-template-columns: 1fr; }
-  .db-score-card { grid-template-columns: 1fr; text-align: center; }
-  .photo-grid, .photo-stats-grid { grid-template-columns: 1fr; }
-  .review-row-head { grid-template-columns: 1fr 50px auto; }
-  .review-row-verdict { display: none; }
-  .review-row-body { padding-left: 18px; }
-  .fix10-head { grid-template-columns: auto 1fr; }
-  .fix10-head .fix-icon-box, .fix10-head .pill-impact, .fix10-head .fix10-actions { grid-column: 1 / -1; }
-  .fix10-why { padding-left: 18px; }
-  .fix10-support { padding-left: 18px; }
-}
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #FBF5E1; min-height: 100vh; }
+  body { font-family: 'IBM Plex Sans', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { -webkit-tap-highlight-color: transparent; }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #FBF5E1; }
+  ::-webkit-scrollbar-thumb { background: #1B1A17; border-radius: 3px; }
 </style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
 </head>
 <body>
+<div id="root"></div>
 
-<!-- ═══════════ TOP NAV ═══════════ -->
-<header class="db-nav">
-  <a href="/" class="brand">
-    <svg class="brand-mark-svg" width="38" height="39" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/><path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/><path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/></svg>
-    <span class="brand-name"><span>Builder</span><span style="color:var(--accent)">Audit</span></span>
-  </a>
+<script type="text/babel">
+/* ════════════════════════════════════════════════════════════════════
+   BUILDERAUDIT DASHBOARD — Production port of BA3 dashboard.jsx
+   Faithful port of the 1595-line React prototype.
+   Role read from JWT (falls back to ?role= param or 'builder').
+   Pages: Dashboard · About · Scores & Review · Photo Review ·
+          Top 10 Fixes · Competitor Audits (builder)
+          Dashboard · Saved builders (homeowner)
+   ════════════════════════════════════════════════════════════════════ */
 
-  <nav class="db-nav-links" id="navLinks">
-    <!-- Populated by JS based on role -->
-  </nav>
+const { useState, useEffect, useCallback } = React;
 
-  <div class="db-role-pill" id="rolePill">
-    <span class="dot"></span>
-    <span id="roleLabel">Builder account</span>
-  </div>
+// ── Design tokens (BA3 palette) ──────────────────────────────────
+const P = {
+  fill:    '#FFD24D',
+  accent:  '#5247B8',
+  surface: '#FBF5E1',
+  ink:     '#1B1A17',
+  line:    '#1B1A17',
+  muted:   '#5C5851',
+  green:   '#1F8A5B',
+  red:     '#D9534F',
+};
+const F = {
+  display: '"Archivo", -apple-system, sans-serif',
+  body:    '"IBM Plex Sans", -apple-system, sans-serif',
+};
 
-  <div class="db-account">
-    <div class="db-avatar" id="userAvatar">HB</div>
-    <a href="#" class="db-signout" onclick="signOut(event)">Sign out</a>
-  </div>
-</header>
+// ── Primitives ───────────────────────────────────────────────────
+function Card({ children, pad = 28, style = {} }) {
+  return <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:10, padding:pad, boxShadow:`5px 5px 0 ${P.line}`, ...style }}>{children}</div>;
+}
+function Kicker({ children, color }) {
+  return <div style={{ display:'inline-block', padding:'4px 10px', background:color||P.accent, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{children}</div>;
+}
+function Btn({ children, primary, onClick, style = {} }) {
+  return <button onClick={onClick} style={{ padding:'12px 18px', background:primary?P.accent:'#fff', color:primary?'#fff':P.ink, border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:primary?`4px 4px 0 ${P.line}`:'none', whiteSpace:'nowrap', ...style }}>{children}</button>;
+}
+function Label({ children }) {
+  return <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{children}</div>;
+}
+function BigNum({ n, sub, yellow }) {
+  return <div>
+    <div style={{ fontFamily:F.display, fontWeight:900, fontSize:40, color:P.ink, lineHeight:1 }}>{n}</div>
+    {sub && <div style={{ fontFamily:F.body, fontSize:13, color:yellow?P.ink:P.muted, marginTop:4 }}>{sub}</div>}
+  </div>;
+}
 
-<!-- ═══════════ PAGE: DASHBOARD (BUILDER) ═══════════ -->
-<main class="db-page on" data-page="dashboard" data-role="builder">
-  <div class="page-head">
-    <span class="db-kicker">Welcome back</span>
-    <h1 class="page-h1">Heartly Builders Ltd</h1>
-    <p class="page-sub">heartlybuilders.co.uk · Last scanned 2 days ago · 3 fixes outstanding</p>
-  </div>
+// ── Score Donut (SVG) ────────────────────────────────────────────
+function Donut({ score, size = 160 }) {
+  const sw = size * 0.1, r = (size - sw) / 2 - 2, c = 2 * Math.PI * r;
+  const color = score >= 80 ? P.green : score >= 60 ? P.fill : P.red;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={P.line} strokeWidth={sw} opacity="0.12"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw}
+        strokeDasharray={`${c*score/100} ${c}`} strokeDashoffset={c/4}
+        transform={`rotate(-90 ${size/2} ${size/2})`} strokeLinecap="round"/>
+      <text x={size/2} y={size/2-size*0.02} textAnchor="middle" dominantBaseline="middle"
+        style={{ fontFamily:F.display, fontWeight:900, fontSize:size*0.3, fill:P.ink, letterSpacing:'-0.02em' }}>{score}</text>
+      <text x={size/2} y={size/2+size*0.18} textAnchor="middle" dominantBaseline="middle"
+        style={{ fontFamily:F.body, fontWeight:700, fontSize:size*0.09, fill:P.muted, letterSpacing:'0.1em' }}>/ 100</text>
+    </svg>
+  );
+}
 
-  <div class="db-top-row">
-    <div class="db-card">
-      <div class="db-score-card">
-        <div class="score-donut" id="dashScoreDonut"></div>
-        <div>
-          <div class="section-label">Latest audit</div>
-          <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);margin-bottom:6px">Could be better — climbing fast</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-            <span class="pill-good">↑ +6 since last scan</span>
-            <span style="color:var(--muted);font-family:var(--body);font-size:14px">· best score yet</span>
-          </div>
-          <button class="db-btn primary">Re-scan now</button>
+// ── BAMark logo (inline SVG) ─────────────────────────────────────
+function BAMark({ size = 38 }) {
+  const h = Math.round(size * 248/240);
+  return (
+    <svg width={size} height={h} viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style={{ display:'block', flexShrink:0 }}>
+      <rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/>
+      <circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" strokeWidth="14"/>
+      <path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" strokeWidth="9" strokeLinecap="round"/>
+      <rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8"/>
+      <path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8" strokeLinejoin="round"/>
+      <rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8"/>
+      <path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" strokeWidth="9" strokeLinecap="round"/>
+      <path d="M114 46 V90" fill="none" stroke="#1B1A17" strokeWidth="6" strokeLinecap="round"/>
+      <path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" strokeWidth="5.5" strokeLinecap="round"/>
+      <path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" strokeWidth="5.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ── URL scan bar ─────────────────────────────────────────────────
+function ScanBar({ placeholder = 'yourothersite.co.uk', cta = 'Run audit', onSubmit }) {
+  const [val, setVal] = useState('');
+  const go = () => { const u = val.trim(); if (u) { onSubmit ? onSubmit(u) : window.location.href = `/audit?url=https://${u.replace(/^https?:\/\//,'')}&audience=builder`; } };
+  return (
+    <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:6, maxWidth:560, boxShadow:`4px 4px 0 ${P.line}` }}>
+      <div style={{ padding:'0 14px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</div>
+      <input value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()}
+        placeholder={placeholder}
+        style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:16, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+      <button onClick={go} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 18px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap' }}>{cta} →</button>
+    </div>
+  );
+}
+
+// ── Top Nav ──────────────────────────────────────────────────────
+const BUILDER_PAGES = [
+  { k:'dashboard', label:'Dashboard' },
+  { k:'about',     label:'About your business' },
+  { k:'review',    label:'Scores & review' },
+  { k:'photos',    label:'Photo review' },
+  { k:'fixes',     label:'Your top 10 fixes' },
+  { k:'competitors', label:'Competitor audits' },
+];
+const HOMEOWNER_PAGES = [
+  { k:'dashboard', label:'Dashboard' },
+  { k:'shortlist', label:'Saved builders' },
+  { k:'account',   label:'Account' },
+];
+
+function Nav({ role, page, setPage, user }) {
+  const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
+  const initials = user?.name ? user.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase() : role==='builder'?'HB':'AT';
+  return (
+    <header style={{ background:'#fff', borderBottom:`3px solid ${P.line}`, padding:'16px 36px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, position:'sticky', top:0, zIndex:100 }}>
+      <a href="/" style={{ display:'flex', alignItems:'center', gap:12, textDecoration:'none', flexShrink:0 }}>
+        <BAMark size={38}/>
+        <span style={{ fontFamily:F.display, fontWeight:800, fontSize:20, color:P.ink, letterSpacing:'-0.01em', lineHeight:1, whiteSpace:'nowrap' }}>
+          <span>Builder</span><span style={{ color:P.accent }}>Audit</span>
+        </span>
+      </a>
+
+      <nav style={{ display:'flex', gap:22, fontFamily:F.body, fontSize:13.5, color:P.ink, fontWeight:600, overflowX:'auto' }}>
+        {pages.map(it => {
+          const on = page === it.k;
+          return <a key={it.k} href="#" onClick={e=>{e.preventDefault();setPage(it.k);}}
+            style={{ color:on?P.ink:P.muted, textDecoration:'none', borderBottom:on?`2px solid ${P.ink}`:'2px solid transparent', paddingBottom:4, whiteSpace:'nowrap' }}>{it.label}</a>;
+        })}
+      </nav>
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 12px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontWeight:700, fontSize:12.5, color:P.ink, whiteSpace:'nowrap' }}>
+          <span style={{ width:7, height:7, borderRadius:'50%', background:role==='builder'?P.accent:P.green, display:'inline-block' }}/>
+          {role==='builder'?'Builder account':'Homeowner account'}
         </div>
+        <div style={{ width:36, height:36, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink }}>{initials}</div>
+        <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
       </div>
-    </div>
+    </header>
+  );
+}
 
-    <div class="stat-grid">
-      <div class="db-card small">
-        <div class="section-label">Best ever</div>
-        <div class="stat-num">64</div>
-        <div class="stat-note">out of 100</div>
+// ════════════════════════════════════════════════════════════════
+// BUILDER PAGES
+// ════════════════════════════════════════════════════════════════
+
+// ── Builder Dashboard (main) ────────────────────────────────────
+function BuilderDashboard({ auditData, latestAudit }) {
+  const report = latestAudit?.report_json || null;
+  const score = report?.hero?.score ?? 64;
+  const previousScore = 58; // TODO: pull from history
+  const change = score - previousScore;
+  const domain = (() => { try { return new URL(latestAudit?.url||'https://yoursite.co.uk').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'yoursite.co.uk';} })();
+
+  const categories = report?.trust_questions ? report.trust_questions.map((q,i)=>{
+    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
+    return { name: names[i]||q.question.slice(0,20), s: q.score||50, status: q.score>=75?'ok':q.score>=55?'warn':'risk' };
+  }) : [
+    { name:'Photo quality',    s:48, status:'risk' },
+    { name:'Trust signals',    s:72, status:'ok' },
+    { name:'Mobile friendly',  s:86, status:'ok' },
+    { name:'Site speed',       s:54, status:'risk' },
+    { name:'Services clarity', s:58, status:'warn' },
+    { name:'Quote flow',       s:68, status:'warn' },
+    { name:'SEO & Google',     s:62, status:'warn' },
+    { name:'Copy & tone',      s:70, status:'ok' },
+  ];
+
+  const fixes = report?.top_actions?.slice(0,5).map((a,i)=>{
+    const icons = ['hammer','gear','screwdriver','roller','tape'];
+    return { icon:icons[i%icons.length], text:a, done:false, impact:`+${[8,6,5,3,2][i]} pts` };
+  }) || [
+    { icon:'hammer',     text:'Swap in real before/after shots from your phone',          done:false, impact:'+8 pts' },
+    { icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',   done:false, impact:'+6 pts' },
+    { icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',          done:false, impact:'+5 pts' },
+    { icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',      done:true,  impact:'+3 pts' },
+    { icon:'tape',       text:'Add a phone number to the header on mobile',               done:true,  impact:'+2 pts' },
+  ];
+
+  const history = auditData?.history || [
+    { date:'Feb 14', score:42 }, { date:'Feb 28', score:51 },
+    { date:'Mar 18', score:58 }, { date:'Apr 02', score:score },
+  ];
+
+  const auditsRun = auditData?.count || history.length;
+  const fixesDone = fixes.filter(f=>f.done).length;
+
+  function rescan() { window.location.href = `/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`; }
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Welcome back</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{auditData?.company||'Your company'}</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>{domain} · Last scanned {latestAudit?'recently':'never'} · {fixes.filter(f=>!f.done).length} fixes outstanding</p>
       </div>
-      <div class="db-card small">
-        <div class="section-label">Audits run</div>
-        <div class="stat-num">4</div>
-        <div class="stat-note">in the last 30 days</div>
-      </div>
-      <div class="db-card small">
-        <div class="section-label">Fixes applied</div>
-        <div class="stat-num">2<span class="light"> / 5</span></div>
-        <div class="stat-note">3 still outstanding</div>
-      </div>
-      <div class="db-card small fill">
-        <div class="section-label" style="color:var(--ink)">Next milestone</div>
-        <div class="stat-num">75+</div>
-        <div class="stat-note" style="color:var(--ink)">"Solid" tier — 11 pts away</div>
-      </div>
-    </div>
-  </div>
 
-  <div class="db-history-grid">
-    <div class="db-card">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:22px">
-        <h3 class="section-h3" style="margin:0">Score history</h3>
-        <span style="font-family:var(--body);font-size:12px;color:var(--muted)">Last 4 scans</span>
-      </div>
-      <div class="history-bars" id="historyBars"></div>
-      <div class="history-dates" id="historyDates"></div>
-    </div>
-
-    <div class="db-card">
-      <h3 class="section-h3">Score by category</h3>
-      <div id="categoryBars"></div>
-    </div>
-  </div>
-
-  <div class="db-card" style="margin-bottom:24px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px">
-      <h3 class="section-h3" style="margin:0">Your fix-it list</h3>
-      <span style="font-family:var(--body);font-size:12px;color:var(--muted)">3 outstanding · 2 done</span>
-    </div>
-    <ul id="fixList" style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px"></ul>
-  </div>
-
-  <div class="db-card fill">
-    <div style="display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center">
-      <div>
-        <span class="db-kicker ink">Ready for a fresh scan?</span>
-        <h3 style="font-family:var(--display);font-weight:900;font-size:28px;color:var(--ink);margin:10px 0 6px;text-transform:uppercase;letter-spacing:-0.02em">Check another site</h3>
-        <p style="font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0;opacity:0.75">Adding multiple sites is on your plan. Paste a URL to start a new audit.</p>
-      </div>
-      <form class="scan-input" onsubmit="return scanNew(event)">
-        <div class="prefix">https://</div>
-        <input type="text" placeholder="yourothersite.co.uk" id="scanNewInput">
-        <button type="submit">Run audit →</button>
-      </form>
-    </div>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: ABOUT YOUR BUSINESS ═══════════ -->
-<main class="db-page" data-page="about" data-role="builder">
-  <div class="page-head">
-    <span class="db-kicker">About your business</span>
-    <h1 class="page-h1 smaller">What we know about you</h1>
-    <p class="page-sub">This is what BuilderAudit picks up about your business from heartlybuilders.co.uk. The bits in red are missing or weak — fixing them lifts your trust score.</p>
-  </div>
-
-  <div class="about-grid">
-    <div class="db-card">
-      <h3 class="section-h3" style="margin-bottom:8px">Business details</h3>
-
-      <div class="about-field"><div class="lbl">Trading name</div><div class="val">Heartly Builders Ltd</div></div>
-      <div class="about-field"><div class="lbl">Website</div><div class="val">heartlybuilders.co.uk</div></div>
-      <div class="about-field"><div class="lbl">Location</div><div class="val">Bath, Somerset</div></div>
-      <div class="about-field"><div class="lbl">Founded</div><div class="val">2012</div></div>
-      <div class="about-field"><div class="lbl">Team size</div><div class="val">8 people</div></div>
-
-      <div class="about-field">
-        <div class="lbl">Directors</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <div class="director-row">
-            <div class="director-avatar">MH</div>
+      {/* Top row: score + stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:28, alignItems:'center' }}>
+            <Donut score={score} size={170}/>
             <div>
-              <div style="font-family:var(--body);font-size:15px;color:var(--ink);font-weight:600">Mark Heartly</div>
-              <div style="font-family:var(--body);font-size:12.5px;color:var(--muted);margin-top:1px">Managing Director · since 2012</div>
+              <Label>Latest audit</Label>
+              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:22, color:P.ink, marginBottom:6 }}>
+                {score>=80?'Looking solid':score>=60?'Could be better — climbing fast':'Needs work'}
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontFamily:F.body, fontSize:14, fontWeight:600 }}>
+                <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:change>=0?P.green:P.red, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
+                  {change>=0?'↑':'↓'} {change>=0?'+':''}{change} since last scan
+                </span>
+                <span style={{ color:P.muted }}>· best score yet</span>
+              </div>
+              <Btn primary onClick={rescan}>Re-scan now</Btn>
             </div>
           </div>
-          <div class="director-row">
-            <div class="director-avatar">SH</div>
-            <div>
-              <div style="font-family:var(--body);font-size:15px;color:var(--ink);font-weight:600">Sarah Heartly</div>
-              <div style="font-family:var(--body);font-size:12.5px;color:var(--muted);margin-top:1px">Operations Director · since 2014</div>
-            </div>
+        </Card>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Best ever</Label><BigNum n={score} sub="out of 100"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audits run</Label><BigNum n={auditsRun} sub="total"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixes.length-fixesDone} still outstanding`}/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Next milestone</Label><BigNum n="75+" sub={`"Solid" tier — ${Math.max(0,75-score)} pts away`} yellow/></Card>
+        </div>
+      </div>
+
+      {/* Score history + Category breakdown */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:22 }}>
+            <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Score history</h3>
+            <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Last {history.length} scans</span>
           </div>
+          <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-around', gap:12, height:180, padding:'0 8px', borderBottom:`2px solid ${P.line}` }}>
+            {history.map((h,i) => {
+              const isLatest = i === history.length-1;
+              const color = h.score>=80?P.green:h.score>=60?P.fill:P.red;
+              return <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1, height:'100%', justifyContent:'flex-end', position:'relative' }}>
+                <div style={{ position:'absolute', top:`${100-h.score}%`, transform:'translateY(-100%)', fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, marginBottom:6 }}>{h.score}</div>
+                <div style={{ width:'100%', maxWidth:56, height:`${h.score}%`, background:isLatest?color:'#e0dcce', border:`2px solid ${P.line}`, borderBottom:'none', borderRadius:'6px 6px 0 0' }}/>
+              </div>;
+            })}
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-around', gap:12, padding:'10px 8px 0' }}>
+            {history.map((h,i)=><div key={i} style={{ flex:1, textAlign:'center', fontFamily:F.body, fontSize:12, color:P.muted, fontWeight:600 }}>{h.date}</div>)}
+          </div>
+        </Card>
+
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Score by category</h3>
+          <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
+            {categories.map((c,i)=>{
+              const color = c.s>=75?P.green:c.s>=55?P.fill:P.red;
+              return <div key={i} style={{ display:'grid', gridTemplateColumns:'150px 1fr 36px', alignItems:'center', gap:14 }}>
+                <div style={{ fontFamily:F.body, fontWeight:600, fontSize:13.5, color:P.ink }}>{c.name}</div>
+                <div style={{ height:12, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}>
+                  <div style={{ width:`${c.s}%`, height:'100%', background:color }}/>
+                </div>
+                <div style={{ fontFamily:F.body, fontWeight:700, fontSize:13, color:P.ink, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{c.s}</div>
+              </div>;
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* Fix-it list */}
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your fix-it list</h3>
+          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{fixes.filter(f=>!f.done).length} outstanding · {fixesDone} done</span>
         </div>
-      </div>
-
-      <div class="about-field"><div class="lbl">Services</div><div class="val">Extensions, Loft conversions, Full refurbs, Kitchens &amp; bathrooms</div></div>
-      <div class="about-field"><div class="lbl">Bio</div><div class="val">Family-run building company working across Bath, Bristol and the Mendips. Specialising in period-property extensions and loft conversions.</div></div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:20px">
-      <div class="db-card medium">
-        <div class="section-label" style="margin-bottom:12px">Accreditations</div>
-        <div class="accred-row"><span class="accred-mark yes">✓</span><span>TrustMark</span></div>
-        <div class="accred-row"><span class="accred-mark no">✗</span><span style="color:var(--muted)">FMB (Federation of Master Builders)</span></div>
-        <div class="accred-row"><span class="accred-mark no">✗</span><span style="color:var(--muted)">CHAS</span></div>
-        <div class="accred-row"><span class="accred-mark yes">✓</span><span>NICEIC (for electrical works)</span></div>
-      </div>
-
-      <div class="db-card medium">
-        <div class="section-label" style="margin-bottom:8px">Insurance</div>
-        <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);line-height:1.1">£5,000,000</div>
-        <div style="font-family:var(--body);font-size:13px;color:var(--muted);margin-top:4px">Public liability · shown on site</div>
-      </div>
-
-      <div class="db-card medium">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px">
-          <div class="section-label">Testimonials</div>
-          <span style="font-family:var(--body);font-size:11px;font-weight:700;color:#fff;background:var(--good);padding:2px 8px;border-radius:999px;letter-spacing:0.04em">14 verified</span>
-        </div>
-        <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);line-height:1.1">23 total <span style="color:var(--muted);font-size:15px;font-weight:600">· 14 from verified sources</span></div>
-        <ul style="margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px">
-          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
-            <span class="accred-mark yes" style="width:18px;height:18px;font-size:10px">✓</span>
-            <span style="flex:1">Google reviews</span><span style="font-variant-numeric:tabular-nums;font-weight:700">9</span>
-          </li>
-          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
-            <span class="accred-mark yes" style="width:18px;height:18px;font-size:10px">✓</span>
-            <span style="flex:1">Trustpilot</span><span style="font-variant-numeric:tabular-nums;font-weight:700">4</span>
-          </li>
-          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
-            <span class="accred-mark yes" style="width:18px;height:18px;font-size:10px">✓</span>
-            <span style="flex:1">Checkatrade</span><span style="font-variant-numeric:tabular-nums;font-weight:700">1</span>
-          </li>
-          <li style="display:flex;align-items:center;gap:10px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
-            <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:transparent;border:2px solid var(--muted);color:var(--muted);font-size:10px;font-weight:800">·</span>
-            <span style="flex:1">On-site quotes</span><span style="font-variant-numeric:tabular-nums;font-weight:700">9</span>
-          </li>
+        <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+          {fixes.map((f,i)=>(
+            <li key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:f.done?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:f.done?0.55:1 }}>
+              <div style={{ flex:'0 0 auto', width:40, height:40, display:'grid', placeItems:'center' }}>
+                <img src={`/assets/icons/${f.icon}.png`} alt="" width={40} height={40} style={{ width:40, height:40, objectFit:'contain' }}/>
+              </div>
+              <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:f.done?'line-through':'none' }}>{f.text}</div>
+              <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:f.done?P.muted:P.green, background:f.done?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
+            </li>
+          ))}
         </ul>
-      </div>
+      </Card>
 
-      <div class="db-card medium bad">
-        <div class="section-label" style="color:var(--bad);margin-bottom:8px">⚠ Photo authenticity</div>
-        <div style="font-family:var(--display);font-weight:800;font-size:22px;color:var(--ink);line-height:1.1">3 real <span style="color:var(--bad)">· 6 flagged</span></div>
-        <div style="font-family:var(--body);font-size:13px;color:var(--muted);margin-top:4px">9 job photos on site. 6 look like stock or AI-generated.</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="db-card fill">
-    <div style="display:grid;grid-template-columns:1fr auto;gap:22px;align-items:center">
-      <div>
-        <h3 style="font-family:var(--display);font-weight:900;font-size:24px;color:var(--ink);margin:0 0 4px;text-transform:uppercase;letter-spacing:-0.02em">Something not right?</h3>
-        <p style="font-family:var(--body);font-size:14px;color:var(--ink);margin:0;opacity:0.75">Edit any of these details to keep your audits accurate.</p>
-      </div>
-      <button class="db-btn primary">Edit business info</button>
-    </div>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: SCORES & REVIEW ═══════════ -->
-<main class="db-page narrow" data-page="review" data-role="builder">
-  <div class="page-head">
-    <span class="db-kicker">Homeowner's view</span>
-    <h1 class="page-h1 smaller">What would a homeowner think of your website?</h1>
-    <p class="page-sub">We ran your site through the eyes of a fussy homeowner with a £40k extension to spend. Here's their honest take, category by category. Quotes are the kind of thing a real homeowner would say after 90 seconds on your site.</p>
-  </div>
-
-  <div class="db-card fill" style="margin-bottom:24px">
-    <div style="display:grid;grid-template-columns:170px 1fr;gap:24px;align-items:center">
-      <div class="score-donut" id="reviewScoreDonut"></div>
-      <div>
-        <div class="section-label" style="color:var(--ink)">The overall feel</div>
-        <h3 style="font-family:var(--display);font-weight:900;font-size:26px;color:var(--ink);margin:0 0 8px;text-transform:uppercase;letter-spacing:-0.02em">"I'd ring them — but I'd also ring two more first."</h3>
-        <p style="font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0;line-height:1.5;opacity:0.85">You don't look like a cowboy, but you don't quite look like the safe choice either. The stock photos and missing trade badges are the biggest tells. A homeowner shortlisting three builders would put you in the middle.</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="db-card" style="margin-bottom:24px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px">
-      <h3 class="section-h3" style="margin:0">Category-by-category</h3>
-      <span style="font-family:var(--body);font-size:12px;color:var(--muted)">Tap any row for the deep dive</span>
-    </div>
-    <div id="reviewRows" style="display:flex;flex-direction:column;gap:6px"></div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
-    <div class="db-card good" style="padding:24px">
-      <div class="section-label" style="color:var(--good);margin-bottom:12px">✓ What they'd like about you</div>
-      <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;font-family:var(--body);font-size:14px;color:var(--ink);line-height:1.5">
-        <li style="display:flex;gap:10px"><span style="color:var(--good);font-weight:800">✓</span> Mobile experience is genuinely good — buttons feel solid</li>
-        <li style="display:flex;gap:10px"><span style="color:var(--good);font-weight:800">✓</span> Copy sounds like a person, not corporate fluff</li>
-        <li style="display:flex;gap:10px"><span style="color:var(--good);font-weight:800">✓</span> Insurance amount is shown clearly on the contact page</li>
-      </ul>
-    </div>
-    <div class="db-card bad" style="padding:24px">
-      <div class="section-label" style="color:var(--bad);margin-bottom:12px">⚠ Red flags they'd notice</div>
-      <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;font-family:var(--body);font-size:14px;color:var(--ink);line-height:1.5">
-        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> Six of nine "past jobs" are stock photos — would they fake the work too?</li>
-        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> No FMB or TrustMark badge — looks less professional than rivals</li>
-        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> Quote form is too long — homeowners will bail before sending</li>
-        <li style="display:flex;gap:10px"><span style="color:var(--bad);font-weight:800">!</span> Homepage takes 4 seconds to load on a phone — first impression dies</li>
-      </ul>
-    </div>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: PHOTO REVIEW ═══════════ -->
-<main class="db-page medium" data-page="photos" data-role="builder">
-  <div class="page-head">
-    <span class="db-kicker">Photo review</span>
-    <h1 class="page-h1 smaller">Every photo on your site, checked</h1>
-    <p class="page-sub">Reverse-image searched, AI-detected and EXIF-checked. Real photos build trust. Stock photos lose it. AI photos lose it twice.</p>
-  </div>
-
-  <div class="photo-stats-grid">
-    <div class="db-card medium">
-      <div class="section-label">Photos on site</div>
-      <div class="stat-num">9</div>
-      <div class="stat-note">across portfolio + pages</div>
-    </div>
-    <div class="db-card medium good">
-      <div class="section-label" style="color:var(--good)">✓ Real</div>
-      <div class="stat-num">3</div>
-      <div class="stat-note">33% of the lot</div>
-    </div>
-    <div class="db-card medium bad">
-      <div class="section-label" style="color:var(--bad)">✗ Stock</div>
-      <div class="stat-num">4</div>
-      <div class="stat-note">matched on stock sites</div>
-    </div>
-    <div class="db-card medium ai">
-      <div class="section-label" style="color:var(--ai)">✗ AI-generated</div>
-      <div class="stat-num">2</div>
-      <div class="stat-note">artefacts detected</div>
-    </div>
-  </div>
-
-  <div class="db-card ink" style="margin-bottom:24px">
-    <span class="db-kicker fill">Homeowner verdict</span>
-    <h3 style="font-family:var(--display);font-weight:900;font-size:24px;color:#fff;margin:12px 0 8px;text-transform:uppercase;letter-spacing:-0.02em;line-height:1.15">6 of your 9 photos would make a careful homeowner pause.</h3>
-    <p style="font-family:var(--body);font-size:14.5px;color:rgba(255,255,255,0.78);margin:0;max-width:800px;line-height:1.5">Replacing the 6 flagged photos with phone-quality shots of your actual jobs is the single biggest score lift on your dashboard — worth around +14 points overall.</p>
-  </div>
-
-  <div class="db-card" style="padding:26px">
-    <h3 class="section-h3">Photo-by-photo</h3>
-    <div class="photo-grid" id="photoGrid"></div>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: TOP 10 FIXES ═══════════ -->
-<main class="db-page narrow" data-page="fixes" data-role="builder">
-  <div class="page-head">
-    <span class="db-kicker">Your top 10 fixes</span>
-    <h1 class="page-h1 smaller">The to-do list, in priority order</h1>
-    <p class="page-sub">Sorted by impact — the biggest score lifts at the top. Tick them off as you go, or have the BuilderAudit team handle any of them for you.</p>
-  </div>
-
-  <div class="fixes-progress-grid">
-    <div class="db-card medium">
-      <div class="section-label">Ticked off</div>
-      <div class="stat-num"><span id="fixDoneCount">0</span><span class="light"> / 10</span></div>
-      <div class="progress-bar"><div id="fixProgressBar" style="width:0%"></div></div>
-    </div>
-    <div class="db-card medium">
-      <div class="section-label">Help requested</div>
-      <div class="stat-num" id="fixRequestedCount">0</div>
-      <div class="stat-note">BuilderAudit team will be in touch</div>
-    </div>
-    <div class="db-card medium fill">
-      <div class="section-label" style="color:var(--ink)">Points available</div>
-      <div class="stat-num">+<span id="fixRemainingImpact">59</span></div>
-      <div class="stat-note" style="color:var(--ink)">still on the table</div>
-    </div>
-  </div>
-
-  <div class="db-card medium" style="margin-bottom:24px">
-    <div id="fix10List"></div>
-  </div>
-
-  <div class="db-card ink">
-    <div style="display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center">
-      <div>
-        <span class="db-kicker fill">Want all 10 done by next month?</span>
-        <h3 style="font-family:var(--display);font-weight:900;font-size:26px;color:#fff;margin:12px 0 8px;text-transform:uppercase;letter-spacing:-0.02em">Hand the whole list to our team</h3>
-        <p style="font-family:var(--body);font-size:14.5px;color:rgba(255,255,255,0.78);margin:0;line-height:1.5">One quote, one project. We'll work through every item above and re-audit your site once it's done. Typical turnaround: 2-4 weeks.</p>
-      </div>
-      <button class="db-btn primary" style="padding:14px 22px;font-size:15px">Get a quote for all 10 →</button>
-    </div>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: COMPETITORS ═══════════ -->
-<main class="db-page medium" data-page="competitors" data-role="builder">
-  <div class="page-head">
-    <span class="db-kicker">Competitor audits</span>
-    <h1 class="page-h1 smaller">How you stack up</h1>
-    <p class="page-sub">Add up to two competitor websites. We'll audit them the same way we audited yours and sit them next to you so you can see where you win and where you'd lose the enquiry.</p>
-  </div>
-
-  <div class="competitors-grid" id="competitorsGrid"></div>
-
-  <div id="competitorVerdict"></div>
-</main>
-
-<!-- ═══════════ PAGE: HOMEOWNER DASHBOARD ═══════════ -->
-<main class="db-page" data-page="dashboard" data-role="homeowner">
-  <div class="page-head">
-    <span class="db-kicker">Welcome back, Alex</span>
-    <h1 class="page-h1">3 builders on your shortlist</h1>
-    <p class="page-sub">Average score 64 / 100 · Top pick is scoring 78</p>
-  </div>
-
-  <div class="db-top-row">
-    <div class="db-card">
-      <div class="section-label" style="margin-bottom:10px">Latest builder checked</div>
-      <div class="db-score-card">
-        <div class="score-donut" id="homeownerScoreDonut"></div>
-        <div>
-          <div style="font-family:var(--display);font-weight:800;font-size:24px;color:var(--ink);margin-bottom:4px;letter-spacing:-0.01em">Heartly Builders Ltd</div>
-          <div style="font-family:var(--body);font-size:14px;color:var(--muted);margin-bottom:14px">heartlybuilders.co.uk · Bath</div>
-          <div style="background:rgba(217,83,79,0.08);border:1.5px solid var(--bad);border-radius:4px;padding:10px 12px;margin-bottom:14px;font-family:var(--body);font-size:13.5px;color:var(--ink)">
-            <b style="color:var(--bad);text-transform:uppercase;font-size:11px;letter-spacing:0.06em;margin-right:8px">⚠ Watch out</b>
-            Stock photos · no accreditations shown
+      {/* New scan CTA */}
+      <Card style={{ background:P.fill, borderColor:P.line }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+          <div>
+            <Kicker color={P.ink}>Ready for a fresh scan?</Kicker>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Re-scan your site</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste your URL to run a new audit and see if your fixes have improved your score.</p>
           </div>
-          <div style="display:flex;gap:8px">
-            <button class="db-btn primary">See full audit</button>
-            <button class="db-btn">Re-check</button>
-          </div>
+          <ScanBar placeholder="yoursite.co.uk" cta="Run audit"/>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Builder: About your business ────────────────────────────────
+function BuilderAbout({ latestAudit }) {
+  const report = latestAudit?.report_json;
+  const facts = report?.site_facts || {};
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'—';} })();
+
+  const Field = ({ label, value, note }) => (
+    <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:18, padding:'12px 0', borderBottom:`1px solid ${P.surface}` }}>
+      <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase' }}>{label}</div>
+      <div>
+        <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, fontWeight:500 }}>{value||'—'}</div>
+        {note && <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:2 }}>{note}</div>}
+      </div>
+    </div>
+  );
+
+  const accreditations = facts.accreditations?.length > 0 ? facts.accreditations.map(a=>({ name:a, held:true })) : [
+    { name:'TrustMark',                      held:false },
+    { name:'FMB (Federation of Master Builders)', held:false },
+    { name:'CHAS',                           held:false },
+    { name:'NICEIC (electrical works)',      held:false },
+  ];
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>About your business</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What we know about you</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0 }}>
+          This is what BuilderAudit picks up from {domain}. Items in red are missing or weak — fixing them lifts your trust score.
+        </p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Business details</h3>
+          <Field label="Trading name" value={facts.company_name}/>
+          <Field label="Website"      value={domain}/>
+          <Field label="Location"     value={facts.location}/>
+          <Field label="Founded"      value={facts.established}/>
+          <Field label="Team size"    value={facts.team?.team_size}/>
+          <Field label="Services"     value={facts.work_types?.join(', ')}/>
+          <Field label="Service area" value={facts.service_area}/>
+          <Field label="One-liner"    value={facts.one_liner}/>
+        </Card>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <Card pad={22}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Accreditations</div>
+            <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:8 }}>
+              {accreditations.map((a,i) => (
+                <li key={i} style={{ display:'flex', alignItems:'center', gap:10, fontFamily:F.body, fontSize:14, color:P.ink }}>
+                  <span style={{ flex:'0 0 auto', display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:a.held?P.green:'transparent', border:`2px solid ${a.held?P.green:P.red}`, color:a.held?'#fff':P.red, fontSize:13, fontWeight:800 }}>{a.held?'✓':'✗'}</span>
+                  <span style={{ color:a.held?P.ink:P.muted }}>{a.name}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          {facts.contact && (
+            <Card pad={22}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Contact details on site</div>
+              {facts.contact.phone && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>📞 {facts.contact.phone}</div>}
+              {facts.contact.email && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>✉ {facts.contact.email}</div>}
+              {facts.contact.address && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink }}>📍 {facts.contact.address}</div>}
+            </Card>
+          )}
+
+          {facts.what_we_could_not_find?.length > 0 && (
+            <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red, boxShadow:`4px 4px 0 ${P.line}` }}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>⚠ Missing from your site</div>
+              <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:6 }}>
+                {facts.what_we_could_not_find.map((item,i)=>(
+                  <li key={i} style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, display:'flex', gap:8 }}>
+                    <span style={{ color:P.red, fontWeight:700 }}>·</span>{item}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       </div>
+
+      <Card style={{ background:P.fill }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:22, alignItems:'center' }}>
+          <div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Something not right?</h3>
+            <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Re-scan your site to refresh what we know about you.</p>
+          </div>
+          <Btn primary onClick={()=>window.location.href=`/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`}>Re-scan now</Btn>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Builder: Scores & Review ─────────────────────────────────────
+function CategoryRow({ c, idx }) {
+  const [open, setOpen] = useState(idx === 0);
+  const color = c.s>=75?P.green:c.s>=55?P.fill:P.red;
+  return (
+    <div style={{ border:`2px solid ${P.line}`, borderRadius:6, background:open?P.surface:'#fff', overflow:'hidden' }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ width:'100%', display:'grid', gridTemplateColumns:'170px 60px 1fr auto', gap:18, alignItems:'center', padding:'14px 16px', background:'transparent', border:'none', textAlign:'left', cursor:'pointer', fontFamily:'inherit' }}>
+        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{c.name}</div>
+        <div style={{ width:50, padding:'6px 4px', background:color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:16, textAlign:'center' }}>{c.s}</div>
+        <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, fontStyle:'italic', lineHeight:1.4, paddingRight:12 }}>{c.verdict}</div>
+        <div style={{ flex:'0 0 auto', width:28, height:28, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, transition:'transform .15s', transform:open?'rotate(45deg)':'rotate(0deg)' }}>+</div>
+      </button>
+      {open && (
+        <div style={{ padding:'4px 18px 20px 198px', display:'flex', flexDirection:'column', gap:14 }}>
+          {c.why && <div><div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Why this score</div><p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, lineHeight:1.55 }}>{c.why}</p></div>}
+          {c.evidence?.length > 0 && (
+            <div>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>What we found</div>
+              <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:6 }}>
+                {c.evidence.map((e,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}><span style={{ flex:'0 0 auto', color:P.muted, fontWeight:700 }}>·</span>{e}</li>)}
+              </ul>
+            </div>
+          )}
+          {c.fix && (
+            <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
+              <span style={{ flex:'0 0 auto', display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:P.accent, color:'#fff', fontSize:12, fontWeight:800 }}>↑</span>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}>
+                <b style={{ textTransform:'uppercase', letterSpacing:'0.05em', fontSize:11, color:P.muted, display:'block', marginBottom:4 }}>How to climb</b>
+                {c.fix}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
-
-    <div class="stat-grid">
-      <div class="db-card small">
-        <div class="section-label">Saved</div>
-        <div class="stat-num">3</div>
-        <div class="stat-note">builders on shortlist</div>
-      </div>
-      <div class="db-card small">
-        <div class="section-label">Average score</div>
-        <div class="stat-num">64<span class="light"> / 100</span></div>
-        <div class="stat-note">across your shortlist</div>
-      </div>
-      <div class="db-card small">
-        <div class="section-label">Total audits</div>
-        <div class="stat-num">4</div>
-        <div class="stat-note">builders checked overall</div>
-      </div>
-      <div class="db-card small fill">
-        <div class="section-label" style="color:var(--ink)">Top pick</div>
-        <div style="font-family:var(--display);font-weight:900;font-size:28px;color:var(--ink);line-height:1.1">Greenfield</div>
-        <div class="stat-note" style="color:var(--ink)">scoring 78 / 100</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="db-card" style="margin-bottom:24px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px">
-      <h3 class="section-h3" style="margin:0">Your shortlist</h3>
-      <span style="font-family:var(--body);font-size:12px;color:var(--muted)">Sorted by score</span>
-    </div>
-    <div class="shortlist-head">
-      <div>Builder</div>
-      <div>Location</div>
-      <div style="text-align:center">Score</div>
-      <div>Last checked</div>
-      <div></div>
-    </div>
-    <div id="shortlistRows"></div>
-  </div>
-
-  <div class="db-card fill">
-    <div style="display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center">
-      <div>
-        <span class="db-kicker ink">Got another quote?</span>
-        <h3 style="font-family:var(--display);font-weight:900;font-size:28px;color:var(--ink);margin:10px 0 6px;text-transform:uppercase;letter-spacing:-0.02em">Check a new builder</h3>
-        <p style="font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0;opacity:0.75">Paste their site URL. We'll add them to your shortlist with a fresh audit.</p>
-      </div>
-      <form class="scan-input" onsubmit="return scanNew(event)">
-        <div class="prefix">https://</div>
-        <input type="text" placeholder="abuildersite.co.uk">
-        <button type="submit">Add &amp; audit →</button>
-      </form>
-    </div>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: SAVED BUILDERS (HOMEOWNER) ═══════════ -->
-<main class="db-page" data-page="shortlist" data-role="homeowner">
-  <div class="page-head">
-    <span class="db-kicker">Saved builders</span>
-    <h1 class="page-h1 smaller">Your shortlist — head to head</h1>
-    <p class="page-sub">Every builder you've audited, ranked by score with the headline they'd notice as a homeowner.</p>
-  </div>
-  <div class="db-card">
-    <p style="font-family:var(--body);color:var(--muted);text-align:center;padding:40px">More detail coming soon. Use the Dashboard to manage your shortlist.</p>
-  </div>
-</main>
-
-<!-- ═══════════ PAGE: ACCOUNT (HOMEOWNER + BUILDER) ═══════════ -->
-<main class="db-page" data-page="account" data-role="homeowner">
-  <div class="page-head">
-    <span class="db-kicker">Account</span>
-    <h1 class="page-h1 smaller">Account settings</h1>
-    <p class="page-sub">Your details, consents and notifications. Update anything that's changed.</p>
-  </div>
-  <div class="db-card">
-    <p style="font-family:var(--body);color:var(--muted);text-align:center;padding:40px">Account settings coming in the next update. Use /api/account for direct changes.</p>
-  </div>
-</main>
-
-<script>
-/* ════════════════════════════════════════════════════════════════
-   ROUTING + DATA + INTERACTION
-   ════════════════════════════════════════════════════════════════ */
-
-/* Read role + page from URL params; default builder + dashboard */
-var urlParams = new URLSearchParams(window.location.search);
-var ROLE = urlParams.get('role') === 'homeowner' ? 'homeowner' : 'builder';
-var PAGE = urlParams.get('page') || 'dashboard';
-
-/* ─── Top nav setup ─── */
-var BUILDER_NAV = [
-  { k: 'dashboard',   label: 'Dashboard' },
-  { k: 'about',       label: 'About your business' },
-  { k: 'review',      label: 'Scores & review' },
-  { k: 'photos',      label: 'Photo review' },
-  { k: 'fixes',       label: 'Your top 10 fixes' },
-  { k: 'competitors', label: 'Competitor audits' },
-];
-var HOMEOWNER_NAV = [
-  { k: 'dashboard', label: 'Dashboard' },
-  { k: 'shortlist', label: 'Saved builders' },
-  { k: 'account',   label: 'Account' },
-];
-
-function renderNav() {
-  var nav = ROLE === 'builder' ? BUILDER_NAV : HOMEOWNER_NAV;
-  var container = document.getElementById('navLinks');
-  container.innerHTML = nav.map(function(it){
-    var cls = it.k === PAGE ? 'on' : '';
-    return '<a href="#" class="' + cls + '" data-page="' + it.k + '">' + it.label + '</a>';
-  }).join('');
-  /* Wire click handlers */
-  container.querySelectorAll('a').forEach(function(a){
-    a.addEventListener('click', function(e){
-      e.preventDefault();
-      navigateTo(a.dataset.page);
-    });
-  });
+  );
 }
 
-function navigateTo(page) {
-  PAGE = page;
-  /* Show only the page matching the role + page */
-  document.querySelectorAll('.db-page').forEach(function(p){
-    var match = p.dataset.page === page && p.dataset.role === ROLE;
-    p.classList.toggle('on', match);
-  });
-  /* Update nav highlight */
-  document.querySelectorAll('#navLinks a').forEach(function(a){
-    a.classList.toggle('on', a.dataset.page === page);
-  });
-  /* Update URL */
-  var p = new URLSearchParams(window.location.search);
-  p.set('role', ROLE); p.set('page', page);
-  window.history.replaceState({}, '', window.location.pathname + '?' + p.toString());
-  /* Scroll to top */
-  window.scrollTo(0, 0);
-}
+function BuilderReview({ latestAudit }) {
+  const report = latestAudit?.report_json;
 
-function renderRolePill() {
-  var pill = document.getElementById('rolePill');
-  var label = document.getElementById('roleLabel');
-  var avatar = document.getElementById('userAvatar');
-  if (ROLE === 'homeowner') {
-    pill.classList.add('homeowner');
-    label.textContent = 'Homeowner account';
-    avatar.textContent = 'AT';
-  } else {
-    pill.classList.remove('homeowner');
-    label.textContent = 'Builder account';
-    avatar.textContent = 'HB';
-  }
-}
-
-function showInitialPage() {
-  /* Hide all, show first matching */
-  document.querySelectorAll('.db-page').forEach(function(p){
-    var match = p.dataset.page === PAGE && p.dataset.role === ROLE;
-    p.classList.toggle('on', match);
-  });
-}
-
-function signOut(e) {
-  e.preventDefault();
-  fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
-    .finally(function(){ window.location.href = '/login'; });
-}
-
-function scanNew(e) {
-  e.preventDefault();
-  var input = e.target.querySelector('input');
-  var url = input.value.trim();
-  if (!url) return false;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  window.location.href = '/audit?url=' + encodeURIComponent(url) + '&audience=' + ROLE;
-  return false;
-}
-
-/* ════════ COLOUR HELPERS ════════ */
-function scoreColor(s) {
-  if (s >= 75) return '#1F8A5B';
-  if (s >= 55) return '#FFD24D';
-  return '#D9534F';
-}
-
-/* ════════ SCORE DONUT (SVG) ════════ */
-function buildDonut(elId, score, size) {
-  size = size || 170;
-  var el = document.getElementById(elId);
-  if (!el) return;
-  var sw = size * 0.1;
-  var r = (size - sw) / 2 - 2;
-  var c = 2 * Math.PI * r;
-  var color = scoreColor(score);
-  el.innerHTML =
-    '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
-      '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="#1B1A17" stroke-width="' + sw + '" opacity="0.12"/>' +
-      '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '"' +
-      ' stroke-dasharray="' + (c * score/100) + ' ' + c + '" stroke-dashoffset="' + (c/4) + '"' +
-      ' transform="rotate(-90 ' + size/2 + ' ' + size/2 + ')" stroke-linecap="round"/>' +
-      '<text x="' + size/2 + '" y="' + (size/2 - size*0.02) + '" text-anchor="middle" dominant-baseline="middle"' +
-      ' style="font-family:Archivo,sans-serif;font-weight:900;font-size:' + (size*0.3) + 'px;fill:#1B1A17;letter-spacing:-0.02em">' + score + '</text>' +
-      '<text x="' + size/2 + '" y="' + (size/2 + size*0.18) + '" text-anchor="middle" dominant-baseline="middle"' +
-      ' style="font-family:IBM Plex Sans,sans-serif;font-weight:700;font-size:' + (size*0.09) + 'px;fill:#5C5851;letter-spacing:0.1em">/ 100</text>' +
-    '</svg>';
-}
-
-/* ════════ DASHBOARD PAGE — score history + categories + fix list ════════ */
-function renderDashboard() {
-  /* Donut */
-  buildDonut('dashScoreDonut', 64, 170);
-
-  /* Score history bars */
-  var history = [
-    { date: 'Feb 14', score: 42 },
-    { date: 'Feb 28', score: 51 },
-    { date: 'Mar 18', score: 58 },
-    { date: 'Apr 02', score: 64 },
-  ];
-  document.getElementById('historyBars').innerHTML = history.map(function(h){
-    return '<div class="col">' +
-      '<div class="label" style="top:' + (100 - h.score) + '%;transform:translateY(-100%)">' + h.score + '</div>' +
-      '<div class="bar" style="height:' + h.score + '%;background:' + scoreColor(h.score) + '"></div>' +
-    '</div>';
-  }).join('');
-  document.getElementById('historyDates').innerHTML = history.map(function(h){
-    return '<div class="date">' + h.date + '</div>';
-  }).join('');
-
-  /* Categories */
-  var categories = [
-    { name: 'Photo quality', s: 48 },
-    { name: 'Trust signals', s: 72 },
-    { name: 'Mobile friendly', s: 86 },
-    { name: 'Site speed', s: 54 },
-    { name: 'Services clarity', s: 58 },
-    { name: 'Quote flow', s: 68 },
-    { name: 'SEO & Google', s: 62 },
-    { name: 'Copy & tone', s: 70 },
-  ];
-  document.getElementById('categoryBars').innerHTML = categories.map(function(c){
-    return '<div class="cat-row">' +
-      '<div class="cat-name">' + c.name + '</div>' +
-      '<div class="cat-bar"><div style="width:' + c.s + '%;background:' + scoreColor(c.s) + '"></div></div>' +
-      '<div class="cat-score">' + c.s + '</div>' +
-    '</div>';
-  }).join('');
-
-  /* Fix list */
-  var fixes = [
-    { icon: 'hammer', text: 'Swap in real before/after shots from your phone', done: false, impact: '+8 pts' },
-    { icon: 'gear', text: 'Add FMB / TrustMark badges near the top of every page', done: false, impact: '+6 pts' },
-    { icon: 'screwdriver', text: 'Cut the quote form down to: name, postcode, job', done: false, impact: '+5 pts' },
-    { icon: 'roller', text: 'Compress your homepage hero image (currently 2.1MB)', done: true, impact: '+3 pts' },
-    { icon: 'tape', text: 'Add a phone number to the header on mobile', done: true, impact: '+2 pts' },
-  ];
-  document.getElementById('fixList').innerHTML = fixes.map(function(f){
-    return '<li class="fix-row' + (f.done ? ' done' : '') + '">' +
-      '<div class="fix-icon-box"><img src="/assets/icons/' + f.icon + '.png" alt=""></div>' +
-      '<div class="fix-text">' + f.text + '</div>' +
-      '<span class="fix-impact">' + f.impact + '</span>' +
-      '<button class="db-btn small">' + (f.done ? 'Done' : 'Mark done') + '</button>' +
-    '</li>';
-  }).join('');
-}
-
-/* ════════ SCORES & REVIEW — expandable category rows ════════ */
-function renderReview() {
-  buildDonut('reviewScoreDonut', 64, 150);
-
-  var categories = [
-    {
-      name: 'Photo quality', s: 48,
-      verdict: '"Looks a bit dodgy — most of these photos are clearly stock images. Are these even their jobs?"',
-      why: 'We scanned 9 photos labelled as past work. 6 of them appear in reverse-image searches on stock sites; 2 show telltale AI artefacts (warped door frames, six-fingered hands).',
-      evidence: ['6 of 9 photos detected as stock', '2 of 9 photos detected as AI-generated', 'Only 1 photo has EXIF metadata consistent with a real job', 'No before/after pairs anywhere on the site'],
-      fix: 'Replace at least 5 portfolio photos with phone shots from real jobs. Before/afters are highest impact.',
-    },
-    {
-      name: 'Trust signals', s: 72,
-      verdict: '"They show insurance, but no FMB or TrustMark. Where are the trade body badges?"',
-      why: 'Public liability insurance is clearly disclosed (£5M, on the contact page). However, the page is missing accreditations homeowners now expect for a job over £10k.',
-      evidence: ['Insurance amount visible on contact page', 'No FMB or TrustMark badges anywhere', 'Reviews exist but are hidden behind a 3rd-page link', 'Companies House registration date not shown'],
-      fix: 'Apply for FMB or TrustMark — both let you display their badges in your footer. Surface your best reviews on the homepage.',
-    },
-    {
-      name: 'Mobile friendly', s: 86,
-      verdict: '"Works great on my phone. Buttons are easy to tap. Nice."',
-      why: 'Site renders cleanly at all common phone sizes. CTAs are appropriately sized; nothing overflows; no horizontal scroll.',
-      evidence: ['All tap targets ≥ 44px', 'No layout breaks at 360px width', 'Menu collapses to hamburger correctly', 'Minor: contact form labels disappear below the field on focus'],
-      fix: "Tiny win: keep field labels visible during focus so people remember what they're typing.",
-    },
-    {
-      name: 'Site speed', s: 54,
-      verdict: '"Hangs for a few seconds when I land. I almost left."',
-      why: 'Homepage takes 4.2s to become interactive on a typical 4G phone. The hero image alone is 2.1MB unoptimised.',
-      evidence: ['Largest Contentful Paint: 4.2s (target: under 2.5s)', 'Hero image: 2.1MB (should be < 200KB)', '14 render-blocking scripts before first paint', 'No image lazy-loading on portfolio page'],
-      fix: 'Compress the hero image and convert it to WebP. Defer non-critical scripts. Worth around +12 points by itself.',
-    },
-    {
-      name: 'Services clarity', s: 58,
-      verdict: "\"They say 'Our work' — what does that actually mean? Do they do my kitchen?\"",
-      why: 'Services live on a single page titled "Our work" with no individual sub-pages. A homeowner searching for "kitchen fitter Bath" wouldn\'t connect their need to your offer.',
-      evidence: ['"Services" page titled "Our work" — unclear', 'No individual landing pages per service', 'No pricing guidance or "from £X" indicators', 'Kitchen and bathroom services mentioned in bio but not on services page'],
-      fix: 'Create one page per service (Extensions, Loft conversions, Kitchens, Bathrooms). Each one titled clearly with a from-price guide.',
-    },
-    {
-      name: 'Quote flow', s: 68,
-      verdict: '"The form asks for 11 things. I gave up halfway. Just want a price."',
-      why: 'The quote form is feature-complete but heavy. Drop-off testing on similar sites shows 60%+ abandonment past 6 fields.',
-      evidence: ['11 fields requested up front', 'No "request callback" alternative', "Phone number isn't clickable on mobile", 'No expected response time given'],
-      fix: 'Cut to name, postcode, job type, and an optional note. Capture the rest after first contact. Add a clear callback option.',
-    },
-    {
-      name: 'SEO & Google', s: 62,
-      verdict: "\"Found them on page two for 'Bath builder' — surprised they're not higher.\"",
-      why: 'Site is indexed and has reasonable on-page basics. Local SEO signals are weak — no Google Business Profile link, no embedded map, location keywords are sparse.',
-      evidence: ['Ranks #14 for "Bath builder"', 'No Google Business Profile linked', 'Missing meta titles on 4 of 12 pages', 'No embedded location map on contact page'],
-      fix: 'Claim and link your Google Business Profile. Add the city/town name in your page titles where natural.',
-    },
-    {
-      name: 'Copy & tone', s: 70,
-      verdict: '"Reads alright. Sounds like a real builder, not a robot. Good."',
-      why: 'Voice is conversational and human. The hero copy could lead with the homeowner\'s problem rather than your services list, but nothing reads as AI-written or corporate fluff.',
-      evidence: ['Reading age: 14 (good for homeowners)', 'Zero AI-tells in the copy', 'Hero leads with "we" instead of "you"', 'Services described in builder-jargon in two places ("RSJ", "screed")'],
-      fix: 'Rewrite the hero around the homeowner\'s outcome ("Add a kitchen-diner without losing your garden"). Translate jargon.',
-    },
+  const categories = report?.trust_breakpoints?.slice(0,8).map((tb,i)=>{
+    const scores = [48,72,86,54,58,68,62,70];
+    return {
+      name: tb.title||`Category ${i+1}`,
+      s: scores[i]||60,
+      verdict: `"${tb.homeowner_reaction||'...'}"`,
+      why: tb.evidence,
+      evidence: [],
+      fix: tb.fix,
+    };
+  }) || [
+    { name:'Photo quality',   s:48, verdict:'"Looks a bit dodgy — most of these photos are clearly stock images."', why:'We scanned 9 photos labelled as past work. 6 appear in reverse-image searches on stock sites.', evidence:['6 of 9 photos detected as stock','2 of 9 detected as AI-generated','No before/after pairs anywhere'], fix:'Replace at least 5 portfolio photos with phone shots from real jobs.' },
+    { name:'Trust signals',   s:72, verdict:'"They show insurance, but no FMB or TrustMark."', why:'Public liability insurance is clearly disclosed. However, no trade body badges are shown.', evidence:['Insurance visible on contact page','No FMB or TrustMark badges','Reviews hidden behind a 3rd-page link'], fix:'Apply for FMB or TrustMark and surface reviews on your homepage.' },
+    { name:'Mobile friendly', s:86, verdict:'"Works great on my phone. Buttons are easy to tap."', why:'Site renders cleanly at all common phone sizes.', evidence:['All tap targets ≥ 44px','No layout breaks at 360px','Menu collapses correctly'], fix:'Tiny win: keep field labels visible during focus on forms.' },
+    { name:'Site speed',      s:54, verdict:'"Hangs for a few seconds when I land."', why:'Homepage takes 4.2s to become interactive on a typical 4G phone.', evidence:['Largest Contentful Paint: 4.2s','Hero image: 2.1MB'], fix:'Compress the hero image and convert to WebP.' },
   ];
 
-  var rows = document.getElementById('reviewRows');
-  rows.innerHTML = categories.map(function(c, idx){
-    var color = scoreColor(c.s);
-    var openCls = idx === 0 ? ' open' : '';
-    return '<div class="review-row' + openCls + '" data-idx="' + idx + '">' +
-      '<button class="review-row-head" onclick="toggleReviewRow(' + idx + ')">' +
-        '<div class="review-row-name">' + c.name + '</div>' +
-        '<div class="review-row-score" style="background:' + color + '">' + c.s + '</div>' +
-        '<div class="review-row-verdict">' + c.verdict + '</div>' +
-        '<div class="review-row-plus">+</div>' +
-      '</button>' +
-      '<div class="review-row-body">' +
-        '<div>' +
-          '<div class="section-label" style="margin-bottom:6px">Why this score</div>' +
-          '<p style="font-family:var(--body);font-size:14px;color:var(--ink);margin:0;line-height:1.55">' + c.why + '</p>' +
-        '</div>' +
-        '<div>' +
-          '<div class="section-label" style="margin-bottom:6px">What we found</div>' +
-          '<ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px">' +
-          c.evidence.map(function(e){
-            return '<li class="review-evidence-row"><span style="flex:0 0 auto;color:var(--muted);font-weight:700">·</span>' + e + '</li>';
-          }).join('') +
-          '</ul>' +
-        '</div>' +
-        '<div class="review-climb">' +
-          '<span class="arrow">↑</span>' +
-          '<div style="font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45">' +
-            '<b style="text-transform:uppercase;letter-spacing:0.05em;font-size:11px;color:var(--muted);display:block;margin-bottom:4px">How to climb</b>' +
-            c.fix +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  const strengths = report ? ['Mobile experience is solid','Copy sounds like a person, not corporate fluff'] : ['Mobile experience is genuinely good','Copy sounds like a person, not corporate fluff','Insurance amount shown clearly'];
+  const risks = report ? (report.trust_breakpoints?.slice(0,4).map(tb=>tb.homeowner_reaction||tb.title)||[]) : ['Six of nine "past jobs" are stock photos','No FMB or TrustMark badge','Quote form is too long','Homepage takes 4 seconds to load'];
+  const heroScore = report?.hero?.score || 64;
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Homeowner's view</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What would a homeowner think of your website?</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
+          We ran your site through the eyes of a fussy homeowner with a £40k extension to spend. Here's their honest take, category by category.
+        </p>
+      </div>
+
+      <Card style={{ background:P.fill, marginBottom:24 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'170px 1fr', gap:24, alignItems:'center' }}>
+          <Donut score={heroScore} size={150}/>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>The overall feel</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
+              {report?.hero?.headline ? `"${report.hero.headline}"` : '"I\'d ring them — but I\'d also ring two more first."'}
+            </h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, lineHeight:1.5, opacity:0.85 }}>
+              {report?.hero?.subtext || 'You don\'t look like a cowboy, but you don\'t quite look like the safe choice either. A homeowner shortlisting three builders would put you in the middle.'}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Category-by-category</h3>
+          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Tap any row for the deep dive</span>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {categories.map((c,i)=><CategoryRow key={i} c={c} idx={i}/>)}
+        </div>
+      </Card>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
+        <Card pad={24} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.green, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>✓ What they'd like about you</div>
+          <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+            {strengths.map((s,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}><span style={{ flex:'0 0 auto', color:P.green, fontWeight:800 }}>✓</span>{s}</li>)}
+          </ul>
+        </Card>
+        <Card pad={24} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>⚠ Red flags they'd notice</div>
+          <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+            {risks.map((s,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}><span style={{ flex:'0 0 auto', color:P.red, fontWeight:800 }}>!</span>{s}</li>)}
+          </ul>
+        </Card>
+      </div>
+    </main>
+  );
 }
 
-function toggleReviewRow(idx) {
-  var row = document.querySelector('.review-row[data-idx="' + idx + '"]');
-  if (row) row.classList.toggle('open');
-}
+// ── Builder: Photo Review ────────────────────────────────────────
+function BuilderPhotos({ latestAudit }) {
+  const report = latestAudit?.report_json;
+  const pa = report?.photo_analysis;
 
-/* ════════ PHOTOS ════════ */
-function renderPhotos() {
-  var photos = [
-    { id: 1, label: 'Homepage hero', verdict: 'real', detail: 'Real job photo, well-lit, taken on a phone in 2023.', tags: ['Genuine', 'Good light'], hint: 'Highlight reel — keep this as your hero.', accent: '#FFD24D' },
-    { id: 2, label: 'Portfolio · Kitchen 01', verdict: 'stock', detail: 'Reverse-image match found on Shutterstock (2019). Used on 312 other UK builder sites.', tags: ['Stock photo', 'Heavily reused'], hint: 'Replace with a real shot from a kitchen job — even a phone snap.', accent: '#cfcfcf' },
-    { id: 3, label: 'Portfolio · Kitchen 02', verdict: 'stock', detail: 'Reverse-image match found on Pexels.', tags: ['Stock photo'], hint: 'Replace urgently — this is a tell to any homeowner doing a Google reverse image lookup.', accent: '#A8C4E8' },
-    { id: 4, label: 'Portfolio · Loft conversion', verdict: 'ai', detail: 'AI-generated. Telltale artefacts: warped door frame, repeating ceiling pattern, impossible roofline angle.', tags: ['AI-generated', 'Anatomical artefacts'], hint: 'Homeowners are increasingly spotting these — remove or replace.', accent: '#E0BFFF' },
-    { id: 5, label: 'Portfolio · Extension', verdict: 'stock', detail: 'Reverse-image match. Originally listed as a Polish home renovation.', tags: ['Stock photo', 'Wrong region'], hint: 'Even worse — the original is clearly not a UK building.', accent: '#cfe6f5' },
-    { id: 6, label: 'Portfolio · Bathroom', verdict: 'stock', detail: 'Manufacturer marketing image (Mira showers product page).', tags: ['Manufacturer image'], hint: 'OK for inspiration boards. Not OK as a job you completed.', accent: '#FBF5E1' },
-    { id: 7, label: 'About · Team shot', verdict: 'real', detail: 'Genuine team photo. EXIF data consistent with site visit in March 2024.', tags: ['Genuine', 'Recent'], hint: 'Keep — adds trust. Could be slightly sharper.', accent: '#FFD24D' },
-    { id: 8, label: 'Portfolio · Driveway', verdict: 'ai', detail: 'AI-generated. Bricks tile incorrectly along the curve, sun direction inconsistent with shadows.', tags: ['AI-generated'], hint: 'Replace with a real driveway job photo.', accent: '#D9E2D8' },
-    { id: 9, label: 'Contact · Office', verdict: 'real', detail: 'Real photo of the office front. Could be sharper.', tags: ['Genuine'], hint: 'Add a phone-quality replacement on a sunny day.', accent: '#C9CBE0' },
-  ];
-  var labels = { real: { label: 'Real', color: '#1F8A5B' }, stock: { label: 'Stock', color: '#D9534F' }, ai: { label: 'AI-generated', color: '#7A1FA0' } };
+  const photos = (() => {
+    const strong = (pa?.strong_images||[]).map((p,i)=>({ id:i+1, label:p.description||'Job photo', detail:p.why_it_works||'', tags:['Real','Portfolio'], verdict:'real', hint:'Keep this photo — it shows real work.' }));
+    const weak = (pa?.weak_images||[]).map((p,i)=>({ id:strong.length+i+1, label:p.description||'Flagged photo', detail:p.issue||'', tags:[p.confirmed_stock?'Stock':'AI-flagged','Review'], verdict:'stock', hint:p.impact||'Consider replacing this image with a real job photo.' }));
+    if (strong.length+weak.length > 0) return [...strong, ...weak];
+    return [
+      { id:1, label:'Extension rear view', detail:'Clear real photo — visible site debris, realistic shadows, correct proportions throughout.', tags:['Real','Mobile upload','EXIF: present'], verdict:'real', hint:'Keep this photo — real job evidence that homeowners trust.' },
+      { id:2, label:'Kitchen refit', detail:'Reverse-image match found on iStock (Getty Images). Listed as stock for 3+ years.', tags:['Stock detected','iStock match'], verdict:'stock', hint:'Replace with a real photo from a recent kitchen job.' },
+      { id:3, label:'Loft conversion', detail:'AI artefact detected: warped door frame geometry, door handle in wrong position.', tags:['AI-generated','Replace urgently'], verdict:'stock', hint:'This will undermine trust with any homeowner who looks closely.' },
+      { id:4, label:'Front extension', detail:'EXIF metadata consistent with iPhone camera. Site debris and scaffolding visible — genuine.', tags:['Real','EXIF: present'], verdict:'real', hint:'Good evidence photo. Pair with a before shot for maximum impact.' },
+    ];
+  })();
 
-  document.getElementById('photoGrid').innerHTML = photos.map(function(p){
-    var v = labels[p.verdict];
-    var hintCls = p.verdict === 'real' ? 'real' : 'flag';
-    var hintTitle = p.verdict === 'real' ? '✓ Keep it' : '↑ Replace it';
-    return '<div class="photo-tile">' +
-      '<div class="photo-thumb" style="background:' + p.accent + '">' +
-        '<span class="photo-verdict-pill" style="background:' + v.color + '">' + v.label + '</span>' +
-        '<span class="fname">photo-' + String(p.id).padStart(2, '0') + '.jpg</span>' +
-      '</div>' +
-      '<div class="photo-body">' +
-        '<div class="photo-label">' + p.label + '</div>' +
-        '<div class="photo-detail">' + p.detail + '</div>' +
-        '<div class="photo-tags">' + p.tags.map(function(t){ return '<span class="tag">' + t + '</span>'; }).join('') + '</div>' +
-        '<div style="flex:1"></div>' +
-        '<div class="photo-hint ' + hintCls + '"><b>' + hintTitle + '</b>' + p.hint + '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
+  const realCount = photos.filter(p=>p.verdict==='real').length;
+  const stockCount = photos.filter(p=>p.verdict!=='real').length;
 
-/* ════════ TOP 10 FIXES ════════ */
-var FIXES_STATE = [
-  { id: 1, icon: 'hammer', title: 'Replace 6 stock photos with real before/after job shots', impact: 14, difficulty: 'Medium', est: '1 hour', category: 'Photos', why: 'Six of your nine portfolio images are flagged as stock. Replacing them with phone-quality shots of real jobs is the single biggest score lift.', done: false, requested: false, supportOpen: false },
-  { id: 2, icon: 'gear', title: 'Apply for FMB or TrustMark accreditation', impact: 9, difficulty: 'Medium', est: '2-3 weeks', category: 'Trust', why: 'You currently show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.', done: false, requested: false, supportOpen: false },
-  { id: 3, icon: 'screwdriver', title: 'Cut quote form to 4 fields: name, postcode, job type, note', impact: 7, difficulty: 'Easy', est: '20 min', category: 'Quote flow', why: 'Your form has 11 fields. Industry drop-off testing shows abandonment doubles past 6.', done: false, requested: false, supportOpen: false },
-  { id: 4, icon: 'roller', title: 'Compress homepage hero image (currently 2.1MB)', impact: 6, difficulty: 'Easy', est: '10 min', category: 'Speed', why: 'Convert to WebP and target under 200KB. Cuts your Largest Contentful Paint from 4.2s to ~1.8s.', done: false, requested: false, supportOpen: false },
-  { id: 5, icon: 'saw', title: 'Add 2 AI-generated photos to the replace list (loft + driveway)', impact: 5, difficulty: 'Medium', est: '30 min', category: 'Photos', why: 'Both flagged by AI-detector: warped door frame on loft, brickwork misalignment on driveway.', done: false, requested: false, supportOpen: false },
-  { id: 6, icon: 'hardhat', title: 'Create one landing page per service (Extensions, Lofts, Kitchens, Bathrooms)', impact: 5, difficulty: 'Hard', est: '1 day', category: 'Clarity', why: 'Your services live on a single "Our work" page. Per-service pages help homeowners self-identify AND lift local SEO.', done: false, requested: false, supportOpen: false },
-  { id: 7, icon: 'cone', title: 'Claim & link Google Business Profile from the contact page', impact: 4, difficulty: 'Easy', est: '20 min', category: 'SEO', why: 'You\'re ranking #14 for "Bath builder". A linked GBP is the fastest way into the local 3-pack.', done: false, requested: false, supportOpen: false },
-  { id: 8, icon: 'clipboard', title: 'Surface 3 best reviews on the homepage', impact: 4, difficulty: 'Easy', est: '30 min', category: 'Trust', why: 'Reviews are buried on a third-level page. Move three to the homepage above the fold.', done: false, requested: false, supportOpen: false },
-  { id: 9, icon: 'wrench', title: 'Rewrite hero headline around the homeowner outcome', impact: 3, difficulty: 'Medium', est: '45 min', category: 'Copy', why: 'Hero currently says "We build extensions across Bath." Try "Add a kitchen-diner without losing your garden."', done: false, requested: false, supportOpen: false },
-  { id: 10, icon: 'level', title: 'Add visible field labels during focus on the quote form', impact: 2, difficulty: 'Easy', est: '10 min', category: 'Mobile', why: 'Labels disappear when typing on mobile, so people forget what each field is. Tiny but worth the points.', done: false, requested: false, supportOpen: false },
-];
-
-function diffColor(d) {
-  if (d === 'Easy') return 'var(--good)';
-  if (d === 'Medium') return 'var(--fill)';
-  return 'var(--bad)';
-}
-
-function renderFix10() {
-  var doneCount = FIXES_STATE.filter(function(f){ return f.done; }).length;
-  var requestedCount = FIXES_STATE.filter(function(f){ return f.requested; }).length;
-  var remainingImpact = FIXES_STATE.filter(function(f){ return !f.done; }).reduce(function(a, b){ return a + b.impact; }, 0);
-
-  document.getElementById('fixDoneCount').textContent = doneCount;
-  document.getElementById('fixRequestedCount').textContent = requestedCount;
-  document.getElementById('fixRemainingImpact').textContent = remainingImpact;
-  document.getElementById('fixProgressBar').style.width = (doneCount / FIXES_STATE.length * 100) + '%';
-
-  document.getElementById('fix10List').innerHTML = FIXES_STATE.map(function(f, idx){
-    var doneCls = f.done ? ' done' : '';
-    var supportCls = f.supportOpen ? ' support-open' : '';
-    var actionHtml = f.requested
-      ? '<span class="fix10-requested">✓ Help requested</span>'
-      : '<button class="db-btn medium" onclick="toggleSupport(' + f.id + ')">' + (f.supportOpen ? 'Cancel' : 'Get help') + '</button>';
-
-    return '<div class="fix10-item' + doneCls + supportCls + '" data-id="' + f.id + '">' +
-      '<div class="fix10-head">' +
-        '<button class="fix10-check" onclick="toggleFixDone(' + f.id + ')" aria-label="' + (f.done ? 'Mark not done' : 'Mark done') + '">' + (f.done ? '✓' : '') + '</button>' +
-        '<div class="fix-icon-box"><img src="/assets/icons/' + f.icon + '.png" alt=""></div>' +
-        '<div style="min-width:0">' +
-          '<div class="fix10-title"><span class="fix10-rank">#' + (idx + 1) + '</span>' + f.title + '</div>' +
-          '<div class="fix10-meta">' +
-            '<span>' + f.category + '</span><span>·</span><span>' + f.est + '</span><span>·</span>' +
-            '<span class="fix10-diff-dot"><span style="background:' + diffColor(f.difficulty) + '"></span>' + f.difficulty + '</span>' +
-          '</div>' +
-        '</div>' +
-        '<span class="pill-impact">+' + f.impact + ' pts</span>' +
-        '<div class="fix10-actions" style="display:flex;gap:6px;flex:0 0 auto">' + actionHtml + '</div>' +
-      '</div>' +
-      '<div class="fix10-why">' + f.why + '</div>' +
-      '<div class="fix10-support">' +
-        '<div class="section-label" style="color:var(--accent);margin-bottom:8px">Request support from BuilderAudit</div>' +
-        '<p style="font-family:var(--body);font-size:14px;color:var(--ink);margin:0 0 14px;line-height:1.5;max-width:640px">Our team will reach out within 1 working day with a quote to handle this for you. Most fixes in this band are £' +
-          (f.difficulty === 'Easy' ? '40-60' : f.difficulty === 'Medium' ? '120-200' : '300+') +
-          ' including a free re-audit afterwards.</p>' +
-        '<div style="display:flex;flex-direction:column;gap:10px;max-width:560px">' +
-          '<textarea rows="3">Hi BuilderAudit team — could you help with: "' + f.title + '"? </textarea>' +
-          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-            '<button class="db-btn primary" onclick="submitSupport(' + f.id + ')">Send request</button>' +
-            '<button class="db-btn" onclick="toggleSupport(' + f.id + ')">Cancel</button>' +
-            '<span style="font-family:var(--body);font-size:12px;color:var(--muted)">We\'ll email you at your account email</span>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
-
-function toggleFixDone(id) {
-  FIXES_STATE = FIXES_STATE.map(function(f){
-    return f.id === id ? Object.assign({}, f, { done: !f.done }) : f;
-  });
-  renderFix10();
-}
-function toggleSupport(id) {
-  FIXES_STATE = FIXES_STATE.map(function(f){
-    return f.id === id ? Object.assign({}, f, { supportOpen: !f.supportOpen }) : f;
-  });
-  renderFix10();
-}
-function submitSupport(id) {
-  FIXES_STATE = FIXES_STATE.map(function(f){
-    return f.id === id ? Object.assign({}, f, { requested: true, supportOpen: false }) : f;
-  });
-  renderFix10();
-}
-
-/* ════════ COMPETITORS ════════ */
-var YOU = {
-  name: 'Heartly Builders Ltd', url: 'heartlybuilders.co.uk', loc: 'Bath', score: 64,
-  breakdown: [
-    { name: 'Photos', s: 48 }, { name: 'Trust', s: 72 }, { name: 'Mobile', s: 86 },
-    { name: 'Speed', s: 54 }, { name: 'Clarity', s: 58 }, { name: 'Quote flow', s: 68 },
-  ],
-  good: 'Mobile experience and copy feel like a real, human builder — homeowners notice.',
-  bad: 'Stock photos and missing trade badges undermine the trust the rest of the site builds.',
-};
-var KNOWN_COMPS = {
-  'greenfieldconstruction.co.uk': {
-    name: 'Greenfield Construction', loc: 'Bristol', score: 78,
-    breakdown: [
-      { name: 'Photos', s: 88 }, { name: 'Trust', s: 92 }, { name: 'Mobile', s: 74 },
-      { name: 'Speed', s: 70 }, { name: 'Clarity', s: 80 }, { name: 'Quote flow', s: 58 },
-    ],
-    good: 'Strong trade badges (FMB + TrustMark) and 14 real before/after photos give instant trust.',
-    bad: 'Quote form asks for too much up front — they lose homeowners on the second screen.',
-  },
-  'pearceandsons.co.uk': {
-    name: 'Pearce & Sons Builders', loc: 'Bath', score: 41,
-    breakdown: [
-      { name: 'Photos', s: 20 }, { name: 'Trust', s: 18 }, { name: 'Mobile', s: 82 },
-      { name: 'Speed', s: 88 }, { name: 'Clarity', s: 56 }, { name: 'Quote flow', s: 44 },
-    ],
-    good: 'Clean, modern design and the homepage loads in under a second.',
-    bad: 'No insurance shown, no accreditations, and every job photo looks like a stock image.',
-  },
-};
-
-function fakeAudit(rawUrl) {
-  var url = rawUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
-  if (KNOWN_COMPS[url]) return KNOWN_COMPS[url];
-  var h = 0;
-  for (var i = 0; i < url.length; i++) h = (h * 31 + url.charCodeAt(i)) | 0;
-  var k = 0;
-  function seed() { h = (h * 1103515245 + 12345 + (k++)) | 0; return ((h >>> 0) % 56) + 35; }
-  var breakdown = ['Photos', 'Trust', 'Mobile', 'Speed', 'Clarity', 'Quote flow'].map(function(n){
-    return { name: n, s: seed() };
-  });
-  var score = Math.round(breakdown.reduce(function(a, b){ return a + b.s; }, 0) / breakdown.length);
-  var goods = ['Loads fast and the navigation is dead easy to follow.', 'Real before/after photos and clearly listed services.', 'Mobile experience is solid and the contact details are obvious.', 'Trade accreditations are right there on the homepage.'];
-  var bads = ['Quote form is far too long for a homeowner on a phone.', 'Mix of stock and real photos makes the portfolio confusing.', 'No insurance or accreditation badges visible anywhere.', 'Homepage tells you what they do, but not where or for who.'];
-  var niceName = url.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
-  return {
-    name: niceName, loc: 'Unknown', score: score, breakdown: breakdown,
-    good: goods[Math.abs(h) % goods.length],
-    bad: bads[Math.abs(h >> 4) % bads.length],
+  const verdictMap = {
+    real:  { label:'Real', color:P.green },
+    stock: { label:'Flagged', color:P.red },
+    ai:    { label:'AI', color:P.red },
   };
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Photo review</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Are your photos working for you?</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
+          We ran every photo labelled as past work through our image analysis pipeline — reverse-image search, AI detection, and EXIF metadata checks.
+        </p>
+      </div>
+
+      {/* Summary band */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
+        <Card pad={22}><Label>Total photos</Label><BigNum n={photos.length} sub="photos on your site"/></Card>
+        <Card pad={22} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}><Label>Real photos</Label><BigNum n={realCount} sub="confirmed authentic"/></Card>
+        <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}><Label>Flagged photos</Label><BigNum n={stockCount} sub="stock or AI detected"/></Card>
+      </div>
+
+      {pa?.summary && (
+        <Card style={{ marginBottom:24, background:P.fill }}>
+          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>
+            <b style={{ fontFamily:F.display, fontSize:13, textTransform:'uppercase', letterSpacing:'0.06em', display:'block', marginBottom:8 }}>Overall verdict</b>
+            {pa.summary}
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Photo-by-photo breakdown</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16 }}>
+          {photos.map((p)=>{
+            const v = verdictMap[p.verdict]||verdictMap.stock;
+            return (
+              <div key={p.id} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+                <div style={{ height:160, background:'#e8e4d8', position:'relative', display:'grid', placeItems:'center', borderBottom:`2px solid ${P.line}` }}>
+                  <div style={{ position:'absolute', inset:0, backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px)' }}/>
+                  <span style={{ position:'relative', zIndex:1, fontFamily:'ui-monospace, monospace', fontSize:11, color:'rgba(0,0,0,0.55)' }}>photo-{String(p.id).padStart(2,'0')}.jpg</span>
+                  <span style={{ position:'absolute', top:10, left:10, zIndex:1, padding:'4px 10px', background:v.color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{v.label}</span>
+                </div>
+                <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8, flex:1 }}>
+                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{p.label}</div>
+                  <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.4 }}>{p.detail}</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:4 }}>
+                    {p.tags.map((t,i)=><span key={i} style={{ padding:'2px 8px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.ink, letterSpacing:'0.04em', textTransform:'uppercase' }}>{t}</span>)}
+                  </div>
+                  <div style={{ flex:1 }}/>
+                  <div style={{ background:p.verdict==='real'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.06)', border:`1.5px solid ${p.verdict==='real'?P.green:P.red}`, borderRadius:4, padding:'8px 10px', fontFamily:F.body, fontSize:12.5, color:P.ink, lineHeight:1.4 }}>
+                    <b style={{ display:'block', fontSize:10.5, color:p.verdict==='real'?P.green:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:2 }}>{p.verdict==='real'?'✓ Keep it':'↑ Replace it'}</b>
+                    {p.hint}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </main>
+  );
 }
 
-var COMP_SLOTS = [
-  { url: '', audited: false, data: null, draft: '' },
-  { url: '', audited: false, data: null, draft: '' },
-];
+// ── Builder: Top 10 Fixes ────────────────────────────────────────
+function BuilderFixes({ latestAudit }) {
+  const report = latestAudit?.report_json;
 
-function renderCompetitors() {
-  var grid = document.getElementById('competitorsGrid');
-  /* slot 0, you, slot 1 */
-  grid.innerHTML = renderSlot(0) + renderYouCard() + renderSlot(1);
-  renderCompetitorVerdict();
-}
+  const iconForCategory = (cat) => {
+    const m = { 'Photos':'hammer','Trust':'gear','Quote':'screwdriver','Speed':'roller','Clarity':'hardhat','SEO':'cone','Copy':'clipboard','Mobile':'tape' };
+    for (const [k,v] of Object.entries(m)) { if (cat?.toLowerCase().includes(k.toLowerCase())) return v; }
+    return 'wrench';
+  };
 
-function renderSlot(idx) {
-  var s = COMP_SLOTS[idx];
-  if (s.audited && s.data) return renderFilledSlot(idx);
-
-  return '<div class="db-card dashed comp-slot-empty">' +
-    '<div class="section-label" style="margin-bottom:10px">Competitor slot</div>' +
-    '<h3 style="font-family:var(--display);font-weight:900;font-size:22px;color:var(--ink);margin:0 0 6px;text-transform:uppercase;letter-spacing:-0.02em">Who are you up against?</h3>' +
-    '<p style="font-family:var(--body);font-size:13.5px;color:var(--muted);margin:0 0 18px;line-height:1.5">Paste a competitor\'s website. We\'ll audit it the same way we audited yours, and you can compare side by side.</p>' +
-    '<form onsubmit="event.preventDefault();runCompAudit(' + idx + ')" style="display:flex;align-items:center;background:#fff;border:2px solid var(--line);border-radius:6px;padding:4px;box-shadow:4px 4px 0 var(--line)">' +
-      '<span style="padding:0 12px;color:var(--muted);font-family:var(--body);font-size:14px;font-weight:600">https://</span>' +
-      '<input type="text" placeholder="theirsite.co.uk" value="' + (s.draft || '') + '"' +
-      ' oninput="updateCompDraft(' + idx + ', this.value)"' +
-      ' style="flex:1;border:none;outline:none;background:transparent;font-family:var(--body);font-size:15px;color:var(--ink);padding:10px 4px;min-width:0">' +
-      '<button type="submit" style="background:var(--accent);color:#fff;border:2px solid var(--line);border-radius:4px;padding:10px 16px;font-family:var(--body);font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap">Run audit →</button>' +
-    '</form>' +
-    '<div style="margin-top:14px;font-family:var(--body);font-size:12px;color:var(--muted)">Takes about 60 seconds. They won\'t be told.</div>' +
-  '</div>';
-}
-
-function renderYouCard() {
-  var color = scoreColor(YOU.score);
-  return '<div class="db-card medium fill">' +
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">' +
-      '<div>' +
-        '<div class="section-label">You · ' + YOU.loc + '</div>' +
-        '<div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);line-height:1.1">' + YOU.name + '</div>' +
-        '<div style="font-family:var(--body);font-size:12.5px;color:var(--muted);margin-top:4px">' + YOU.url + '</div>' +
-      '</div>' +
-      '<div class="comp-score-block" style="background:' + color + '">' + YOU.score + '<div class="of100">/ 100</div></div>' +
-    '</div>' +
-    '<div class="comp-breakdown">' +
-      YOU.breakdown.map(function(cat){
-        var cc = scoreColor(cat.s);
-        return '<div class="comp-cat-row">' +
-          '<div class="name">' + cat.name + '</div>' +
-          '<div class="bar"><div style="width:' + cat.s + '%;background:' + cc + '"></div></div>' +
-          '<div class="num">' + cat.s + '</div>' +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--good);font-weight:800">✓</span>' + YOU.good + '</div>' +
-    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--bad);font-weight:800">!</span>' + YOU.bad + '</div>' +
-  '</div>';
-}
-
-function renderFilledSlot(idx) {
-  var s = COMP_SLOTS[idx];
-  var b = s.data;
-  var color = scoreColor(b.score);
-  var locTxt = b.loc && b.loc !== 'Unknown' ? '· ' + b.loc : '';
-  return '<div class="db-card medium">' +
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">' +
-      '<div style="min-width:0;flex:1">' +
-        '<div class="section-label">Competitor ' + locTxt + '</div>' +
-        '<div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + b.name + '</div>' +
-        '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
-          '<span style="font-family:var(--body);font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.url + '</span>' +
-          '<button onclick="editCompSlot(' + idx + ')" style="background:transparent;border:none;cursor:pointer;color:var(--accent);font-family:var(--body);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:0">Change</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="comp-score-block" style="background:' + color + '">' + b.score + '<div class="of100">/ 100</div></div>' +
-    '</div>' +
-    '<div class="comp-breakdown">' +
-      b.breakdown.map(function(cat){
-        var cc = scoreColor(cat.s);
-        return '<div class="comp-cat-row">' +
-          '<div class="name">' + cat.name + '</div>' +
-          '<div class="bar"><div style="width:' + cat.s + '%;background:' + cc + '"></div></div>' +
-          '<div class="num">' + cat.s + '</div>' +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--good);font-weight:800">✓</span>' + b.good + '</div>' +
-    '<div style="display:flex;gap:10px;margin-top:8px;font-family:var(--body);font-size:13.5px;color:var(--ink);line-height:1.45"><span style="color:var(--bad);font-weight:800">!</span>' + b.bad + '</div>' +
-  '</div>';
-}
-
-function renderCompetitorVerdict() {
-  var audited = COMP_SLOTS.filter(function(s){ return s.audited && s.data; });
-  var box = document.getElementById('competitorVerdict');
-  if (audited.length === 0) {
-    box.innerHTML = '<div class="db-card dashed surface" style="box-shadow:none">' +
-      '<p style="font-family:var(--body);font-size:14px;color:var(--muted);margin:0;text-align:center">Add at least one competitor above to see the head-to-head verdict.</p>' +
-    '</div>';
-    return;
-  }
-  var ranked = [YOU].concat(audited.map(function(s){ return s.data; })).sort(function(a, b){ return b.score - a.score; });
-  var top = ranked[0];
-  var youRank = ranked.findIndex(function(x){ return x === YOU; }) + 1;
-  var youWin = top === YOU;
-  var h2 = youWin ? "You'd win the enquiry." : "A homeowner would most likely ring " + top.name + " first.";
-  var sub = youWin
-    ? 'Your site reads as the safest of the ' + ranked.length + '. Keep the photo and trust signals up to stay ahead.'
-    : "You're currently " + (youRank === 2 ? 'second' : youRank === 3 ? 'third' : 'behind') + " — closing the photo and trust-badge gap is the fastest way to flip that. This is the gut-feel a homeowner forms in their first 60 seconds on each site.";
-
-  box.innerHTML = '<div class="db-card ink">' +
-    '<span class="db-kicker fill">Who\'d win the business?</span>' +
-    '<h3 style="font-family:var(--display);font-weight:900;font-size:28px;color:#fff;margin:12px 0 8px;text-transform:uppercase;letter-spacing:-0.02em;line-height:1.1">' + h2 + '</h3>' +
-    '<p style="font-family:var(--body);font-size:14.5px;color:rgba(255,255,255,0.78);margin:0;max-width:800px;line-height:1.5">' + sub + '</p>' +
-    '<div style="margin-top:18px;display:flex;gap:10px"><button class="db-btn primary" onclick="navigateTo(\'fixes\')">See my fix-it list</button></div>' +
-  '</div>';
-}
-
-function updateCompDraft(idx, v) { COMP_SLOTS[idx].draft = v; }
-function runCompAudit(idx) {
-  var url = (COMP_SLOTS[idx].draft || '').trim();
-  if (!url) return;
-  COMP_SLOTS[idx] = { url: url, audited: true, data: fakeAudit(url), draft: '' };
-  renderCompetitors();
-}
-function editCompSlot(idx) {
-  COMP_SLOTS[idx] = Object.assign({}, COMP_SLOTS[idx], { audited: false, draft: COMP_SLOTS[idx].url });
-  renderCompetitors();
-}
-
-/* ════════ HOMEOWNER DASHBOARD ════════ */
-function renderHomeownerDashboard() {
-  buildDonut('homeownerScoreDonut', 64, 160);
-  var builders = [
-    { name: 'Greenfield Construction', url: 'greenfieldconstruction.co.uk', loc: 'Bristol', score: 78, lastChecked: '5 days ago' },
-    { name: 'Marlow Renovations', url: 'marlow-renovations.co.uk', loc: 'Bath', score: 71, lastChecked: '2 weeks ago' },
-    { name: 'Heartly Builders Ltd', url: 'heartlybuilders.co.uk', loc: 'Bath', score: 64, lastChecked: '2 days ago' },
-    { name: 'Pearce & Sons Builders', url: 'pearceandsons.co.uk', loc: 'Bath', score: 41, lastChecked: '1 week ago' },
+  const baseFixes = report?.top_actions?.map((a,i)=>{
+    const cats = ['Photos','Trust','Quote flow','Speed','Clarity','SEO','Copy','Mobile','Trust','Speed'];
+    const diffs = ['Medium','Medium','Easy','Easy','Medium','Easy','Medium','Hard','Easy','Easy'];
+    const ests = ['1 hour','2-3 weeks','20 min','10 min','30 min','20 min','45 min','1 day','30 min','10 min'];
+    const impacts = [14,9,7,6,5,5,4,4,3,2];
+    const cat = cats[i%cats.length];
+    return { id:i+1, icon:iconForCategory(cat), title:a, impact:impacts[i]||2, difficulty:diffs[i%diffs.length], est:ests[i%ests.length], category:cat, why:'This fix directly addresses a trust concern that homeowners notice within the first 90 seconds on your site.' };
+  }) || [
+    { id:1,  icon:'hammer',     title:'Replace 6 stock photos with real before/after job shots',             impact:14, difficulty:'Medium', est:'1 hour',    category:'Photos',     why:'Six of your nine portfolio images are flagged as stock. Real photos are the single biggest score lift.' },
+    { id:2,  icon:'gear',       title:'Apply for FMB or TrustMark accreditation',                           impact:9,  difficulty:'Medium', est:'2-3 weeks', category:'Trust',      why:'You show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.' },
+    { id:3,  icon:'screwdriver',title:'Cut quote form to 4 fields: name, postcode, job type, note',         impact:7,  difficulty:'Easy',   est:'20 min',    category:'Quote flow', why:'Your form has 11 fields. Drop-off testing shows abandonment doubles past 6.' },
+    { id:4,  icon:'roller',     title:'Compress homepage hero image (currently 2.1MB)',                      impact:6,  difficulty:'Easy',   est:'10 min',    category:'Speed',      why:'Convert to WebP and target under 200KB. Cuts load time from 4.2s to ~1.8s.' },
+    { id:5,  icon:'hardhat',    title:'Create one landing page per service',                                 impact:5,  difficulty:'Hard',   est:'1 day',     category:'Clarity',    why:'Per-service pages help homeowners self-identify AND lift local SEO.' },
+    { id:6,  icon:'cone',       title:'Claim & link Google Business Profile from contact page',              impact:4,  difficulty:'Easy',   est:'20 min',    category:'SEO',        why:'You\'re ranking #14 for your area. A linked GBP is the fastest way into the local 3-pack.' },
+    { id:7,  icon:'clipboard',  title:'Surface 3 best reviews on the homepage',                             impact:4,  difficulty:'Easy',   est:'30 min',    category:'Trust',      why:'Reviews are buried. Move three to the homepage above the fold.' },
+    { id:8,  icon:'wrench',     title:'Rewrite hero headline around the homeowner outcome',                  impact:3,  difficulty:'Medium', est:'45 min',    category:'Copy',       why:'Hero currently says "We build X." Try "Add a kitchen-diner without losing your garden."' },
+    { id:9,  icon:'tape',       title:'Add a phone number to the header on mobile',                         impact:3,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'On mobile, the phone number isn\'t visible above the fold. Homeowners want quick contact.' },
+    { id:10, icon:'level',      title:'Add visible field labels during focus on quote form',                 impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'Labels disappear when typing on mobile. People forget what each field is.' },
   ];
-  document.getElementById('shortlistRows').innerHTML = builders.map(function(b, i){
-    var color = scoreColor(b.score);
-    var topCls = i === 0 ? ' top' : '';
-    var topBadge = i === 0 ? '<span class="top-pick-badge">TOP PICK</span>' : '';
-    return '<div class="shortlist-row' + topCls + '">' +
-      '<div>' +
-        '<div class="shortlist-name">' + b.name + topBadge + '</div>' +
-        '<div class="shortlist-url">' + b.url + '</div>' +
-      '</div>' +
-      '<div style="font-family:var(--body);font-size:13.5px;color:var(--ink)">' + b.loc + '</div>' +
-      '<div class="shortlist-score" style="background:' + color + '">' + b.score + '</div>' +
-      '<div style="font-family:var(--body);font-size:13.5px;color:var(--muted)">' + b.lastChecked + '</div>' +
-      '<div style="display:flex;gap:6px"><button class="db-btn small">View</button><button class="db-btn small">Re-check</button></div>' +
-    '</div>';
-  }).join('');
+
+  const [fixes, setFixes] = useState(baseFixes.map(f=>({...f, done:false, requestOpen:false, requested:false})));
+  const toggleDone = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, done:!f.done}:f));
+  const toggleReq  = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, requestOpen:!f.requestOpen}:f));
+  const submitReq  = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, requested:true, requestOpen:false}:f));
+
+  const doneCount      = fixes.filter(f=>f.done).length;
+  const reqCount       = fixes.filter(f=>f.requested).length;
+  const remaining      = fixes.filter(f=>!f.done).reduce((a,b)=>a+b.impact,0);
+  const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Your top 10 fixes</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>The to-do list, in priority order</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Sorted by impact — biggest score lifts at the top. Tick them off as you go, or have the BuilderAudit team handle any of them.</p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
+        <Card pad={22}>
+          <Label>Ticked off</Label>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:40, color:P.ink, lineHeight:1 }}>{doneCount}<span style={{ fontSize:22, color:P.muted }}> / {fixes.length}</span></div>
+          <div style={{ height:8, marginTop:10, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}>
+            <div style={{ width:`${(doneCount/fixes.length)*100}%`, height:'100%', background:P.green, transition:'width .25s' }}/>
+          </div>
+        </Card>
+        <Card pad={22}><Label>Help requested</Label><BigNum n={reqCount} sub="BuilderAudit team will be in touch"/></Card>
+        <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub="still on the table" yellow/></Card>
+      </div>
+
+      <Card pad={22} style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {fixes.map((f,idx)=>(
+            <div key={f.id} style={{ border:`2px solid ${P.line}`, borderRadius:6, background:f.done?P.surface:'#fff', opacity:f.done?0.68:1, overflow:'hidden', transition:'opacity .2s, background .2s' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'auto 40px 1fr auto auto', gap:14, alignItems:'center', padding:'14px 16px' }}>
+                <button onClick={()=>toggleDone(f.id)} style={{ flex:'0 0 auto', width:26, height:26, borderRadius:5, background:f.done?P.green:'#fff', border:`2.4px solid ${f.done?P.green:P.line}`, cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:14, fontFamily:F.display, transition:'background .15s, border-color .15s' }}>{f.done?'✓':''}</button>
+                <div style={{ flex:'0 0 auto', width:40, height:40, display:'grid', placeItems:'center' }}>
+                  <img src={`/assets/icons/${f.icon}.png`} alt="" width={40} height={40} style={{ width:40, height:40, objectFit:'contain' }}/>
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:f.done?'line-through':'none', lineHeight:1.35 }}>
+                    <span style={{ display:'inline-block', marginRight:8, padding:'1px 7px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:11, color:P.muted, letterSpacing:'0.04em' }}>#{idx+1}</span>
+                    {f.title}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:6, fontFamily:F.body, fontSize:12, color:P.muted, flexWrap:'wrap' }}>
+                    <span>{f.category}</span><span>·</span><span>{f.est}</span><span>·</span>
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                      <span style={{ width:6, height:6, borderRadius:'50%', background:diffColor(f.difficulty) }}/>
+                      {f.difficulty}
+                    </span>
+                  </div>
+                </div>
+                <span style={{ flex:'0 0 auto', padding:'6px 12px', background:P.green, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:13, whiteSpace:'nowrap' }}>+{f.impact} pts</span>
+                <div style={{ display:'flex', gap:6, flex:'0 0 auto' }}>
+                  {f.requested ? (
+                    <span style={{ padding:'8px 12px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:12, letterSpacing:'0.04em', whiteSpace:'nowrap' }}>✓ Help requested</span>
+                  ) : (
+                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'8px 12px', fontSize:12.5, boxShadow:'none' }}>{f.requestOpen?'Cancel':'Get help'}</Btn>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13.5, color:P.muted, lineHeight:1.5 }}>{f.why}</div>
+              {f.requestOpen && (
+                <div style={{ borderTop:`2px solid ${P.line}`, background:'rgba(82,71,184,0.06)', padding:'18px 16px 18px 102px' }}>
+                  <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Request support from BuilderAudit</div>
+                  <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:'0 0 14px', lineHeight:1.5, maxWidth:640 }}>Our team will reach out within 1 working day with a quote. Most fixes in this band are £{f.difficulty==='Easy'?'40-60':f.difficulty==='Medium'?'120-200':'300+'} including a free re-audit afterwards.</p>
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <Btn primary onClick={()=>submitReq(f.id)} style={{ padding:'10px 16px' }}>Send request</Btn>
+                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'10px 16px', boxShadow:'none' }}>Cancel</Btn>
+                    <span style={{ marginLeft:8, fontFamily:F.body, fontSize:12, color:P.muted }}>We'll email you at your registered address</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card style={{ background:P.ink, color:'#fff', borderColor:P.line }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+          <div>
+            <Kicker color={P.fill}>Want all 10 done by next month?</Kicker>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'12px 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Hand the whole list to our team</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>One quote, one project. Typical turnaround: 2-4 weeks.</p>
+          </div>
+          <Btn primary style={{ padding:'14px 22px', fontSize:15 }}>Get a quote for all 10 →</Btn>
+        </div>
+      </Card>
+    </main>
+  );
 }
 
-/* ════════ BOOT ════════ */
-renderNav();
-renderRolePill();
-showInitialPage();
+// ── Builder: Competitor Audits ───────────────────────────────────
+function BuilderCompetitors({ latestAudit }) {
+  const report = latestAudit?.report_json;
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return 'yoursite.co.uk';} })();
+  const you = {
+    name: report?.site_facts?.company_name || 'Your company',
+    url: domain, loc: report?.site_facts?.location||'UK',
+    score: report?.hero?.score||64,
+    breakdown: [
+      { name:'Photos', s:48 },{ name:'Trust', s:72 },{ name:'Mobile', s:86 },
+      { name:'Speed',  s:54 },{ name:'Clarity',s:58 },{ name:'Quote flow',s:68 },
+    ],
+    good:'Mobile experience and copy feel like a real, human builder.',
+    bad:'Stock photos and missing trade badges undermine trust.',
+  };
 
-/* Render all interactive content (cheap to do up-front, mock data) */
-if (ROLE === 'builder') {
-  renderDashboard();
-  renderReview();
-  renderPhotos();
-  renderFix10();
-  renderCompetitors();
-} else {
-  renderHomeownerDashboard();
+  const fakeAudit = (rawUrl) => {
+    const url = rawUrl.replace(/^https?:\/\//,'').replace(/\/$/,'').toLowerCase();
+    let h = 0;
+    for (let i=0;i<url.length;i++) h=(h*31+url.charCodeAt(i))|0;
+    const seed = (k) => { h=(h*1103515245+12345+k)|0; return ((h>>>0)%56)+35; };
+    const breakdown = ['Photos','Trust','Mobile','Speed','Clarity','Quote flow'].map((n,i)=>({name:n, s:seed(i)}));
+    const score = Math.round(breakdown.reduce((a,b)=>a+b.s,0)/breakdown.length);
+    const niceName = url.split('.')[0].replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+    return { name:niceName, loc:'Unknown', score, breakdown, good:'Fast load and easy navigation.', bad:'Missing accreditations and mixed photo quality.' };
+  };
+
+  const [slots, setSlots] = useState([
+    { url:'', audited:false, data:null, draft:'' },
+    { url:'', audited:false, data:null, draft:'' },
+  ]);
+  const runAudit = (i) => setSlots(s=>s.map((slot,j)=>{
+    if(j!==i) return slot;
+    const url=(slot.draft||'').trim();
+    if(!url) return slot;
+    return {...slot, url, audited:true, data:fakeAudit(url)};
+  }));
+  const editAgain = (i) => setSlots(s=>s.map((slot,j)=>j===i?{...slot, audited:false, draft:slot.url}:slot));
+  const setDraft = (i,v) => setSlots(s=>s.map((slot,j)=>j===i?{...slot, draft:v}:slot));
+
+  const audited = slots.filter(s=>s.audited&&s.data);
+  const ranked = [you,...audited.map(s=>s.data)].sort((a,b)=>b.score-a.score);
+  const youRank = ranked.findIndex(x=>x===you)+1;
+
+  const ScoreCard = ({ b, label, yellow, slotIdx, onEdit }) => {
+    const color = b.score>=75?P.green:b.score>=55?P.fill:P.red;
+    return (
+      <Card pad={22} style={{ background:yellow?P.fill:'#fff' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:14 }}>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{label}</div>
+            <div style={{ fontFamily:F.display, fontWeight:800, fontSize:20, color:P.ink, lineHeight:1.1 }}>{b.name}</div>
+            <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:4 }}>{b.url}</div>
+            {onEdit && <button onClick={onEdit} style={{ background:'transparent', border:'none', cursor:'pointer', color:P.accent, fontFamily:F.body, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', padding:0, marginTop:4 }}>Change</button>}
+          </div>
+          <div style={{ flex:'0 0 auto', padding:'10px 14px', background:color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:24, lineHeight:1, textAlign:'center', boxShadow:`3px 3px 0 ${P.line}`, minWidth:60 }}>
+            {b.score}<div style={{ fontSize:9, fontWeight:700, marginTop:2, opacity:0.85, letterSpacing:'0.08em' }}>/ 100</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
+          {b.breakdown.map((cat,j)=>{
+            const cc = cat.s>=75?P.green:cat.s>=55?P.fill:P.red;
+            return <div key={j} style={{ display:'grid', gridTemplateColumns:'90px 1fr 30px', gap:10, alignItems:'center' }}>
+              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.ink }}>{cat.name}</div>
+              <div style={{ height:8, background:'rgba(0,0,0,0.08)', border:`1.5px solid ${P.line}`, borderRadius:3, overflow:'hidden' }}><div style={{ width:`${cat.s}%`, height:'100%', background:cc }}/></div>
+              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{cat.s}</div>
+            </div>;
+          })}
+        </div>
+        <div style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45, marginTop:8 }}><span style={{ flex:'0 0 auto', color:P.green, fontWeight:800 }}>✓</span>{b.good}</div>
+        <div style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45, marginTop:8 }}><span style={{ flex:'0 0 auto', color:P.red, fontWeight:800 }}>!</span>{b.bad}</div>
+      </Card>
+    );
+  };
+
+  const EmptySlot = ({ slot, i }) => (
+    <Card pad={28} style={{ borderStyle:'dashed', borderWidth:2.5, boxShadow:'none', minHeight:320, display:'flex', flexDirection:'column', justifyContent:'center' }}>
+      <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Competitor slot</div>
+      <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</h3>
+      <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:'0 0 18px', lineHeight:1.5 }}>Paste a competitor's website. We'll audit it and compare side by side.</p>
+      <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`4px 4px 0 ${P.line}` }}>
+        <span style={{ padding:'0 12px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</span>
+        <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)} onKeyDown={e=>e.key==='Enter'&&runAudit(i)} placeholder="theirsite.co.uk" style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+        <button onClick={()=>runAudit(i)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 16px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer', whiteSpace:'nowrap' }}>Run audit →</button>
+      </div>
+      <div style={{ marginTop:14, fontFamily:F.body, fontSize:12, color:P.muted }}>Takes about 60 seconds. They won't be told.</div>
+    </Card>
+  );
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1300, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Competitor audits</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>How you stack up</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Add up to two competitor websites. We'll audit them the same way we audited yours and sit them next to you.</p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:20, marginBottom:24, alignItems:'stretch' }}>
+        {slots[0].audited ? <ScoreCard b={slots[0].data} label="Competitor" slotIdx={0} onEdit={()=>editAgain(0)}/> : <EmptySlot slot={slots[0]} i={0}/>}
+        <ScoreCard b={you} label={`You · ${you.loc}`} yellow/>
+        {slots[1].audited ? <ScoreCard b={slots[1].data} label="Competitor" slotIdx={1} onEdit={()=>editAgain(1)}/> : <EmptySlot slot={slots[1]} i={1}/>}
+      </div>
+
+      {audited.length > 0 && (
+        <Card style={{ background:P.ink, color:'#fff', borderColor:P.line }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>The verdict</div>
+          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
+            You're {youRank===1?'ahead':'not at the top yet'}
+          </h3>
+          <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>
+            {youRank===1 ? 'Your site currently outscores all added competitors. Keep fixing to stay ahead.' : `You're ranked #${youRank} out of ${ranked.length}. Address your top fixes to close the gap.`}
+          </p>
+        </Card>
+      )}
+    </main>
+  );
 }
+
+// ════════════════════════════════════════════════════════════════
+// HOMEOWNER PAGES
+// ════════════════════════════════════════════════════════════════
+function HomeownerDashboard({ auditData }) {
+  const builders = auditData?.builders || [
+    { name:'Heartly Builders Ltd',     url:'heartlybuilders.co.uk',    loc:'Bath',    score:64, lastChecked:'2 days ago',  notes:'Stock photos · no accreditations shown', saved:true },
+    { name:'Greenfield Construction',  url:'greenfieldconstruction.co.uk', loc:'Bristol',score:78, lastChecked:'5 days ago',  notes:'FMB accredited · 14 real photos', saved:true },
+    { name:'Pearce & Sons Builders',   url:'pearceandsons.co.uk',      loc:'Bath',    score:41, lastChecked:'1 week ago',   notes:'No insurance shown · all photos look fake', saved:true },
+    { name:'Marlow Renovations',       url:'marlow-renovations.co.uk', loc:'Bath',    score:71, lastChecked:'2 weeks ago',  notes:'Good portfolio · contact form a bit clunky', saved:false },
+  ];
+  const shortlist = builders.filter(b=>b.saved);
+  const latest = builders[0];
+  const avgScore = Math.round(shortlist.reduce((a,b)=>a+b.score,0)/shortlist.length);
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Welcome back</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{shortlist.length} builders on your shortlist</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>Average score {avgScore} / 100 · Top pick is scoring {Math.max(...shortlist.map(b=>b.score))}</p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <Label>Latest builder checked</Label>
+          <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:24, alignItems:'center', marginTop:10 }}>
+            <Donut score={latest.score} size={160}/>
+            <div>
+              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:24, color:P.ink, marginBottom:4, letterSpacing:'-0.01em' }}>{latest.name}</div>
+              <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, marginBottom:14 }}>{latest.url} · {latest.loc}</div>
+              <div style={{ background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:4, padding:'10px 12px', marginBottom:14, fontFamily:F.body, fontSize:13.5, color:P.ink }}>
+                <b style={{ color:P.red, textTransform:'uppercase', fontSize:11, letterSpacing:'0.06em', marginRight:8 }}>⚠ Watch out</b>{latest.notes}
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <Btn primary>See full audit</Btn>
+                <Btn>Re-check</Btn>
+              </div>
+            </div>
+          </div>
+        </Card>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Saved</Label><BigNum n={shortlist.length} sub="builders on shortlist"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Average score</Label><BigNum n={`${avgScore} / 100`} sub="across your shortlist"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Total audits</Label><BigNum n={builders.length} sub="builders checked overall"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}>
+            <Label>Top pick</Label>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, lineHeight:1.1 }}>{[...shortlist].sort((a,b)=>b.score-a.score)[0]?.name?.split(' ')[0]}</div>
+            <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, marginTop:4 }}>scoring {Math.max(...shortlist.map(b=>b.score))} / 100</div>
+          </Card>
+        </div>
+      </div>
+
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your shortlist</h3>
+          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Sorted by score</span>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 90px 1fr auto', gap:16, alignItems:'center', padding:'0 12px 10px', borderBottom:`1.5px solid ${P.line}`, marginBottom:8, fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>
+          <div>Builder</div><div>Location</div><div style={{ textAlign:'center' }}>Score</div><div>Last checked</div><div></div>
+        </div>
+        {[...builders].sort((a,b)=>b.score-a.score).map((b,i)=>{
+          const color = b.score>=75?P.green:b.score>=55?P.fill:P.red;
+          return (
+            <div key={i} style={{ display:'grid', gridTemplateColumns:'2fr 1fr 90px 1fr auto', gap:16, alignItems:'center', padding:'14px 12px', borderRadius:6, background:i===0?'rgba(255,210,77,0.22)':'transparent', borderBottom:i<builders.length-1?`1px solid ${P.surface}`:'none' }}>
+              <div>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{b.name} {i===0&&<span style={{ marginLeft:6, padding:'2px 8px', background:P.ink, color:'#fff', borderRadius:999, fontSize:10, letterSpacing:'0.06em' }}>TOP PICK</span>}</div>
+                <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:2 }}>{b.url}</div>
+              </div>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink }}>{b.loc}</div>
+              <div style={{ margin:'0 auto', width:60, padding:'8px 4px', background:color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:18, textAlign:'center' }}>{b.score}</div>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.muted }}>{b.lastChecked}</div>
+              <div style={{ display:'flex', gap:6 }}>
+                <Btn style={{ padding:'6px 12px', fontSize:12, boxShadow:'none' }}>View</Btn>
+                <Btn style={{ padding:'6px 12px', fontSize:12, boxShadow:'none' }}>Re-check</Btn>
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+
+      <Card style={{ background:P.fill }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+          <div>
+            <Kicker color={P.ink}>Got another quote?</Kicker>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check a new builder</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste their site URL. We'll add them to your shortlist with a fresh audit.</p>
+          </div>
+          <ScanBar placeholder="abuildersite.co.uk" cta="Add & audit"/>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Loading skeleton ─────────────────────────────────────────────
+function Loading() {
+  return (
+    <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', fontFamily:F.body, fontSize:16, color:P.muted }}>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ width:48, height:48, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto 16px' }}/>
+        Loading your dashboard…
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    </div>
+  );
+}
+
+// ── Error state ──────────────────────────────────────────────────
+function ErrorState({ msg }) {
+  return (
+    <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', padding:'40px' }}>
+      <Card style={{ maxWidth:480, textAlign:'center' }}>
+        <div style={{ fontSize:48, marginBottom:16 }}>⚠</div>
+        <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, textTransform:'uppercase', margin:'0 0 12px' }}>Something went wrong</h2>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:'0 0 20px', lineHeight:1.5 }}>{msg}</p>
+        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+          <Btn primary onClick={()=>window.location.reload()}>Try again</Btn>
+          <Btn onClick={()=>window.location.href='/'}>Go home</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════════════════════
+function DashboardApp() {
+  const params = new URLSearchParams(window.location.search);
+  const [role, setRole] = useState(params.get('role')==='homeowner'?'homeowner':'builder');
+  const [page, setPage] = useState(params.get('page')||'dashboard');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [user, setUser] = useState(null);
+  const [latestAudit, setLatestAudit] = useState(null);
+  const [auditData, setAuditData] = useState(null);
+
+  // Keep URL in sync
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    p.set('role', role); p.set('page', page);
+    window.history.replaceState({}, '', window.location.pathname+'?'+p.toString());
+  }, [role, page]);
+
+  // Fetch user data from the real API
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      setError(null);
+      try {
+        // Try to fetch real user data
+        const [profileRes, auditsRes] = await Promise.all([
+          fetch('/api/user/profile', { credentials:'include' }).catch(()=>null),
+          fetch('/api/user/audits',  { credentials:'include' }).catch(()=>null),
+        ]);
+
+        if (profileRes?.ok) {
+          const profile = await profileRes.json().catch(()=>null);
+          if (profile) setUser(profile);
+        }
+
+        if (auditsRes?.ok) {
+          const audits = await auditsRes.json().catch(()=>null);
+          if (audits?.latest) setLatestAudit(audits.latest);
+          if (audits) setAuditData({
+            count:   audits.total_count || 1,
+            company: user?.company_name || audits.latest?.url || 'Your company',
+            history: audits.history || [],
+          });
+        }
+      } catch(e) {
+        // Silent — fall through to demo mode
+      }
+
+      // If we got no data, fall back to demo mode (mock data already baked into components)
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
+  if (loading) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
+
+  const pages = role==='builder' ? {
+    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit}/>,
+    about:       <BuilderAbout       latestAudit={latestAudit}/>,
+    review:      <BuilderReview      latestAudit={latestAudit}/>,
+    photos:      <BuilderPhotos      latestAudit={latestAudit}/>,
+    fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
+    competitors: <BuilderCompetitors latestAudit={latestAudit}/>,
+  } : {
+    dashboard: <HomeownerDashboard auditData={auditData}/>,
+    shortlist: <HomeownerDashboard auditData={auditData}/>,
+    account:   <HomeownerDashboard auditData={auditData}/>,
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', background:P.surface }}>
+      <Nav role={role} page={page} setPage={setPage} user={user}/>
+      {pages[page] || pages['dashboard']}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<DashboardApp/>);
 </script>
-
 </body>
 </html>

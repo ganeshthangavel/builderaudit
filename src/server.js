@@ -330,12 +330,57 @@ app.get('/api/health', (req, res) => res.json({
   database: db.isEnabled(),
 }));
 
+/* In-memory map of audit-ID → { email, audience }.
+ * When a user opts in to "email me when ready" mid-audit, we store their
+ * email here. When the audit completes, we look it up and fire the email.
+ *
+ * Why a Map and not the DB: this is the lean-MVP path. The audit lifecycle
+ * is server-bound (one request, one process), so an in-memory map is fine.
+ * If the server crashes mid-audit, the audit is lost anyway. We'll move to
+ * a DB column when the audit goes fully async (separate worker process). */
+const pendingNotifications = new Map();
+const NOTIFICATION_TTL_MS = 30 * 60 * 1000; // 30 minutes — well beyond max audit duration
+
+/* Periodic cleanup so the map doesn't grow forever on a long-running server */
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of pendingNotifications) {
+    if (now - entry.registeredAt > NOTIFICATION_TTL_MS) {
+      pendingNotifications.delete(id);
+    }
+  }
+}, 5 * 60 * 1000); // every 5 minutes
+
+/* Register an email for an in-progress audit. Called from the client when the
+ * user submits the "email me when ready" form. Idempotent: re-submitting with
+ * the same audit ID overwrites the email. */
+app.post('/api/audit/notify', (req, res) => {
+  const { auditId, email } = req.body || {};
+  if (!auditId || typeof auditId !== 'string') {
+    return res.status(400).json({ error: 'auditId required' });
+  }
+  if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+  /* Only allow registering against IDs that look like our format */
+  if (!/^rpt_[A-Za-z0-9]{6,}$/.test(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID format' });
+  }
+  pendingNotifications.set(auditId, { email: email.trim().toLowerCase(), registeredAt: Date.now() });
+  console.log('[audit-notify] Registered', email, 'for', auditId);
+  res.json({ ok: true });
+});
+
 // Run an audit — streams progress via SSE, saves to DB on complete
 app.post('/api/audit', async (req, res) => {
   const { url } = req.body;
   if (!url || !url.startsWith('http')) {
     return res.status(400).json({ error: 'Please provide a valid URL starting with http/https' });
   }
+
+  /* Generate the audit ID NOW (not at the end) so the client can register an
+   * email against it via /api/audit/notify while the audit is still running. */
+  const auditId = 'rpt_' + nanoid();
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -363,6 +408,10 @@ app.post('/api/audit', async (req, res) => {
   res.on('finish', cleanup);
 
   try {
+    /* Send the audit ID FIRST so the client can register an email against it
+     * via /api/audit/notify while the audit is still in progress. */
+    send('audit_id', { id: auditId });
+
     send('status', { message: 'Crawling website...', step: 1, total: 4 });
     const pages = await smartCrawl(url);
 
@@ -390,6 +439,20 @@ app.post('/api/audit', async (req, res) => {
         message: 'We could not audit this website. It appears to be using bot protection (e.g. Cloudflare, custom WAF) that blocks automated analysis tools.',
         suggestion: 'This is unusual for legitimate UK construction websites. If you own this site, check your anti-bot settings or contact us at gthangavel1@gmail.com so we can review your case.',
       });
+      /* Notify the user that the audit didn't complete, if they opted in */
+      const notify = pendingNotifications.get(auditId);
+      if (notify && email.isEnabled()) {
+        try {
+          await email.sendAuditReady({
+            email: notify.email,
+            auditId,
+            auditUrl: url,
+            score: null,
+            appBaseUrl: process.env.APP_BASE_URL,
+          });
+        } catch (e) { console.warn('[audit] notify-on-blocked failed:', e.message); }
+        pendingNotifications.delete(auditId);
+      }
       cleanup();
       return res.end();
     }
@@ -417,10 +480,24 @@ app.post('/api/audit', async (req, res) => {
 
     send('status', { message: 'Saving your report...', step: 4, total: 4 });
 
-    // Save to database and return an ID
-    const auditId = 'rpt_' + nanoid();
+    /* Save to database using the ID we generated up front */
     if (db.isEnabled()) {
       await db.saveAudit({ id: auditId, url, report });
+    }
+
+    /* Notify the user if they opted in via /api/audit/notify */
+    const notify = pendingNotifications.get(auditId);
+    if (notify && email.isEnabled()) {
+      try {
+        await email.sendAuditReady({
+          email: notify.email,
+          auditId,
+          auditUrl: url,
+          score: report?.hero?.score ?? null,
+          appBaseUrl: process.env.APP_BASE_URL,
+        });
+      } catch (e) { console.warn('[audit] sendAuditReady failed:', e.message); }
+      pendingNotifications.delete(auditId);
     }
 
     send('complete', { id: auditId, url, scannedAt: new Date().toISOString() });
@@ -1004,4 +1081,3 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-       

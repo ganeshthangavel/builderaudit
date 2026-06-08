@@ -671,14 +671,14 @@ function BuilderPhotos({ latestAudit, imageUrls = [] }) {
             return (
               <div key={p.id} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden', display:'flex', flexDirection:'column' }}>
                 {/* Photo thumbnail — links to page on the site */}
-                <a href={p.pageUrl || '#'} target="_blank" rel="noopener noreferrer"
+                <a href={p.pageUrl || p.src || '#'} target="_blank" rel="noopener noreferrer"
                    style={{ display:'block', height:160, background:'#e8e4d8', position:'relative', borderBottom:`2px solid ${P.line}`, textDecoration:'none', overflow:'hidden' }}>
                   {thumbContent}
                   <div style={{ position:'absolute', inset:0, backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px)', display:p.src?'none':'flex', alignItems:'center', justifyContent:'center' }}>
                     <span style={{ fontFamily:'ui-monospace, monospace', fontSize:11, color:'rgba(0,0,0,0.45)' }}>photo-{String(p.id).padStart(2,'0')}.jpg</span>
                   </div>
                   <span style={{ position:'absolute', top:10, left:10, padding:'4px 10px', background:v.color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{v.label}</span>
-                  {p.pageUrl && <span style={{ position:'absolute', bottom:8, right:8, padding:'3px 8px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>↗ View on site</span>}
+                  {(p.pageUrl || p.src) && <span style={{ position:'absolute', bottom:8, right:8, padding:'3px 8px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>{p.pageUrl ? '↗ View on site' : '↗ View image'}</span>}
                 </a>
                 <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8, flex:1 }}>
                   <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{p.label}</div>

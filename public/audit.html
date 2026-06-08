@@ -17,7 +17,7 @@
    BA3 SCANNING · Audit-in-progress page
    Visual port of /tmp/scan-design/ba3/project/src/scanning.jsx
    Real backend: connects to /api/audit SSE stream, maps 4 server
-   phases to the 9-check visual list, redirects to /report/:id.
+   phases to the 9-check visual list, redirects to /dashboard?id=:id.
    ════════════════════════════════════════════════════════════════ */
 :root {
   --fill:    #FFD24D;
@@ -663,9 +663,9 @@ function handle(name, data) {
     var nc = document.getElementById('notifyCard'); if (nc) nc.style.display = 'none';
     var ns = document.getElementById('notifySent'); if (ns) ns.style.display = 'none';
     var cta = document.getElementById('ctaButton');
-    cta.href = '/report/' + data.id;
+    cta.href = '/dashboard?id=' + data.id;
     cta.classList.add('on');
-    setTimeout(function(){ window.location.href = '/report/' + data.id; }, 1500);
+    setTimeout(function(){ window.location.href = '/dashboard?id=' + data.id; }, 1500);
   } else if (name === 'blocked') {
     showBlocked(data);
   } else if (name === 'error') {
@@ -762,7 +762,7 @@ function showWaiting() {
           /* Report is ready — redirect */
           clearInterval(pollingInterval);
           clearInterval(dotInterval);
-          window.location.href = '/report/' + currentAuditId;
+          window.location.href = '/dashboard?id=' + currentAuditId;
         }
       }
     } catch(e) { /* network blip — try again next tick */ }

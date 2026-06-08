@@ -999,6 +999,7 @@ function ErrorState({ msg }) {
 // ═══════════════════════════════════════════════════════════════
 function DashboardApp() {
   const params = new URLSearchParams(window.location.search);
+  const auditIdFromUrl = params.get('id') || null;    // set when redirected from /audit
   const [role, setRole] = useState(params.get('role')==='homeowner'?'homeowner':'builder');
   const [page, setPage] = useState(params.get('page')||'dashboard');
   const [loading, setLoading] = useState(true);
@@ -1007,20 +1008,39 @@ function DashboardApp() {
   const [latestAudit, setLatestAudit] = useState(null);
   const [auditData, setAuditData] = useState(null);
 
-  // Keep URL in sync
+  // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     p.set('role', role); p.set('page', page);
+    if (auditIdFromUrl) p.set('id', auditIdFromUrl);
     window.history.replaceState({}, '', window.location.pathname+'?'+p.toString());
   }, [role, page]);
 
-  // Fetch user data from the real API
+  // Fetch data — priority: specific audit by ?id= > user's latest audit > demo mode
   useEffect(() => {
     async function loadData() {
       setLoading(true);
       setError(null);
       try {
-        // Try to fetch real user data
+        // 1. If ?id= is in the URL, load that specific audit directly
+        if (auditIdFromUrl) {
+          const auditRes = await fetch('/api/report/' + auditIdFromUrl + '/data', { credentials:'include' }).catch(()=>null);
+          if (auditRes?.ok) {
+            const data = await auditRes.json().catch(()=>null);
+            if (data && !data.locked && data.report) {
+              setLatestAudit({ id: auditIdFromUrl, url: data.url, report_json: data.report, created_at: data.created_at });
+              setAuditData({
+                count:   1,
+                company: data.report?.business_snapshot?.company_name || data.url || 'Your company',
+                history: [{ date: 'Latest', score: data.report?.hero?.score || 0 }],
+              });
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
+        // 2. Try to fetch user's own data (logged-in user)
         const [profileRes, auditsRes] = await Promise.all([
           fetch('/api/user/profile', { credentials:'include' }).catch(()=>null),
           fetch('/api/user/audits',  { credentials:'include' }).catch(()=>null),
@@ -1036,7 +1056,7 @@ function DashboardApp() {
           if (audits?.latest) setLatestAudit(audits.latest);
           if (audits) setAuditData({
             count:   audits.total_count || 1,
-            company: user?.company_name || audits.latest?.url || 'Your company',
+            company: audits.latest?.report_json?.business_snapshot?.company_name || audits.latest?.url || 'Your company',
             history: audits.history || [],
           });
         }
@@ -1044,7 +1064,7 @@ function DashboardApp() {
         // Silent — fall through to demo mode
       }
 
-      // If we got no data, fall back to demo mode (mock data already baked into components)
+      // 3. Fall back to demo mode (mock data already baked into components)
       setLoading(false);
     }
     loadData();

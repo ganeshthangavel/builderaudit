@@ -340,8 +340,27 @@ app.post('/api/audit', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  /* Tell proxies (Railway, nginx, Cloudflare) to never buffer this response.
+     Without this, the SSE stream gets buffered and the client sees nothing
+     until the connection ends. */
+  res.setHeader('X-Accel-Buffering', 'no');
 
   const send = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
+
+  /* SSE heartbeat: long crawls (5+ minutes for stubborn sites) cause Railway's
+     proxy to time out the connection after ~60s of idle. We send a comment
+     line every 15s — EventSource ignores it client-side but the bytes keep
+     the TCP connection from being killed for inactivity. */
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat ' + Date.now() + '\n\n');
+    } catch (e) { /* connection already closed; let the audit finish on its own */ }
+  }, 15000);
+
+  /* Always clear the heartbeat when we're done — never leave intervals running */
+  const cleanup = () => clearInterval(heartbeat);
+  res.on('close', cleanup);
+  res.on('finish', cleanup);
 
   try {
     send('status', { message: 'Crawling website...', step: 1, total: 4 });
@@ -371,6 +390,7 @@ app.post('/api/audit', async (req, res) => {
         message: 'We could not audit this website. It appears to be using bot protection (e.g. Cloudflare, custom WAF) that blocks automated analysis tools.',
         suggestion: 'This is unusual for legitimate UK construction websites. If you own this site, check your anti-bot settings or contact us at gthangavel1@gmail.com so we can review your case.',
       });
+      cleanup();
       return res.end();
     }
 
@@ -408,6 +428,7 @@ app.post('/api/audit', async (req, res) => {
     console.error(err);
     send('error', { message: err.message || 'Audit failed. Please try again.' });
   }
+  cleanup();
   res.end();
 });
 
@@ -983,3 +1004,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+       

@@ -336,7 +336,7 @@ function BuilderDashboard({ auditData, latestAudit }) {
 // ── Builder: About your business ────────────────────────────────
 function BuilderAbout({ latestAudit }) {
   const report = latestAudit?.report_json;
-  const facts = report?.site_facts || {};
+  const facts = report?.business_snapshot || {};
   const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'—';} })();
 
   const Field = ({ label, value, note }) => (
@@ -349,12 +349,17 @@ function BuilderAbout({ latestAudit }) {
     </div>
   );
 
-  const accreditations = facts.accreditations?.length > 0 ? facts.accreditations.map(a=>({ name:a, held:true })) : [
-    { name:'TrustMark',                      held:false },
-    { name:'FMB (Federation of Master Builders)', held:false },
-    { name:'CHAS',                           held:false },
-    { name:'NICEIC (electrical works)',      held:false },
-  ];
+  /* Build accreditations list from real data + defaults */
+  const realAccreds = (facts.accreditations || []).map(a => ({ name: a, held: true }));
+  const defaultAccreds = ['TrustMark', 'FMB (Federation of Master Builders)', 'CHAS', 'NICEIC (electrical works)'];
+  const accreditations = realAccreds.length > 0
+    ? [...realAccreds, ...defaultAccreds.filter(d => !realAccreds.some(r => r.name.toLowerCase().includes(d.toLowerCase().split(' ')[0]))).map(d => ({ name: d, held: false }))]
+    : defaultAccreds.map(d => ({ name: d, held: false }));
+
+  const teamDisplay = [
+    ...(facts.team?.owners || []),
+    ...(facts.team?.key_people || []),
+  ].filter(Boolean);
 
   return (
     <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
@@ -362,21 +367,22 @@ function BuilderAbout({ latestAudit }) {
         <Kicker color={P.accent}>About your business</Kicker>
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What we know about you</h1>
         <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0 }}>
-          This is what BuilderAudit picks up from {domain}. Items in red are missing or weak — fixing them lifts your trust score.
+          This is what BuilderAudit picks up from {domain}. Items showing "—" are missing from your site — fixing them lifts your trust score.
         </p>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:24, marginBottom:24 }}>
         <Card>
           <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Business details</h3>
-          <Field label="Trading name" value={facts.company_name}/>
-          <Field label="Website"      value={domain}/>
-          <Field label="Location"     value={facts.location}/>
-          <Field label="Founded"      value={facts.established}/>
-          <Field label="Team size"    value={facts.team?.team_size}/>
-          <Field label="Services"     value={facts.work_types?.join(', ')}/>
-          <Field label="Service area" value={facts.service_area}/>
-          <Field label="One-liner"    value={facts.one_liner}/>
+          <Field label="Trading name"  value={facts.company_name}/>
+          <Field label="Website"       value={domain}/>
+          <Field label="Location"      value={facts.location}/>
+          <Field label="Service area"  value={facts.service_area}/>
+          <Field label="Founded"       value={facts.established} note={facts.years_trading ? `(${facts.years_trading})` : null}/>
+          <Field label="Team size"     value={facts.team?.team_size}/>
+          <Field label="Services"      value={facts.work_types?.join(', ')}/>
+          <Field label="Project range" value={facts.project_value_range}/>
+          <Field label="One-liner"     value={facts.one_liner}/>
         </Card>
 
         <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -392,12 +398,28 @@ function BuilderAbout({ latestAudit }) {
             </ul>
           </Card>
 
-          {facts.contact && (
+          {teamDisplay.length > 0 && (
+            <Card pad={22}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Team</div>
+              {teamDisplay.map((p,i) => (
+                <div key={i} style={{ fontFamily:F.body, fontSize:14, color:P.ink, padding:'4px 0', borderBottom:i<teamDisplay.length-1?`1px solid ${P.surface}`:'none' }}>{p}</div>
+              ))}
+            </Card>
+          )}
+
+          {facts.contact && (facts.contact.phone || facts.contact.email || facts.contact.address) && (
             <Card pad={22}>
               <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Contact details on site</div>
-              {facts.contact.phone && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>📞 {facts.contact.phone}</div>}
-              {facts.contact.email && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>✉ {facts.contact.email}</div>}
+              {facts.contact.phone   && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>📞 {facts.contact.phone}</div>}
+              {facts.contact.email   && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>✉ {facts.contact.email}</div>}
               {facts.contact.address && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink }}>📍 {facts.contact.address}</div>}
+            </Card>
+          )}
+
+          {facts.awards?.length > 0 && (
+            <Card pad={22} style={{ background:'rgba(82,71,184,0.06)', borderColor:P.accent }}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>🏆 Awards & recognition</div>
+              {facts.awards.map((a,i) => <div key={i} style={{ fontFamily:F.body, fontSize:14, color:P.ink, padding:'3px 0' }}>{a}</div>)}
             </Card>
           )}
 
@@ -546,7 +568,140 @@ function BuilderReview({ latestAudit }) {
 }
 
 // ── Builder: Photo Review ────────────────────────────────────────
-function BuilderPhotos({ latestAudit }) {
+function BuilderPhotos({ latestAudit, imageUrls = [] }) {
+  const report = latestAudit?.report_json;
+  const pa = report?.photo_analysis;
+
+  /* Merge AI analysis with real image URLs.
+     The AI gives us descriptions + verdicts; imageUrls gives us the actual src.
+     We pair them by position — first N strong_images with first N urls, then weak. */
+  const photos = (() => {
+    const strong = (pa?.strong_images || []).map((p, i) => ({
+      id: i + 1,
+      src: imageUrls[i]?.src || null,
+      pageUrl: imageUrls[i]?.pageUrl || null,
+      alt: imageUrls[i]?.alt || p.description || '',
+      label: p.description || 'Real photo',
+      detail: p.why_it_works || '',
+      tags: ['Real', 'Portfolio'],
+      verdict: 'real',
+      hint: 'Keep this photo — it shows real work.',
+    }));
+    const weakOffset = strong.length;
+    const weak = (pa?.weak_images || []).map((p, i) => ({
+      id: strong.length + i + 1,
+      src: imageUrls[weakOffset + i]?.src || null,
+      pageUrl: imageUrls[weakOffset + i]?.pageUrl || null,
+      alt: imageUrls[weakOffset + i]?.alt || p.description || '',
+      label: p.description || 'Flagged photo',
+      detail: p.issue || '',
+      tags: [p.confirmed_stock ? 'Stock detected' : 'AI-flagged', 'Review'],
+      verdict: 'stock',
+      hint: p.impact || 'Consider replacing this with a real job photo.',
+    }));
+    if (strong.length + weak.length > 0) return [...strong, ...weak];
+
+    /* Fallback: use raw imageUrls without AI analysis */
+    if (imageUrls.length > 0) {
+      return imageUrls.slice(0, 12).map((img, i) => ({
+        id: i + 1,
+        src: img.src,
+        pageUrl: img.pageUrl,
+        alt: img.alt || '',
+        label: img.alt || `Photo ${i + 1}`,
+        detail: 'Found on your site',
+        tags: ['Unclassified'],
+        verdict: 'unknown',
+        hint: 'Run a full re-scan to get AI analysis of this photo.',
+      }));
+    }
+
+    /* Demo mode — no real data */
+    return [
+      { id:1, src:null, pageUrl:null, alt:'', label:'Extension rear view', detail:'Real photo — visible site debris, realistic shadows.', tags:['Real','Mobile upload'], verdict:'real', hint:'Keep this photo — real job evidence.' },
+      { id:2, src:null, pageUrl:null, alt:'', label:'Kitchen refit', detail:'Reverse-image match found on iStock.', tags:['Stock detected','iStock match'], verdict:'stock', hint:'Replace with a real photo from a recent kitchen job.' },
+      { id:3, src:null, pageUrl:null, alt:'', label:'Loft conversion', detail:'AI artefact detected: warped geometry.', tags:['AI-generated','Replace urgently'], verdict:'stock', hint:'This will undermine trust with homeowners.' },
+      { id:4, src:null, pageUrl:null, alt:'', label:'Front extension', detail:'EXIF metadata consistent with iPhone camera.', tags:['Real','EXIF: present'], verdict:'real', hint:'Good evidence photo.' },
+    ];
+  })();
+
+  const realCount = photos.filter(p => p.verdict === 'real').length;
+  const stockCount = photos.filter(p => p.verdict === 'stock').length;
+
+  const verdictMap = {
+    real:    { label:'Real',        color:P.green },
+    stock:   { label:'Flagged',     color:P.red },
+    ai:      { label:'AI',          color:P.red },
+    unknown: { label:'Unclassified', color:P.muted },
+  };
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Photo review</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Are your photos working for you?</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
+          Every photo labelled as past work was checked — reverse-image search, AI detection, and EXIF metadata. Click any image to visit the page it's on.
+        </p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
+        <Card pad={22}><Label>Total photos</Label><BigNum n={photos.length} sub="photos on your site"/></Card>
+        <Card pad={22} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}><Label>Real photos</Label><BigNum n={realCount} sub="confirmed authentic"/></Card>
+        <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}><Label>Flagged photos</Label><BigNum n={stockCount} sub="stock or AI detected"/></Card>
+      </div>
+
+      {pa?.summary && (
+        <Card style={{ marginBottom:24, background:P.fill }}>
+          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>
+            <b style={{ fontFamily:F.display, fontSize:13, textTransform:'uppercase', letterSpacing:'0.06em', display:'block', marginBottom:8 }}>Overall verdict</b>
+            {pa.summary}
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Photo-by-photo breakdown</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16 }}>
+          {photos.map((p) => {
+            const v = verdictMap[p.verdict] || verdictMap.unknown;
+            const thumbContent = p.src
+              ? <img src={p.src} alt={p.alt} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} onError={e=>{ e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
+              : null;
+            return (
+              <div key={p.id} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+                {/* Photo thumbnail — links to page on the site */}
+                <a href={p.pageUrl || '#'} target="_blank" rel="noopener noreferrer"
+                   style={{ display:'block', height:160, background:'#e8e4d8', position:'relative', borderBottom:`2px solid ${P.line}`, textDecoration:'none', overflow:'hidden' }}>
+                  {thumbContent}
+                  <div style={{ position:'absolute', inset:0, backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px)', display:p.src?'none':'flex', alignItems:'center', justifyContent:'center' }}>
+                    <span style={{ fontFamily:'ui-monospace, monospace', fontSize:11, color:'rgba(0,0,0,0.45)' }}>photo-{String(p.id).padStart(2,'0')}.jpg</span>
+                  </div>
+                  <span style={{ position:'absolute', top:10, left:10, padding:'4px 10px', background:v.color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{v.label}</span>
+                  {p.pageUrl && <span style={{ position:'absolute', bottom:8, right:8, padding:'3px 8px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>↗ View on site</span>}
+                </a>
+                <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8, flex:1 }}>
+                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{p.label}</div>
+                  {p.detail && <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.4 }}>{p.detail}</div>}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:4 }}>
+                    {p.tags.map((t,i) => <span key={i} style={{ padding:'2px 8px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.ink, letterSpacing:'0.04em', textTransform:'uppercase' }}>{t}</span>)}
+                  </div>
+                  <div style={{ flex:1 }}/>
+                  {p.verdict !== 'unknown' && (
+                    <div style={{ background:p.verdict==='real'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.06)', border:`1.5px solid ${p.verdict==='real'?P.green:P.red}`, borderRadius:4, padding:'8px 10px', fontFamily:F.body, fontSize:12.5, color:P.ink, lineHeight:1.4 }}>
+                      <b style={{ display:'block', fontSize:10.5, color:p.verdict==='real'?P.green:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:2 }}>{p.verdict==='real'?'✓ Keep it':'↑ Replace it'}</b>
+                      {p.hint}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </main>
+  );
+}
   const report = latestAudit?.report_json;
   const pa = report?.photo_analysis;
 
@@ -757,8 +912,8 @@ function BuilderCompetitors({ latestAudit }) {
   const report = latestAudit?.report_json;
   const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return 'yoursite.co.uk';} })();
   const you = {
-    name: report?.site_facts?.company_name || 'Your company',
-    url: domain, loc: report?.site_facts?.location||'UK',
+    name: report?.business_snapshot?.company_name || 'Your company',
+    url: domain, loc: report?.business_snapshot?.location||'UK',
     score: report?.hero?.score||64,
     breakdown: [
       { name:'Photos', s:48 },{ name:'Trust', s:72 },{ name:'Mobile', s:86 },
@@ -1007,6 +1162,7 @@ function DashboardApp() {
   const [user, setUser] = useState(null);
   const [latestAudit, setLatestAudit] = useState(null);
   const [auditData, setAuditData] = useState(null);
+  const [imageUrls, setImageUrls] = useState([]);
 
   // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
@@ -1028,7 +1184,8 @@ function DashboardApp() {
           if (auditRes?.ok) {
             const data = await auditRes.json().catch(()=>null);
             if (data && !data.locked && data.report) {
-              setLatestAudit({ id: auditIdFromUrl, url: data.url, report_json: data.report, created_at: data.created_at });
+              setLatestAudit({ id: auditIdFromUrl, url: data.url, report_json: data.report, created_at: data.scannedAt });
+              setImageUrls(data.imageUrls || []);
               setAuditData({
                 count:   1,
                 company: data.report?.business_snapshot?.company_name || data.url || 'Your company',
@@ -1076,7 +1233,7 @@ function DashboardApp() {
     dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit}/>,
     about:       <BuilderAbout       latestAudit={latestAudit}/>,
     review:      <BuilderReview      latestAudit={latestAudit}/>,
-    photos:      <BuilderPhotos      latestAudit={latestAudit}/>,
+    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls}/>,
     fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
     competitors: <BuilderCompetitors latestAudit={latestAudit}/>,
   } : {

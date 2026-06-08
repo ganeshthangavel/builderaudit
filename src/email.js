@@ -221,4 +221,80 @@ module.exports = {
   sendEnquiryNotification,
   sendEnquiryConfirmationToUser,
   sendWeeklyCheckIn,
+  sendAuditReady,
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AUDIT-READY NOTIFICATION EMAIL
+   Sent when a user opts in to "email me when ready" while the audit is running.
+   Subject line and CTA optimised to get them back to the report ASAP.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function sendAuditReady({ email, auditId, auditUrl, score, appBaseUrl }) {
+  if (!resend || !email) {
+    console.warn('[email] sendAuditReady skipped — no Resend or no email');
+    return { skipped: true };
+  }
+
+  const base = appBaseUrl || 'https://builderaudit.co.uk';
+  const reportUrl = `${base}/report/${auditId}`;
+
+  let domain = '';
+  try { domain = new URL(auditUrl).hostname.replace(/^www\./, ''); }
+  catch (e) { domain = auditUrl; }
+
+  const subject = score != null
+    ? `Your BuilderAudit is ready — ${domain} scored ${score}/100`
+    : `Your BuilderAudit is ready — ${domain}`;
+
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1B1A17;background:#FBF5E1">
+      <div style="background:#fff;border:3px solid #1B1A17;border-radius:14px;padding:32px 28px;box-shadow:6px 6px 0 #1B1A17">
+
+        <div style="font-family:'Archivo Black',Archivo,sans-serif;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#5247B8;margin-bottom:14px">BuilderAudit · Report ready</div>
+
+        <h2 style="margin:0 0 10px;font-family:'Archivo Black',Archivo,sans-serif;font-weight:900;font-size:28px;letter-spacing:-0.02em;line-height:1;text-transform:uppercase">Your audit's done</h2>
+
+        <p style="font-size:15px;line-height:1.5;margin:0 0 20px;color:#1B1A17">
+          We've finished forensically reviewing <strong>${escapeHtml(domain)}</strong> like a real homeowner would — photos, reviews, trust signals, the lot.
+        </p>
+
+        ${score != null ? `
+        <div style="background:#FBF5E1;border:2px solid #1B1A17;border-radius:10px;padding:18px 20px;margin:0 0 22px;display:table;width:calc(100% - 44px)">
+          <div style="display:table-cell;vertical-align:middle;font-family:'Archivo Black',Archivo,sans-serif;font-weight:900;font-size:48px;letter-spacing:-0.03em;color:#1B1A17;line-height:1">${score}</div>
+          <div style="display:table-cell;vertical-align:middle;padding-left:18px">
+            <div style="font-size:13px;font-weight:600;color:#5C5851;letter-spacing:0.02em">Your trust score</div>
+            <div style="font-size:14px;font-weight:700;color:#1B1A17;margin-top:2px">out of 100</div>
+          </div>
+        </div>
+        ` : ''}
+
+        <a href="${reportUrl}" style="display:block;padding:15px 22px;background:#5247B8;color:#fff;text-align:center;border:2px solid #1B1A17;border-radius:6px;text-decoration:none;font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:16px;box-shadow:4px 4px 0 #1B1A17;margin:0 0 18px">
+          See my full report →
+        </a>
+
+        <div style="font-size:13px;color:#5C5851;line-height:1.6;text-align:center;padding-top:10px;border-top:1px solid #E8E2D6">
+          This link will work whenever you're ready to look. Bookmark it for later if you can't dive in now.
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:18px 12px 0;font-size:11px;color:#8A7E72;line-height:1.6">
+        Sent because you asked us to email you when this audit was ready.<br>
+        <a href="${base}" style="color:#5247B8;text-decoration:none">BuilderAudit</a> · Forensic website audits for UK builders
+      </div>
+    </div>
+  `;
+
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject,
+      html,
+    });
+    console.log('[email] sendAuditReady sent to', email, 'for audit', auditId);
+    return { success: true, id: result?.data?.id };
+  } catch (err) {
+    console.error('[email] sendAuditReady failed for', email, ':', err.message);
+    return { success: false, error: err.message };
+  }
+}

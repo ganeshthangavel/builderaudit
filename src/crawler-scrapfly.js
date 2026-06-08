@@ -177,18 +177,53 @@ function parsePageContent(html, pageUrl, origin) {
     .trim()
     .slice(0, 8000);
 
-  /* Extract images — prefer src, fall back to data-src and srcset */
+  /* Extract images — prefer src, fall back to data-src and srcset.
+     We filter aggressively to keep only likely project/portfolio photos:
+     - Must be a photo format (jpg/jpeg/png/webp) — excludes SVG icons, GIFs
+     - Must not be a logo, icon, badge, avatar, spinner, placeholder, award badge
+     - Must not be a tiny UI element (favicon, 1x1 trackers, tiny thumbnails)
+     - Must not be from a CDN that serves primarily icons (font awesome etc) */
   const images = [];
+  const seenSrcs = new Set();
   const imgRegex = /<img\b[^>]*>/gi;
   const matches = html.match(imgRegex) || [];
+
+  /* Patterns in the src URL that indicate non-project images */
+  const EXCLUDE_SRC = /logo|icon|badge|avatar|sprite|placeholder|loader|spinner|pixel|tracking|award|trophy|accreditat|trustmark|checkatrade|fmb|nhbc|chas|niceic|whichl|mybuilder|ratedpeople|trustpilot|google|facebook|twitter|linkedin|instagram|youtube|flag|cert|member|seal|stamp|banner|ribbon|widget|button|arrow|star|rating|review-logo|brand/i;
+
+  /* Patterns in alt text that indicate non-project images */
+  const EXCLUDE_ALT = /logo|icon|badge|award|trophy|accreditat|trustmark|checkatrade|certificate|member|seal|stamp|winner|finalist|runner.?up|sponsor|partner|verified|approved|registered|chartered|affiliated|facebook|twitter|linkedin|instagram|youtube/i;
+
   for (const tag of matches) {
     const src = (tag.match(/(?:^|\s)src=["']([^"']+)["']/i) || tag.match(/data-src=["']([^"']+)["']/i) || [])[1];
     const alt = (tag.match(/alt=["']([^"']*)["']/i) || [])[1] || '';
+
     if (!src) continue;
+
+    /* Must be a photo format */
+    if (!/\.(jpg|jpeg|png|webp)(\?|$)/i.test(src)) continue;
+
     /* Resolve relative URLs */
     let abs = src;
     try { abs = new URL(src, pageUrl).toString(); } catch (e) { continue; }
     if (!abs.startsWith('http')) continue;
+
+    /* Skip duplicates */
+    const srcKey = abs.split('?')[0];
+    if (seenSrcs.has(srcKey)) continue;
+    seenSrcs.add(srcKey);
+
+    /* Skip non-project images by URL pattern */
+    if (EXCLUDE_SRC.test(abs)) continue;
+
+    /* Skip non-project images by alt text */
+    if (alt && EXCLUDE_ALT.test(alt)) continue;
+
+    /* Skip very small images (favicons, tracking pixels, tiny UI elements).
+       We can't get dimensions from HTML alone, but file path patterns help. */
+    const pathLower = abs.toLowerCase();
+    if (/\/(\d+x\d+|thumb|icon|favicon|1x1|pixel)/.test(pathLower)) continue;
+
     images.push({ src: abs, alt, width: 0, height: 0 });
   }
 

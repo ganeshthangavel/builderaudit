@@ -139,9 +139,8 @@ const BUILDER_PAGES = [
   { k:'competitors', label:'Competitor audits' },
 ];
 const HOMEOWNER_PAGES = [
-  { k:'dashboard', label:'Dashboard' },
-  { k:'shortlist', label:'Saved builders' },
-  { k:'account',   label:'Account' },
+  { k:'dashboard', label:'Safety verdict' },
+  { k:'shortlist', label:'Check another builder' },
 ];
 
 function Nav({ role, page, setPage, user }) {
@@ -1033,7 +1032,100 @@ function BuilderCompetitors({ latestAudit }) {
 // ════════════════════════════════════════════════════════════════
 // HOMEOWNER PAGES
 // ════════════════════════════════════════════════════════════════
-function HomeownerDashboard({ auditData }) {
+function HomeownerDashboard({ auditData, latestAudit }) {
+  const report = latestAudit?.report_json || null;
+  const score = report?.hero?.score ?? null;
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
+
+  /* If we have a real audit result, show the single-builder verdict */
+  if (latestAudit && report) {
+    const headline = report.hero?.headline || 'Audit complete';
+    const subtext = report.hero?.subtext || '';
+    const aiVoice = report.hero?.ai_voice_intro || '';
+    const redFlags = (report.trust_breakpoints || []).filter(t => t.impact === 'critical' || t.impact === 'high');
+    const greenFlags = (report.trust_questions || []).filter(q => q.score >= 75);
+    const questions = (report.top_actions || []).slice(0, 5).map(a => typeof a === 'string' ? a : a.title);
+    const scoreColor = score >= 75 ? P.green : score >= 55 ? P.fill : P.red;
+
+    return (
+      <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+        <div style={{ marginBottom:28 }}>
+          <Kicker color={P.accent}>Homeowner safety check</Kicker>
+          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{domain}</h1>
+          <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
+        </div>
+
+        {/* Verdict band */}
+        <Card style={{ background:P.ink, color:'#fff', marginBottom:24 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'140px 1fr', gap:24, alignItems:'center' }}>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontFamily:F.display, fontWeight:900, fontSize:64, color:scoreColor, lineHeight:1, letterSpacing:'-0.03em' }}>{score}</div>
+              <div style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.6)', marginTop:4, textTransform:'uppercase', letterSpacing:'0.08em' }}>Trust score</div>
+            </div>
+            <div>
+              <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase' }}>{headline}</h2>
+              {subtext && <p style={{ fontFamily:F.body, fontSize:15, color:'rgba(255,255,255,0.78)', margin:'0 0 10px', lineHeight:1.5 }}>{subtext}</p>}
+              {aiVoice && <p style={{ fontFamily:F.body, fontSize:14, fontStyle:'italic', color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.fill}`, paddingLeft:14 }}>{aiVoice}</p>}
+            </div>
+          </div>
+        </Card>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:24 }}>
+          {/* Red flags */}
+          {redFlags.length > 0 && (
+            <Card pad={24} style={{ background:'rgba(217,83,79,0.06)', borderColor:P.red }}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:14 }}>⚠ Red flags ({redFlags.length})</div>
+              {redFlags.map((f,i) => (
+                <div key={i} style={{ marginBottom:16, paddingBottom:16, borderBottom:i<redFlags.length-1?`1px solid rgba(217,83,79,0.2)`:'none' }}>
+                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.01em' }}>{f.title}</div>
+                  {f.homeowner_reaction && <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, fontStyle:'italic', borderLeft:`3px solid ${P.red}`, paddingLeft:10, marginBottom:6, lineHeight:1.5 }}>{f.homeowner_reaction}</div>}
+                  {f.evidence && <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, lineHeight:1.45 }}>{f.evidence}</div>}
+                </div>
+              ))}
+            </Card>
+          )}
+
+          {/* Green flags */}
+          <Card pad={24} style={{ background:'rgba(31,138,91,0.06)', borderColor:P.green }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.good, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:14 }}>✓ What checks out ({greenFlags.length})</div>
+            {greenFlags.length > 0 ? greenFlags.map((q,i) => (
+              <div key={i} style={{ display:'flex', gap:10, marginBottom:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
+                <span style={{ color:P.good, fontWeight:800, flex:'0 0 auto' }}>✓</span>
+                <div><b style={{ fontSize:12, textTransform:'uppercase', letterSpacing:'0.05em', color:P.good, display:'block', marginBottom:2 }}>{q.question.replace('?','')}</b>{q.explanation}</div>
+              </div>
+            )) : <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic' }}>No strong positive signals found.</p>}
+          </Card>
+        </div>
+
+        {/* Questions to ask */}
+        {questions.length > 0 && (
+          <Card style={{ marginBottom:24 }}>
+            <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Questions to ask before signing</h3>
+            <ol style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+              {questions.map((q,i) => (
+                <li key={i} style={{ display:'flex', gap:14, padding:'12px 14px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
+                  <span style={{ flex:'0 0 auto', width:22, height:22, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:11 }}>{i+1}</span>
+                  {q}
+                </li>
+              ))}
+            </ol>
+          </Card>
+        )}
+
+        {/* Check another builder CTA */}
+        <Card style={{ background:P.fill }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+            <div>
+              <Kicker color={P.ink}>Got another quote?</Kicker>
+              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check another builder</h3>
+              <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Paste their website — we'll vet them the same way.</p>
+            </div>
+            <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href = `/audit?url=https://${u}&audience=homeowner`; }}/>
+          </div>
+        </Card>
+      </main>
+    );
+  }
   const builders = auditData?.builders || [
     { name:'Heartly Builders Ltd',     url:'heartlybuilders.co.uk',    loc:'Bath',    score:64, lastChecked:'2 days ago',  notes:'Stock photos · no accreditations shown', saved:true },
     { name:'Greenfield Construction',  url:'greenfieldconstruction.co.uk', loc:'Bristol',score:78, lastChecked:'5 days ago',  notes:'FMB accredited · 14 real photos', saved:true },
@@ -1243,9 +1335,9 @@ function DashboardApp() {
     fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
     competitors: <BuilderCompetitors latestAudit={latestAudit}/>,
   } : {
-    dashboard: <HomeownerDashboard auditData={auditData}/>,
-    shortlist: <HomeownerDashboard auditData={auditData}/>,
-    account:   <HomeownerDashboard auditData={auditData}/>,
+    dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
+    shortlist: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
+    account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
   };
 
   return (

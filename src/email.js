@@ -222,7 +222,63 @@ module.exports = {
   sendEnquiryConfirmationToUser,
   sendWeeklyCheckIn,
   sendAuditReady,
+  sendBuilderMatchLead,
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BUILDER MATCH LEAD — sent to ENQUIRY_TO_EMAIL when a homeowner signs up
+   for the free builder-matching service. Contains full project details.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function sendBuilderMatchLead({ lead }) {
+  if (!resend) {
+    console.warn('Email skipped (no Resend key): builder-match lead from', lead?.email);
+    return { skipped: true };
+  }
+
+  const row = (label, val) => `<tr><td style="padding:6px 0;color:#64748B;width:170px;vertical-align:top">${label}</td><td style="padding:6px 0;font-weight:500">${val || '—'}</td></tr>`;
+
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0F172A">
+      <h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-0.01em">🏗 New builder-match lead</h2>
+      <p style="margin:0 0 18px;font-size:14px;color:#64748B">A homeowner has signed up for the trusted builder matching service.</p>
+
+      <div style="background:#FFD24D;border-radius:12px;padding:16px;margin-bottom:18px;border:2px solid #1B1A17">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5C5851;font-weight:700;margin-bottom:4px">Project</div>
+        <div style="font-size:17px;font-weight:700">${lead.projectType || 'Not specified'} · ${lead.budget || 'Budget TBC'}</div>
+        <div style="font-size:13px;margin-top:4px">${lead.location || ''}</div>
+      </div>
+
+      <h3 style="margin:0 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;color:#64748B">Contact</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+        ${row('Name', lead.name)}
+        ${row('Email', `<a href="mailto:${lead.email}" style="color:#2F6BFF">${lead.email}</a>`)}
+        ${row('Phone', lead.phone)}
+        ${row('Location / postcode', lead.location)}
+      </table>
+
+      <h3 style="margin:0 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;color:#64748B">Project details</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+        ${row('Project type', lead.projectType)}
+        ${row('Budget', lead.budget)}
+        ${row('Timeline', lead.timeline)}
+        ${row('Drawings / plans', lead.hasPlans)}
+        ${row('Planning permission', lead.planningStatus)}
+        ${row('Description', lead.description)}
+      </table>
+
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#64748B">
+        ${row('Marketing consent', lead.consentAgency ? 'YES — agreed to recommendations & services contact' : 'No')}
+        ${row('Submitted', new Date().toISOString())}
+      </table>
+    </div>`;
+
+  return resend.emails.send({
+    from: FROM_EMAIL,
+    to: config.ENQUIRY_TO_EMAIL || FROM_EMAIL,
+    subject: `🏗 Builder-match lead: ${lead.projectType || 'project'} in ${lead.location || 'UK'} (${lead.budget || 'budget TBC'})`,
+    html,
+  });
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AUDIT-READY NOTIFICATION EMAIL
@@ -250,9 +306,9 @@ async function sendAuditReady({ email, auditId, auditUrl, score, appBaseUrl }) {
     <div style="font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1B1A17;background:#FBF5E1">
       <div style="background:#fff;border:3px solid #1B1A17;border-radius:14px;padding:32px 28px;box-shadow:6px 6px 0 #1B1A17">
 
-        <div style="font-family:'Archivo Black',Archivo,sans-serif;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#5247B8;margin-bottom:14px">BuilderAudit · Report ready</div>
+        <div style="font-family:'Hanken Grotesk',Hanken Grotesk,sans-serif;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#5247B8;margin-bottom:14px">BuilderAudit · Report ready</div>
 
-        <h2 style="margin:0 0 10px;font-family:'Archivo Black',Archivo,sans-serif;font-weight:900;font-size:28px;letter-spacing:-0.02em;line-height:1;text-transform:uppercase">Your audit's done</h2>
+        <h2 style="margin:0 0 10px;font-family:'Hanken Grotesk',Hanken Grotesk,sans-serif;font-weight:900;font-size:28px;letter-spacing:-0.02em;line-height:1;text-transform:uppercase">Your audit's done</h2>
 
         <p style="font-size:15px;line-height:1.5;margin:0 0 20px;color:#1B1A17">
           We've finished forensically reviewing <strong>${escapeHtml(domain)}</strong> like a real homeowner would — photos, reviews, trust signals, the lot.
@@ -260,7 +316,7 @@ async function sendAuditReady({ email, auditId, auditUrl, score, appBaseUrl }) {
 
         ${score != null ? `
         <div style="background:#FBF5E1;border:2px solid #1B1A17;border-radius:10px;padding:18px 20px;margin:0 0 22px;display:table;width:calc(100% - 44px)">
-          <div style="display:table-cell;vertical-align:middle;font-family:'Archivo Black',Archivo,sans-serif;font-weight:900;font-size:48px;letter-spacing:-0.03em;color:#1B1A17;line-height:1">${score}</div>
+          <div style="display:table-cell;vertical-align:middle;font-family:'Hanken Grotesk',Hanken Grotesk,sans-serif;font-weight:900;font-size:48px;letter-spacing:-0.03em;color:#1B1A17;line-height:1">${score}</div>
           <div style="display:table-cell;vertical-align:middle;padding-left:18px">
             <div style="font-size:13px;font-weight:600;color:#5C5851;letter-spacing:0.02em">Your trust score</div>
             <div style="font-size:14px;font-weight:700;color:#1B1A17;margin-top:2px">out of 100</div>

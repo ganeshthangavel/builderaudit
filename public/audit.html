@@ -394,8 +394,8 @@ a { -webkit-tap-highlight-color: transparent; }
     <!-- Email capture banner: lets the user opt-in to "email me when ready"
          instead of waiting on the page. Hidden once they submit OR audit completes. -->
     <div class="sc-notify" id="notifyCard">
-      <h2 class="sc-notify-title">This usually takes 5–10 minutes</h2>
-      <p class="sc-notify-sub">Don't fancy staring at a progress bar? Drop your email and we'll send the report straight to you when it's done. You can close this tab safely.</p>
+      <h2 class="sc-notify-title" id="notifyTitle">This usually takes 5–10 minutes</h2>
+      <p class="sc-notify-sub" id="notifySub">Don't fancy staring at a progress bar? Drop your email and we'll send the report straight to you when it's done. You can close this tab safely.</p>
       <div class="sc-notify-row">
         <input type="email" class="sc-notify-input" id="notifyEmail" placeholder="your@email.com" autocomplete="email">
         <button class="sc-notify-btn" id="notifyBtn">Email me when ready</button>
@@ -466,7 +466,8 @@ a { -webkit-tap-highlight-color: transparent; }
 
 <script>
 /* The 9 visual checks. Each maps to a backend phase. */
-var CHECKS = [
+/* ─── Audience-aware check lists ────────────────────────────────────────── */
+var BUILDER_CHECKS = [
   { icon: 'drill',       label: 'Site speed',        line: 'Timing how fast your pages load on 4G…' },
   { icon: 'tape',        label: 'Mobile friendly',   line: 'Shrinking down to a 6-inch screen…' },
   { icon: 'hardhat',     label: 'Photo quality',     line: 'Reverse-image searching your job photos…' },
@@ -477,6 +478,20 @@ var CHECKS = [
   { icon: 'roller',      label: 'Copy & tone',       line: 'Listening for robot-speak in your copy…' },
   { icon: 'cone',        label: 'Real vs AI photos', line: 'Sniffing out stock and AI-generated images…' },
 ];
+
+var HOMEOWNER_CHECKS = [
+  { icon: 'drill',       label: 'Company legitimacy',  line: 'Checking company registration and trading history…' },
+  { icon: 'hardhat',     label: 'Photo authenticity',  line: 'Reverse-image searching their project photos…' },
+  { icon: 'gear',        label: 'Accreditations',      line: 'Looking for FMB, TrustMark and trade body badges…' },
+  { icon: 'toolbox',     label: 'Reviews & reputation',line: 'Scanning Checkatrade, Google and third-party reviews…' },
+  { icon: 'tape',        label: 'Insurance & liability',line: 'Checking for public liability insurance disclosure…' },
+  { icon: 'screwdriver', label: 'Contact & transparency',line: 'Verifying address, phone and company number…' },
+  { icon: 'ladder',      label: 'Project evidence',    line: 'Evaluating portfolio and case study quality…' },
+  { icon: 'roller',      label: 'Red flag check',      line: 'Cross-referencing claims against verified data…' },
+  { icon: 'cone',        label: 'Trust verdict',       line: 'Compiling your homeowner safety report…' },
+];
+
+var CHECKS = audience === 'homeowner' ? HOMEOWNER_CHECKS : BUILDER_CHECKS;
 
 function renderCheckList() {
   var list = document.getElementById('checkList');
@@ -489,6 +504,16 @@ function renderCheckList() {
   }).join('');
 }
 renderCheckList();
+
+/* Apply audience-specific copy immediately */
+if (audience === 'homeowner') {
+  document.getElementById('heroH1').textContent = 'Vetting this builder';
+  document.getElementById('statusChip').textContent = 'Checking…';
+  if (document.getElementById('notifyTitle'))
+    document.getElementById('notifyTitle').textContent = 'This usually takes 5–10 minutes';
+  if (document.getElementById('notifySub'))
+    document.getElementById('notifySub').textContent = "We're checking this builder against insurance, accreditation and photo databases. Drop your email and we'll send the verdict when it's ready.";
+}
 
 function setActiveIdx(idx, done) {
   var rows = document.querySelectorAll('.sc-check-row');
@@ -508,10 +533,12 @@ function setActiveIdx(idx, done) {
   var current = CHECKS[Math.min(idx, CHECKS.length - 1)];
   document.getElementById('activeToolIcon').src = '/assets/icons/' + (done ? 'clipboard' : current.icon) + '.png';
   if (done) {
-    document.getElementById('heroH1').textContent = 'Your audit is ready';
-    document.getElementById('heroSub').textContent = "We've finished going through " + displayUrl + ' like a homeowner would.';
+    document.getElementById('heroH1').textContent = audience === 'homeowner' ? 'Your safety check is ready' : 'Your audit is ready';
+    document.getElementById('heroSub').textContent = audience === 'homeowner'
+      ? "We've finished vetting " + displayUrl + " so you don\u2019t have to."
+      : "We\u2019ve finished going through " + displayUrl + ' like a homeowner would.';
   } else {
-    document.getElementById('heroH1').textContent = 'Auditing your site';
+    document.getElementById('heroH1').textContent = audience === 'homeowner' ? 'Vetting this builder' : 'Auditing your site';
     document.getElementById('heroSub').textContent = current.line;
   }
 }
@@ -663,9 +690,9 @@ function handle(name, data) {
     var nc = document.getElementById('notifyCard'); if (nc) nc.style.display = 'none';
     var ns = document.getElementById('notifySent'); if (ns) ns.style.display = 'none';
     var cta = document.getElementById('ctaButton');
-    cta.href = '/dashboard?id=' + data.id;
+    cta.href = '/dashboard?id=' + data.id + (audience === 'homeowner' ? '&role=homeowner' : '');
     cta.classList.add('on');
-    setTimeout(function(){ window.location.href = '/dashboard?id=' + data.id; }, 1500);
+    setTimeout(function(){ window.location.href = '/dashboard?id=' + data.id + (audience === 'homeowner' ? '&role=homeowner' : ''); }, 1500);
   } else if (name === 'blocked') {
     showBlocked(data);
   } else if (name === 'error') {
@@ -762,7 +789,7 @@ function showWaiting() {
           /* Report is ready — redirect */
           clearInterval(pollingInterval);
           clearInterval(dotInterval);
-          window.location.href = '/dashboard?id=' + currentAuditId;
+          window.location.href = '/dashboard?id=' + currentAuditId + (audience === 'homeowner' ? '&role=homeowner' : '');
         }
       }
     } catch(e) { /* network blip — try again next tick */ }

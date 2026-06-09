@@ -21,7 +21,7 @@ const config = Object.freeze({
   RESEND_API_KEY: process.env.RESEND_API_KEY || null,
   ENQUIRY_TO_EMAIL: process.env.ENQUIRY_TO_EMAIL || null,
   FROM_EMAIL: process.env.FROM_EMAIL || null,
-  APP_BASE_URL: process.env.APP_BASE_URL || null,
+  COMPANIES_HOUSE_API_KEY: process.env.COMPANIES_HOUSE_API_KEY || null,
   NODE_ENV: process.env.NODE_ENV || 'production',
   PORT: process.env.PORT || '3000',
 });
@@ -43,6 +43,7 @@ try {
   console.log('  RESEND_API_KEY:  ' + (config.RESEND_API_KEY ? 'present' : '✗ MISSING'));
   console.log('  ENQUIRY_TO_EMAIL: ' + (config.ENQUIRY_TO_EMAIL || '(default)'));
   console.log('  FROM_EMAIL:      ' + (config.FROM_EMAIL || '(default)'));
+  console.log('  COMPANIES_HOUSE_API_KEY: ' + (config.COMPANIES_HOUSE_API_KEY ? 'present' : '⚠ MISSING (company check feature disabled)'));
 } catch (err) {
   console.error('[config] Logging error (ignored):', err.message);
 }

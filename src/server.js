@@ -1,2373 +1,1341 @@
-<!doctype html>
-<!-- BA3 DASHBOARD · 6 pages · Builder + Homeowner · React/CDN -->
-<html lang="en-GB">
-<head>
-<meta charset="utf-8">
-<title>Dashboard — BuilderAudit</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
-<link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #FBF5E1; min-height: 100vh; }
-  body { font-family: 'IBM Plex Sans', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
-  a { -webkit-tap-highlight-color: transparent; }
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #FBF5E1; }
-  ::-webkit-scrollbar-thumb { background: #1B1A17; border-radius: 3px; }
-</style>
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const cookieParser = require('cookie-parser');
+const https = require('https');
+const Anthropic = require('@anthropic-ai/sdk');
+const { customAlphabet } = require('nanoid');
+const config = require('./config');
+const db = require('./db');
+const auth = require('./auth');
+const email = require('./email');
+const { scoreWebsite } = require('./scorer-ai');
+const { crawlWebsiteScrapFly, isAvailable: isScrapFlyAvailable } = require('./crawler-scrapfly');
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
-</head>
-<body>
-<div id="root"></div>
+const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
-<script type="text/babel">
-/* ════════════════════════════════════════════════════════════════════
-   BUILDERAUDIT DASHBOARD — Production port of BA3 dashboard.jsx
-   Faithful port of the 1595-line React prototype.
-   Role read from JWT (falls back to ?role= param or 'builder').
-   Pages: Dashboard · About · Scores & Review · Photo Review ·
-          Top 10 Fixes · Competitor Audits (builder)
-          Dashboard · Saved builders (homeowner)
-   ════════════════════════════════════════════════════════════════════ */
+const app = express();
+app.use(cors({ credentials: true }));
+app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+app.use(auth.attachUser);
 
-const { useState, useEffect, useCallback } = React;
+const PUBLIC = path.join(__dirname, '../public');
 
-// ── Design tokens (BA3 palette) ──────────────────────────────────
-const P = {
-  fill:    '#FFD24D',
-  accent:  '#5247B8',
-  surface: '#FBF5E1',
-  ink:     '#1B1A17',
-  line:    '#1B1A17',
-  muted:   '#5C5851',
-  green:   '#1F8A5B',
-  good:    '#1F8A5B',
-  red:     '#D9534F',
-  amber:   '#D97706',
-};
-const F = {
-  display: '"Hanken Grotesk", -apple-system, sans-serif',
-  body:    '"IBM Plex Sans", -apple-system, sans-serif',
-};
-
-// ── Primitives ───────────────────────────────────────────────────
-function Card({ children, pad = 28, style = {} }) {
-  return <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:10, padding:pad, boxShadow:`5px 5px 0 ${P.line}`, ...style }}>{children}</div>;
-}
-function Kicker({ children, color }) {
-  return <div style={{ display:'inline-block', padding:'4px 10px', background:color||P.accent, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{children}</div>;
-}
-function Btn({ children, primary, onClick, style = {} }) {
-  return <button onClick={onClick} style={{ padding:'12px 18px', background:primary?P.accent:'#fff', color:primary?'#fff':P.ink, border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:primary?`4px 4px 0 ${P.line}`:'none', whiteSpace:'nowrap', ...style }}>{children}</button>;
-}
-function Label({ children }) {
-  return <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{children}</div>;
-}
-function BigNum({ n, sub, yellow }) {
-  return <div>
-    <div style={{ fontFamily:F.display, fontWeight:900, fontSize:40, color:P.ink, lineHeight:1 }}>{n}</div>
-    {sub && <div style={{ fontFamily:F.body, fontSize:13, color:yellow?P.ink:P.muted, marginTop:4 }}>{sub}</div>}
-  </div>;
-}
-
-// ── Score Donut (SVG) ────────────────────────────────────────────
-function Donut({ score, size = 160 }) {
-  const sw = size * 0.1, r = (size - sw) / 2 - 2, c = 2 * Math.PI * r;
-  const color = score >= 80 ? P.green : score >= 60 ? P.fill : P.red;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={P.line} strokeWidth={sw} opacity="0.12"/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw}
-        strokeDasharray={`${c*score/100} ${c}`} strokeDashoffset={c/4}
-        transform={`rotate(-90 ${size/2} ${size/2})`} strokeLinecap="round"/>
-      <text x={size/2} y={size/2-size*0.02} textAnchor="middle" dominantBaseline="middle"
-        style={{ fontFamily:F.display, fontWeight:900, fontSize:size*0.3, fill:P.ink, letterSpacing:'-0.02em' }}>{score}</text>
-      <text x={size/2} y={size/2+size*0.18} textAnchor="middle" dominantBaseline="middle"
-        style={{ fontFamily:F.body, fontWeight:700, fontSize:size*0.09, fill:P.muted, letterSpacing:'0.1em' }}>/ 100</text>
-    </svg>
-  );
-}
-
-// ── BAMark logo (inline SVG) ─────────────────────────────────────
-function BAMark({ size = 38 }) {
-  const h = Math.round(size * 248/240);
-  return (
-    <svg width={size} height={h} viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style={{ display:'block', flexShrink:0 }}>
-      <rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/>
-      <circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" strokeWidth="14"/>
-      <path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" strokeWidth="9" strokeLinecap="round"/>
-      <rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8"/>
-      <path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8" strokeLinejoin="round"/>
-      <rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8"/>
-      <path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" strokeWidth="9" strokeLinecap="round"/>
-      <path d="M114 46 V90" fill="none" stroke="#1B1A17" strokeWidth="6" strokeLinecap="round"/>
-      <path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" strokeWidth="5.5" strokeLinecap="round"/>
-      <path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" strokeWidth="5.5" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-// ── URL scan bar ─────────────────────────────────────────────────
-function ScanBar({ placeholder = 'yourothersite.co.uk', cta = 'Run audit', onSubmit }) {
-  const [val, setVal] = useState('');
-  const go = () => { const u = val.trim(); if (u) { onSubmit ? onSubmit(u) : window.location.href = `/audit?url=https://${u.replace(/^https?:\/\//,'')}&audience=builder`; } };
-  return (
-    <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:6, maxWidth:560, boxShadow:`4px 4px 0 ${P.line}` }}>
-      <div style={{ padding:'0 14px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</div>
-      <input value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()}
-        placeholder={placeholder}
-        style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:16, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
-      <button onClick={go} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 18px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap' }}>{cta} →</button>
-    </div>
-  );
-}
-
-// ── Top Nav ──────────────────────────────────────────────────────
-const BUILDER_PAGES = [
-  { k:'dashboard', label:'Dashboard' },
-  { k:'about',     label:'About your business' },
-  { k:'review',    label:'Scores & review' },
-  { k:'photos',    label:'Photo review' },
-  { k:'fixes',     label:'Your top 10 fixes' },
-  { k:'competitors', label:'Competitor audits' },
-];
-const HOMEOWNER_PAGES = [
-  { k:'dashboard', label:'Safety verdict' },
-  { k:'compare',   label:'Compare builders' },
-  { k:'shortlist', label:'Check another builder' },
-];
-
-function Nav({ role, page, setPage, user }) {
-  const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
-  const initials = user?.name ? user.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase() : role==='builder'?'HB':'AT';
-  return (
-    <header style={{ background:'#fff', borderBottom:`3px solid ${P.line}`, padding:'16px 36px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, position:'sticky', top:0, zIndex:100 }}>
-      <a href="/" style={{ display:'flex', alignItems:'center', gap:12, textDecoration:'none', flexShrink:0 }}>
-        <BAMark size={38}/>
-        <span style={{ fontFamily:F.display, fontWeight:800, fontSize:20, color:P.ink, letterSpacing:'-0.01em', lineHeight:1, whiteSpace:'nowrap' }}>
-          <span>Builder</span><span style={{ color:P.accent }}>Audit</span>
-        </span>
-      </a>
-
-      <nav style={{ display:'flex', gap:22, fontFamily:F.body, fontSize:13.5, color:P.ink, fontWeight:600, overflowX:'auto' }}>
-        {pages.map(it => {
-          const on = page === it.k;
-          return <a key={it.k} href="#" onClick={e=>{e.preventDefault();setPage(it.k);}}
-            style={{ color:on?P.ink:P.muted, textDecoration:'none', borderBottom:on?`2px solid ${P.ink}`:'2px solid transparent', paddingBottom:4, whiteSpace:'nowrap' }}>{it.label}</a>;
-        })}
-      </nav>
-
-      <div style={{ display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
-        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 12px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontWeight:700, fontSize:12.5, color:P.ink, whiteSpace:'nowrap' }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:role==='builder'?P.accent:P.green, display:'inline-block' }}/>
-          {role==='builder'?'Builder account':'Homeowner account'}
-        </div>
-        <div style={{ width:36, height:36, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink }}>{initials}</div>
-        <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
-      </div>
-    </header>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// BUILDER PAGES
-// ════════════════════════════════════════════════════════════════
-
-// ── Builder Dashboard (main) ────────────────────────────────────
-function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
-  const report = latestAudit?.report_json || null;
-  const baseScore = report?.hero?.score ?? 64;
-
-  const fixDefs = report?.top_actions?.slice(0,5).map((a,i)=>{
-    const icons = ['hammer','gear','screwdriver','roller','tape'];
-    const text = typeof a === 'string' ? a : (a.title || a.why || JSON.stringify(a));
-    const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i];
-    return { id:i, icon:icons[i%icons.length], text, pts, impact:`+${pts} pts` };
-  }) || [
-    { id:0, icon:'hammer',     text:'Swap in real before/after shots from your phone',         pts:8, impact:'+8 pts' },
-    { id:1, icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',  pts:6, impact:'+6 pts' },
-    { id:2, icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',         pts:5, impact:'+5 pts' },
-    { id:3, icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',     pts:3, impact:'+3 pts' },
-    { id:4, icon:'tape',       text:'Add a phone number to the header on mobile',              pts:2, impact:'+2 pts' },
-  ];
-
-  const toggleFix = (id) => {
-    const nowDone = !completedFixIds.has(id);
-    const next = new Set(completedFixIds);
-    if (nowDone) next.add(id); else next.delete(id);
-    setCompletedFixIds(next);
-    saveOverride({ fixId: id, completed: nowDone });
-  };
-
-  /* Score: use server-adjusted score if available, else calculate locally */
-  const completedPts = fixDefs.filter(f => completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0);
-  const photoBoost = excludedPhotoIds.size * 5;
-  const score = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts + photoBoost);
-
-  const previousScore = baseScore; // base is the "last scan" reference
-  const change = score - previousScore;
-
-  const domain = (() => { try { return new URL(latestAudit?.url||'https://yoursite.co.uk').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'yoursite.co.uk';} })();
-
-  const categories = report?.trust_questions ? report.trust_questions.map((q,i)=>{
-    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
-    /* Boost photo score if some flagged photos were excluded */
-    let s = q.score||50;
-    if (i === 1 && excludedPhotoIds.size > 0) {
-      /* "Do I believe these are real projects?" — each excluded flagged photo boosts this by ~5 pts */
-      s = Math.min(100, s + excludedPhotoIds.size * 5);
-    }
-    return { name: names[i]||q.question.slice(0,20), s, status: s>=75?'ok':s>=55?'warn':'risk' };
-  }) : [
-    { name:'Photo quality',    s:48, status:'risk' },
-    { name:'Trust signals',    s:72, status:'ok' },
-    { name:'Mobile friendly',  s:86, status:'ok' },
-    { name:'Site speed',       s:54, status:'risk' },
-    { name:'Services clarity', s:58, status:'warn' },
-    { name:'Quote flow',       s:68, status:'warn' },
-    { name:'SEO & Google',     s:62, status:'warn' },
-    { name:'Copy & tone',      s:70, status:'ok' },
-  ];
-
-  const history = auditData?.history || [
-    { date:'Feb 14', score:42 }, { date:'Feb 28', score:51 },
-    { date:'Mar 18', score:58 }, { date:'Apr 02', score:baseScore },
-  ];
-
-  const auditsRun = auditData?.count || history.length;
-  const fixesDone = completedFixIds.size;
-
-  function rescan() { window.location.href = `/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`; }
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Welcome back</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{auditData?.company||'Your company'}</h1>
-        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>{domain} · Last scanned {latestAudit?'recently':'never'} · {fixDefs.length - completedFixIds.size} fixes outstanding</p>
-      </div>
-
-      {/* Top row: score + stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr', gap:24, marginBottom:24 }}>
-        <Card>
-          <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:28, alignItems:'center' }}>
-            <Donut score={score} size={170}/>
-            <div>
-              <Label>Latest audit {completedPts > 0 && <span style={{ marginLeft:6, padding:'2px 8px', background:P.green, color:'#fff', borderRadius:999, fontSize:10, fontWeight:700 }}>+{completedPts} pts from fixes</span>}</Label>
-              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:22, color:P.ink, marginBottom:6 }}>
-                {score>=80?'Looking solid':score>=60?'Could be better — climbing fast':'Needs work'}
-              </div>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontFamily:F.body, fontSize:14, fontWeight:600 }}>
-                {completedPts > 0 ? (
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.green, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
-                    ↑ +{completedPts} pts from {fixesDone} fix{fixesDone>1?'es':''}
-                  </span>
-                ) : (
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.muted, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
-                    Score from last audit
-                  </span>
-                )}
-                <span style={{ color:P.muted }}>· tick fixes below to see score climb</span>
-              </div>
-              <Btn primary onClick={rescan}>Re-scan now</Btn>
-            </div>
-          </div>
-        </Card>
-
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audit score</Label><BigNum n={score} sub="out of 100"/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audits run</Label><BigNum n={auditsRun} sub="total"/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixDefs.length - fixesDone} still outstanding`}/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${fixDefs.filter(f=>!completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0)}`} sub="still on the table" yellow/></Card>
-        </div>
-      </div>
-
-      {/* Score history + Category breakdown */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:24 }}>
-        <Card>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:22 }}>
-            <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Score history</h3>
-            <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Last {history.length} scans</span>
-          </div>
-          <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-around', gap:12, height:180, padding:'0 8px', borderBottom:`2px solid ${P.line}` }}>
-            {history.map((h,i) => {
-              const isLatest = i === history.length-1;
-              const color = h.score>=80?P.green:h.score>=60?P.fill:P.red;
-              return <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1, height:'100%', justifyContent:'flex-end', position:'relative' }}>
-                <div style={{ position:'absolute', top:`${100-h.score}%`, transform:'translateY(-100%)', fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, marginBottom:6 }}>{h.score}</div>
-                <div style={{ width:'100%', maxWidth:56, height:`${h.score}%`, background:isLatest?color:'#e0dcce', border:`2px solid ${P.line}`, borderBottom:'none', borderRadius:'6px 6px 0 0' }}/>
-              </div>;
-            })}
-          </div>
-          <div style={{ display:'flex', justifyContent:'space-around', gap:12, padding:'10px 8px 0' }}>
-            {history.map((h,i)=><div key={i} style={{ flex:1, textAlign:'center', fontFamily:F.body, fontSize:12, color:P.muted, fontWeight:600 }}>{h.date}</div>)}
-          </div>
-        </Card>
-
-        <Card>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Score by category</h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
-            {categories.map((c,i)=>{
-              const color = c.s>=75?P.green:c.s>=55?P.fill:P.red;
-              return <div key={i} style={{ display:'grid', gridTemplateColumns:'150px 1fr 36px', alignItems:'center', gap:14 }}>
-                <div style={{ fontFamily:F.body, fontWeight:600, fontSize:13.5, color:P.ink }}>{c.name}</div>
-                <div style={{ height:12, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}>
-                  <div style={{ width:`${c.s}%`, height:'100%', background:color }}/>
-                </div>
-                <div style={{ fontFamily:F.body, fontWeight:700, fontSize:13, color:P.ink, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{c.s}</div>
-              </div>;
-            })}
-          </div>
-        </Card>
-      </div>
-
-      {/* Fix-it list */}
-      <Card style={{ marginBottom:24 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your fix-it list</h3>
-          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{fixDefs.length - completedFixIds.size} outstanding · {fixesDone} done</span>
-        </div>
-        <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
-          {fixDefs.map((f,i)=>(
-            <li key={i} onClick={()=>toggleFix(f.id)} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:completedFixIds.has(f.id)?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:completedFixIds.has(f.id)?0.55:1, cursor:'pointer', transition:'opacity .2s, background .2s' }}>
-              <div style={{ flex:'0 0 auto', width:22, height:22, borderRadius:5, background:completedFixIds.has(f.id)?P.green:'#fff', border:`2.4px solid ${completedFixIds.has(f.id)?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13 }}>{completedFixIds.has(f.id)?'✓':''}</div>
-              <div style={{ flex:'0 0 auto', width:36, height:36, display:'grid', placeItems:'center' }}>
-                <img src={`/assets/icons/${f.icon}.png`} alt="" width={36} height={36} style={{ width:36, height:36, objectFit:'contain' }}/>
-              </div>
-              <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:f.done?'line-through':'none' }}>{f.text}</div>
-              <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:completedFixIds.has(f.id)?P.muted:P.green, background:completedFixIds.has(f.id)?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
-            </li>
-          ))}
-        </ul>
-        {fixesDone > 0 && <div style={{ marginTop:14, padding:'10px 14px', background:'rgba(31,138,91,0.08)', border:`1.5px solid ${P.green}`, borderRadius:6, fontFamily:F.body, fontSize:13.5, color:P.green, fontWeight:600 }}>
-          ↑ Your projected score with these fixes applied: <b style={{ fontFamily:F.display, fontSize:16 }}>{score}</b> / 100. Re-scan to make it official.
-        </div>}
-      </Card>
-
-      {/* New scan CTA */}
-      <Card style={{ background:P.fill, borderColor:P.line }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
-          <div>
-            <Kicker color={P.ink}>Ready for a fresh scan?</Kicker>
-            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Re-scan your site</h3>
-            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste your URL to run a new audit and see if your fixes have improved your score.</p>
-          </div>
-          <ScanBar placeholder="yoursite.co.uk" cta="Run audit"/>
-        </div>
-      </Card>
-    </main>
-  );
-}
-
-// ── Builder: About your business ────────────────────────────────
-function BuilderAbout({ latestAudit }) {
-  const report = latestAudit?.report_json;
-  const facts = report?.business_snapshot || {};
-  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'—';} })();
-
-  const Field = ({ label, value, note }) => (
-    <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:18, padding:'12px 0', borderBottom:`1px solid ${P.surface}` }}>
-      <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase' }}>{label}</div>
-      <div>
-        <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, fontWeight:500 }}>{value||'—'}</div>
-        {note && <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:2 }}>{note}</div>}
-      </div>
-    </div>
-  );
-
-  /* Build accreditations list from real data + defaults */
-  const realAccreds = (facts.accreditations || []).map(a => ({ name: a, held: true }));
-  const defaultAccreds = ['TrustMark', 'FMB (Federation of Master Builders)', 'CHAS', 'NICEIC (electrical works)'];
-  const accreditations = realAccreds.length > 0
-    ? [...realAccreds, ...defaultAccreds.filter(d => !realAccreds.some(r => r.name.toLowerCase().includes(d.toLowerCase().split(' ')[0]))).map(d => ({ name: d, held: false }))]
-    : defaultAccreds.map(d => ({ name: d, held: false }));
-
-  const teamDisplay = [
-    ...(facts.team?.owners || []),
-    ...(facts.team?.key_people || []),
-  ].filter(Boolean);
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>About your business</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What we know about you</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0 }}>
-          This is what BuilderAudit picks up from {domain}. Items showing "—" are missing from your site — fixing them lifts your trust score.
-        </p>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:24, marginBottom:24 }}>
-        <Card>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Business details</h3>
-          <Field label="Trading name"  value={facts.company_name}/>
-          <Field label="Website"       value={domain}/>
-          <Field label="Location"      value={facts.location}/>
-          <Field label="Service area"  value={facts.service_area}/>
-          <Field label="Founded"       value={facts.established} note={facts.years_trading ? `(${facts.years_trading})` : null}/>
-          <Field label="Team size"     value={facts.team?.team_size}/>
-          <Field label="Services"      value={facts.work_types?.join(', ')}/>
-          <Field label="Project range" value={facts.project_value_range}/>
-          <Field label="One-liner"     value={facts.one_liner}/>
-        </Card>
-
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-          <Card pad={22}>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Accreditations</div>
-            <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:8 }}>
-              {accreditations.map((a,i) => (
-                <li key={i} style={{ display:'flex', alignItems:'center', gap:10, fontFamily:F.body, fontSize:14, color:P.ink }}>
-                  <span style={{ flex:'0 0 auto', display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:a.held?P.green:'transparent', border:`2px solid ${a.held?P.green:P.red}`, color:a.held?'#fff':P.red, fontSize:13, fontWeight:800 }}>{a.held?'✓':'✗'}</span>
-                  <span style={{ color:a.held?P.ink:P.muted }}>{a.name}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          {teamDisplay.length > 0 && (
-            <Card pad={22}>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Team</div>
-              {teamDisplay.map((p,i) => (
-                <div key={i} style={{ fontFamily:F.body, fontSize:14, color:P.ink, padding:'4px 0', borderBottom:i<teamDisplay.length-1?`1px solid ${P.surface}`:'none' }}>{p}</div>
-              ))}
-            </Card>
-          )}
-
-          {facts.contact && (facts.contact.phone || facts.contact.email || facts.contact.address) && (
-            <Card pad={22}>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Contact details on site</div>
-              {facts.contact.phone   && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>📞 {facts.contact.phone}</div>}
-              {facts.contact.email   && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>✉ {facts.contact.email}</div>}
-              {facts.contact.address && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink }}>📍 {facts.contact.address}</div>}
-            </Card>
-          )}
-
-          {facts.awards?.length > 0 && (
-            <Card pad={22} style={{ background:'rgba(82,71,184,0.06)', borderColor:P.accent }}>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>🏆 Awards & recognition</div>
-              {facts.awards.map((a,i) => <div key={i} style={{ fontFamily:F.body, fontSize:14, color:P.ink, padding:'3px 0' }}>{a}</div>)}
-            </Card>
-          )}
-
-          {facts.what_we_could_not_find?.length > 0 && (
-            <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red, boxShadow:`4px 4px 0 ${P.line}` }}>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>⚠ Missing from your site</div>
-              <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:6 }}>
-                {facts.what_we_could_not_find.map((item,i)=>(
-                  <li key={i} style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, display:'flex', gap:8 }}>
-                    <span style={{ color:P.red, fontWeight:700 }}>·</span>{item}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      <Card style={{ background:P.fill }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:22, alignItems:'center' }}>
-          <div>
-            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Something not right?</h3>
-            <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Re-scan your site to refresh what we know about you.</p>
-          </div>
-          <Btn primary onClick={()=>window.location.href=`/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`}>Re-scan now</Btn>
-        </div>
-      </Card>
-    </main>
-  );
-}
-
-// ── Builder: Scores & Review ─────────────────────────────────────
-function CategoryRow({ c, idx }) {
-  const [open, setOpen] = useState(idx === 0);
-  const color = c.s>=75?P.green:c.s>=55?P.fill:P.red;
-  return (
-    <div style={{ border:`2px solid ${P.line}`, borderRadius:6, background:open?P.surface:'#fff', overflow:'hidden' }}>
-      <button onClick={()=>setOpen(o=>!o)}
-        style={{ width:'100%', display:'grid', gridTemplateColumns:'170px 60px 1fr auto', gap:18, alignItems:'center', padding:'14px 16px', background:'transparent', border:'none', textAlign:'left', cursor:'pointer', fontFamily:'inherit' }}>
-        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{c.name}</div>
-        <div style={{ width:50, padding:'6px 4px', background:color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:16, textAlign:'center' }}>{c.s}</div>
-        <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, fontStyle:'italic', lineHeight:1.4, paddingRight:12 }}>{c.verdict}</div>
-        <div style={{ flex:'0 0 auto', width:28, height:28, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, transition:'transform .15s', transform:open?'rotate(45deg)':'rotate(0deg)' }}>+</div>
-      </button>
-      {open && (
-        <div style={{ padding:'4px 18px 20px 198px', display:'flex', flexDirection:'column', gap:14 }}>
-          {c.why && <div><div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Why this score</div><p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, lineHeight:1.55 }}>{c.why}</p></div>}
-          {c.evidence?.length > 0 && (
-            <div>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>What we found</div>
-              <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:6 }}>
-                {c.evidence.map((e,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}><span style={{ flex:'0 0 auto', color:P.muted, fontWeight:700 }}>·</span>{e}</li>)}
-              </ul>
-            </div>
-          )}
-          {c.fix && (
-            <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
-              <span style={{ flex:'0 0 auto', display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:P.accent, color:'#fff', fontSize:12, fontWeight:800 }}>↑</span>
-              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}>
-                <b style={{ textTransform:'uppercase', letterSpacing:'0.05em', fontSize:11, color:P.muted, display:'block', marginBottom:4 }}>How to climb</b>
-                {c.fix}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BuilderReview({ latestAudit }) {
-  const report = latestAudit?.report_json;
-
-  const categories = report?.trust_breakpoints?.slice(0,8).map((tb,i)=>{
-    const scores = [48,72,86,54,58,68,62,70];
-    return {
-      name: tb.title||`Category ${i+1}`,
-      s: scores[i]||60,
-      verdict: `"${tb.homeowner_reaction||'...'}"`,
-      why: tb.evidence,
-      evidence: [],
-      fix: tb.fix,
-    };
-  }) || [
-    { name:'Photo quality',   s:48, verdict:'"Looks a bit dodgy — most of these photos are clearly stock images."', why:'We scanned 9 photos labelled as past work. 6 appear in reverse-image searches on stock sites.', evidence:['6 of 9 photos detected as stock','2 of 9 detected as AI-generated','No before/after pairs anywhere'], fix:'Replace at least 5 portfolio photos with phone shots from real jobs.' },
-    { name:'Trust signals',   s:72, verdict:'"They show insurance, but no FMB or TrustMark."', why:'Public liability insurance is clearly disclosed. However, no trade body badges are shown.', evidence:['Insurance visible on contact page','No FMB or TrustMark badges','Reviews hidden behind a 3rd-page link'], fix:'Apply for FMB or TrustMark and surface reviews on your homepage.' },
-    { name:'Mobile friendly', s:86, verdict:'"Works great on my phone. Buttons are easy to tap."', why:'Site renders cleanly at all common phone sizes.', evidence:['All tap targets ≥ 44px','No layout breaks at 360px','Menu collapses correctly'], fix:'Tiny win: keep field labels visible during focus on forms.' },
-    { name:'Site speed',      s:54, verdict:'"Hangs for a few seconds when I land."', why:'Homepage takes 4.2s to become interactive on a typical 4G phone.', evidence:['Largest Contentful Paint: 4.2s','Hero image: 2.1MB'], fix:'Compress the hero image and convert to WebP.' },
-  ];
-
-  const strengths = report ? ['Mobile experience is solid','Copy sounds like a person, not corporate fluff'] : ['Mobile experience is genuinely good','Copy sounds like a person, not corporate fluff','Insurance amount shown clearly'];
-  const risks = report ? (report.trust_breakpoints?.slice(0,4).map(tb=>tb.homeowner_reaction||tb.title)||[]) : ['Six of nine "past jobs" are stock photos','No FMB or TrustMark badge','Quote form is too long','Homepage takes 4 seconds to load'];
-  const heroScore = report?.hero?.score || 64;
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Homeowner's view</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What would a homeowner think of your website?</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
-          We ran your site through the eyes of a fussy homeowner with a £40k extension to spend. Here's their honest take, category by category.
-        </p>
-      </div>
-
-      <Card style={{ background:P.fill, marginBottom:24 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'170px 1fr', gap:24, alignItems:'center' }}>
-          <Donut score={heroScore} size={150}/>
-          <div>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>The overall feel</div>
-            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
-              {report?.hero?.headline ? `"${report.hero.headline}"` : '"I\'d ring them — but I\'d also ring two more first."'}
-            </h3>
-            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, lineHeight:1.5, opacity:0.85 }}>
-              {report?.hero?.subtext || 'You don\'t look like a cowboy, but you don\'t quite look like the safe choice either. A homeowner shortlisting three builders would put you in the middle.'}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card style={{ marginBottom:24 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Category-by-category</h3>
-          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Tap any row for the deep dive</span>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-          {categories.map((c,i)=><CategoryRow key={i} c={c} idx={i}/>)}
-        </div>
-      </Card>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
-        <Card pad={24} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.green, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>✓ What they'd like about you</div>
-          <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
-            {strengths.map((s,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}><span style={{ flex:'0 0 auto', color:P.green, fontWeight:800 }}>✓</span>{s}</li>)}
-          </ul>
-        </Card>
-        <Card pad={24} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>⚠ Red flags they'd notice</div>
-          <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
-            {risks.map((s,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}><span style={{ flex:'0 0 auto', color:P.red, fontWeight:800 }}>!</span>{s}</li>)}
-          </ul>
-        </Card>
-      </div>
-    </main>
-  );
-}
-
-// ── Builder: Photo Review ────────────────────────────────────────
-function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{}, saveOverride = ()=>{} }) {
-  const report = latestAudit?.report_json;
-  const pa = report?.photo_analysis;
-  const excludePhoto = (id) => { setExcludedPhotoIds(ex => new Set([...ex, id])); saveOverride({ photoId: id, excluded: true }); };
-  const includePhoto = (id) => { setExcludedPhotoIds(ex => { const n = new Set(ex); n.delete(id); return n; }); saveOverride({ photoId: id, excluded: false }); };
-
-  /* Smart pairing — match AI descriptions to image URLs using keyword overlap.
-     The AI analyses images in the order it sees them in page text; the crawler
-     stores them in DOM order. These rarely align 1:1, so position-based pairing
-     produces mismatches. Instead we score each description against each URL's
-     alt text and pick the best match. Falls back to positional if no match. */
-  function findBestUrl(description, usedIndices, urlList) {
-    if (!urlList.length) return null;
-    const descWords = (description || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
-    let bestIdx = -1, bestScore = 0;
-    urlList.forEach((img, i) => {
-      if (usedIndices.has(i)) return;
-      const altWords = (img.alt || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
-      const srcWords = img.src.toLowerCase().split(/[\W_]+/).filter(w => w.length > 3);
-      const combined = [...altWords, ...srcWords];
-      const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
-      if (score > bestScore) { bestScore = score; bestIdx = i; }
-    });
-    /* Fall back to first unused URL if no keyword match */
-    if (bestIdx === -1) {
-      for (let i = 0; i < urlList.length; i++) {
-        if (!usedIndices.has(i)) { bestIdx = i; break; }
-      }
-    }
-    return bestIdx;
+/* ── Anthropic client with explicit key + startup diagnostics ──
+   Read from config.js (a boot-time snapshot) to bypass Railway Runtime V2
+   which strips user env vars at request time. */
+const ANTHROPIC_KEY = config.ANTHROPIC_API_KEY;
+if (!ANTHROPIC_KEY) {
+  console.error('✗ ANTHROPIC_API_KEY is not set — audits WILL fail.');
+  console.error('  Check Railway → Variables → ANTHROPIC_API_KEY and redeploy.');
+} else {
+  const trimmed = ANTHROPIC_KEY.trim();
+  if (trimmed !== ANTHROPIC_KEY) {
+    console.warn('⚠ ANTHROPIC_API_KEY has leading/trailing whitespace — trimming. Consider fixing it in Railway.');
   }
-
-  const photos = (() => {
-    const usedIndices = new Set();
-    const allUrls = imageUrls;
-
-    const strong = (pa?.strong_images || []).map((p, i) => {
-      const idx = findBestUrl(p.description, usedIndices, allUrls);
-      if (idx !== null && idx !== -1) usedIndices.add(idx);
-      const img = idx !== null && idx !== -1 ? allUrls[idx] : null;
-      return {
-        id: i + 1,
-        src: img?.src || null,
-        pageUrl: img?.pageUrl || null,
-        alt: img?.alt || '',
-        label: p.description || 'Real photo',
-        detail: p.why_it_works || '',
-        tags: ['Real', 'Portfolio'],
-        verdict: 'real',
-        hint: 'Keep this photo — it shows real work.',
-      };
-    });
-
-    const weak = (pa?.weak_images || []).map((p, i) => {
-      const idx = findBestUrl(p.description, usedIndices, allUrls);
-      if (idx !== null && idx !== -1) usedIndices.add(idx);
-      const img = idx !== null && idx !== -1 ? allUrls[idx] : null;
-      return {
-        id: strong.length + i + 1,
-        src: img?.src || null,
-        pageUrl: img?.pageUrl || null,
-        alt: img?.alt || '',
-        label: p.description || 'Flagged photo',
-        detail: p.issue || '',
-        tags: [p.confirmed_stock ? 'Stock detected' : 'AI-flagged', 'Review'],
-        verdict: 'stock',
-        hint: p.impact || 'Consider replacing this with a real job photo.',
-      };
-    });
-
-    if (strong.length + weak.length > 0) return [...strong, ...weak];
-
-    /* Fallback: show all raw imageUrls without AI analysis */
-    if (allUrls.length > 0) {
-      return allUrls.slice(0, 16).map((img, i) => ({
-        id: i + 1, src: img.src, pageUrl: img.pageUrl, alt: img.alt || '',
-        label: img.alt || `Photo ${i + 1}`, detail: 'Found on your site',
-        tags: ['Unclassified'], verdict: 'unknown',
-        hint: 'Run a fresh re-scan to get AI analysis of this photo.',
-      }));
-    }
-
-    return [
-      { id:1, src:null, pageUrl:null, alt:'', label:'Extension rear view', detail:'Real photo.', tags:['Real'], verdict:'real', hint:'Keep this photo.' },
-      { id:2, src:null, pageUrl:null, alt:'', label:'Kitchen refit', detail:'Stock image detected.', tags:['Stock detected'], verdict:'stock', hint:'Replace with a real job photo.' },
-    ];
-  })();
-
-  const visible = photos.filter(p => !excludedPhotoIds.has(p.id));
-  const realCount = visible.filter(p => p.verdict === 'real').length;
-  const stockCount = visible.filter(p => p.verdict === 'stock').length;
-  const excludedCount = excludedPhotoIds.size;
-
-  const verdictMap = {
-    real:    { label:'Real',        color:P.green },
-    stock:   { label:'Flagged',     color:P.red },
-    ai:      { label:'AI',          color:P.red },
-    unknown: { label:'Unclassified', color:P.muted },
-  };
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Photo review</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Are your photos working for you?</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
-          Every photo labelled as past work was checked — reverse-image search, AI detection, and EXIF metadata. Click any image to visit the page it's on.
-        </p>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
-        <Card pad={22}><Label>Total photos</Label><BigNum n={visible.length} sub={excludedCount > 0 ? `${excludedCount} excluded` : 'photos on your site'}/></Card>
-        <Card pad={22} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}><Label>Real photos</Label><BigNum n={realCount} sub="confirmed authentic"/></Card>
-        <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}><Label>Flagged photos</Label><BigNum n={stockCount} sub="stock or AI detected"/></Card>
-      </div>
-
-      {pa?.summary && (
-        <Card style={{ marginBottom:24, background:P.fill }}>
-          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>
-            <b style={{ fontFamily:F.display, fontSize:13, textTransform:'uppercase', letterSpacing:'0.06em', display:'block', marginBottom:8 }}>Overall verdict</b>
-            {pa.summary}
-          </div>
-        </Card>
-      )}
-
-      <Card>
-        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Photo-by-photo breakdown</h3>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16 }}>
-          {visible.map((p) => {
-            const v = verdictMap[p.verdict] || verdictMap.unknown;
-            return (
-              <div key={p.id} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden', display:'flex', flexDirection:'column' }}>
-                <a href={p.pageUrl || p.src || '#'} target="_blank" rel="noopener noreferrer"
-                   style={{ display:'block', height:160, background:'#e8e4d8', position:'relative', borderBottom:`2px solid ${P.line}`, textDecoration:'none', overflow:'hidden' }}>
-                  {p.src && <img src={p.src} alt={p.alt} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} onError={e=>{ e.target.style.display='none'; }}/>}
-                  {!p.src && <div style={{ position:'absolute', inset:0, backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <span style={{ fontFamily:'ui-monospace, monospace', fontSize:11, color:'rgba(0,0,0,0.45)' }}>photo-{String(p.id).padStart(2,'0')}.jpg</span>
-                  </div>}
-                  <span style={{ position:'absolute', top:10, left:10, padding:'4px 10px', background:v.color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{v.label}</span>
-                  {(p.pageUrl || p.src) && <span style={{ position:'absolute', bottom:8, right:8, padding:'3px 8px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>{p.pageUrl ? '↗ View on site' : '↗ View image'}</span>}
-                </a>
-                <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8, flex:1 }}>
-                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{p.label}</div>
-                  {p.detail && <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.4 }}>{p.detail}</div>}
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:4 }}>
-                    {p.tags.map((t,i) => <span key={i} style={{ padding:'2px 8px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.ink, letterSpacing:'0.04em', textTransform:'uppercase' }}>{t}</span>)}
-                  </div>
-                  <div style={{ flex:1 }}/>
-                  {p.verdict !== 'unknown' && (
-                    <div style={{ background:p.verdict==='real'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.06)', border:`1.5px solid ${p.verdict==='real'?P.green:P.red}`, borderRadius:4, padding:'8px 10px', fontFamily:F.body, fontSize:12.5, color:P.ink, lineHeight:1.4 }}>
-                      <b style={{ display:'block', fontSize:10.5, color:p.verdict==='real'?P.green:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:2 }}>{p.verdict==='real'?'✓ Keep it':'↑ Replace it'}</b>
-                      {p.hint}
-                    </div>
-                  )}
-                  {/* Exclude button — lets builder mark award badges, logos etc as "not a project photo" */}
-                  <button
-                    onClick={() => excludePhoto(p.id)}
-                    style={{ marginTop:8, padding:'7px 12px', background:'transparent', border:`1.5px solid ${P.muted}`, borderRadius:4, fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted, cursor:'pointer', textAlign:'left' }}
-                  >✕ Not a project photo — exclude from scoring</button>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Excluded photos — shown collapsed so user can undo */}
-          {excludedCount > 0 && (
-            <div style={{ gridColumn:'1/-1', marginTop:8, padding:'14px 18px', background:P.surface, border:`1.5px dashed ${P.muted}`, borderRadius:8 }}>
-              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, marginBottom:10, textTransform:'uppercase', letterSpacing:'0.06em' }}>{excludedCount} photo{excludedCount>1?'s':''} excluded from scoring</div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                {photos.filter(p => excludedPhotoIds.has(p.id)).map(p => (
-                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontSize:13 }}>
-                    <span style={{ color:P.muted }}>{p.label}</span>
-                    <button onClick={() => includePhoto(p.id)}
-                      style={{ background:'transparent', border:'none', cursor:'pointer', color:P.accent, fontFamily:F.body, fontSize:11, fontWeight:700, padding:0 }}>Undo</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
-    </main>
-  );
+  if (!trimmed.startsWith('sk-ant-')) {
+    console.warn('⚠ ANTHROPIC_API_KEY does not start with "sk-ant-" — likely malformed or wrong value.');
+  }
+  console.log('✓ ANTHROPIC_API_KEY present (' + trimmed.slice(0, 10) + '…' + trimmed.slice(-4) + ', length ' + trimmed.length + ')');
 }
+const client = new Anthropic({ apiKey: ANTHROPIC_KEY ? ANTHROPIC_KEY.trim() : undefined });
 
-// ── Builder: Top 10 Fixes ────────────────────────────────────────
-function BuilderFixes({ latestAudit }) {
-  const report = latestAudit?.report_json;
+const MAX_PAGES = 20;
+const SERPAPI_KEY = config.SERPAPI_KEY;
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-  const iconForCategory = (cat) => {
-    const m = { 'Photos':'hammer','Trust':'gear','Quote':'screwdriver','Speed':'roller','Clarity':'hardhat','SEO':'cone','Copy':'clipboard','Mobile':'tape' };
-    for (const [k,v] of Object.entries(m)) { if (cat?.toLowerCase().includes(k.toLowerCase())) return v; }
-    return 'wrench';
-  };
+// Initialise the database on startup
+db.initSchema().catch(err => console.error('DB init failed:', err.message));
 
-  const baseFixes = report?.top_actions?.map((a,i)=>{
-    const cats = ['Photos','Trust','Quote flow','Speed','Clarity','SEO','Copy','Mobile','Trust','Speed'];
-    const cat = cats[i%cats.length];
-    const isObj = typeof a === 'object' && a !== null;
-    return {
-      id: i+1,
-      icon: iconForCategory(isObj ? (a.title || '') : a),
-      title: isObj ? (a.title || `Action ${i+1}`) : a,
-      impact: isObj ? (a.impact_pts || [14,9,7,6,5,5,4,4,3,2][i] || 2) : ([14,9,7,6,5,5,4,4,3,2][i] || 2),
-      difficulty: 'Medium',
-      est: isObj ? (a.time || '—') : '—',
-      category: cat,
-      why: isObj ? (a.why || 'This fix directly addresses a trust concern homeowners notice.') : 'This fix directly addresses a trust concern homeowners notice.',
-      how: isObj ? (a.how || null) : null,
-    };
-  }) || [
-    { id:1,  icon:'hammer',     title:'Replace 6 stock photos with real before/after job shots',             impact:14, difficulty:'Medium', est:'1 hour',    category:'Photos',     why:'Six of your nine portfolio images are flagged as stock. Real photos are the single biggest score lift.' },
-    { id:2,  icon:'gear',       title:'Apply for FMB or TrustMark accreditation',                           impact:9,  difficulty:'Medium', est:'2-3 weeks', category:'Trust',      why:'You show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.' },
-    { id:3,  icon:'screwdriver',title:'Cut quote form to 4 fields: name, postcode, job type, note',         impact:7,  difficulty:'Easy',   est:'20 min',    category:'Quote flow', why:'Your form has 11 fields. Drop-off testing shows abandonment doubles past 6.' },
-    { id:4,  icon:'roller',     title:'Compress homepage hero image (currently 2.1MB)',                      impact:6,  difficulty:'Easy',   est:'10 min',    category:'Speed',      why:'Convert to WebP and target under 200KB. Cuts load time from 4.2s to ~1.8s.' },
-    { id:5,  icon:'hardhat',    title:'Create one landing page per service',                                 impact:5,  difficulty:'Hard',   est:'1 day',     category:'Clarity',    why:'Per-service pages help homeowners self-identify AND lift local SEO.' },
-    { id:6,  icon:'cone',       title:'Claim & link Google Business Profile from contact page',              impact:4,  difficulty:'Easy',   est:'20 min',    category:'SEO',        why:'You\'re ranking #14 for your area. A linked GBP is the fastest way into the local 3-pack.' },
-    { id:7,  icon:'clipboard',  title:'Surface 3 best reviews on the homepage',                             impact:4,  difficulty:'Easy',   est:'30 min',    category:'Trust',      why:'Reviews are buried. Move three to the homepage above the fold.' },
-    { id:8,  icon:'wrench',     title:'Rewrite hero headline around the homeowner outcome',                  impact:3,  difficulty:'Medium', est:'45 min',    category:'Copy',       why:'Hero currently says "We build X." Try "Add a kitchen-diner without losing your garden."' },
-    { id:9,  icon:'tape',       title:'Add a phone number to the header on mobile',                         impact:3,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'On mobile, the phone number isn\'t visible above the fold. Homeowners want quick contact.' },
-    { id:10, icon:'level',      title:'Add visible field labels during focus on quote form',                 impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'Labels disappear when typing on mobile. People forget what each field is.' },
-  ];
+// ─────────────────────────────────────────────────────────────────────────────
+// STATIC ASSETS & PAGE ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+// Serve static assets (CSS, JS, images)
+app.use('/assets', express.static(path.join(PUBLIC, 'assets')));
 
-  const [fixes, setFixes] = useState(baseFixes.map(f=>({...f, done:false, requestOpen:false, requested:false})));
-  const toggleDone = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, done:!f.done}:f));
-  const toggleReq  = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, requestOpen:!f.requestOpen}:f));
-  const submitReq  = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, requested:true, requestOpen:false}:f));
+// Page routes — each returns one HTML file
+app.get('/', (req, res) => res.sendFile(path.join(PUBLIC, 'home.html')));
+app.get('/audit', (req, res) => res.sendFile(path.join(PUBLIC, 'audit.html')));
+app.get('/signup', (req, res) => res.sendFile(path.join(PUBLIC, 'signup.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC, 'login.html')));
+app.get('/dashboard', (req, res) => res.sendFile(path.join(PUBLIC, 'dashboard.html')));
+/* /report/:id used to serve report.html. Now we redirect to the dashboard
+   which loads the same audit data via /api/report/:id/data.
+   Old report links (emails, bookmarks) still work — they just land on the dashboard. */
+app.get('/report/:id', (req, res) => res.redirect(302, '/dashboard?id=' + req.params.id));
+app.get('/report/:id/:section', (req, res) => res.redirect(302, '/dashboard?id=' + req.params.id + '&page=' + req.params.section));
+app.get('/services', (req, res) => res.sendFile(path.join(PUBLIC, 'services.html')));
+app.get('/check-builder', (req, res) => res.sendFile(path.join(PUBLIC, 'check-builder.html')));
+app.get('/privacy', (req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
 
-  const doneCount      = fixes.filter(f=>f.done).length;
-  const reqCount       = fixes.filter(f=>f.requested).length;
-  const remaining      = fixes.filter(f=>!f.done).reduce((a,b)=>a+b.impact,0);
-  const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Your top 10 fixes</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>The to-do list, in priority order</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Sorted by impact — biggest score lifts at the top. Tick them off as you go, or have the BuilderAudit team handle any of them.</p>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
-        <Card pad={22}>
-          <Label>Ticked off</Label>
-          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:40, color:P.ink, lineHeight:1 }}>{doneCount}<span style={{ fontSize:22, color:P.muted }}> / {fixes.length}</span></div>
-          <div style={{ height:8, marginTop:10, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}>
-            <div style={{ width:`${(doneCount/fixes.length)*100}%`, height:'100%', background:P.green, transition:'width .25s' }}/>
-          </div>
-        </Card>
-        <Card pad={22}><Label>Help requested</Label><BigNum n={reqCount} sub="BuilderAudit team will be in touch"/></Card>
-        <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub="still on the table" yellow/></Card>
-      </div>
-
-      <Card pad={22} style={{ marginBottom:24 }}>
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {fixes.map((f,idx)=>(
-            <div key={f.id} style={{ border:`2px solid ${P.line}`, borderRadius:6, background:f.done?P.surface:'#fff', opacity:f.done?0.68:1, overflow:'hidden', transition:'opacity .2s, background .2s' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'auto 40px 1fr auto auto', gap:14, alignItems:'center', padding:'14px 16px' }}>
-                <button onClick={()=>toggleDone(f.id)} style={{ flex:'0 0 auto', width:26, height:26, borderRadius:5, background:f.done?P.green:'#fff', border:`2.4px solid ${f.done?P.green:P.line}`, cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:14, fontFamily:F.display, transition:'background .15s, border-color .15s' }}>{f.done?'✓':''}</button>
-                <div style={{ flex:'0 0 auto', width:40, height:40, display:'grid', placeItems:'center' }}>
-                  <img src={`/assets/icons/${f.icon}.png`} alt="" width={40} height={40} style={{ width:40, height:40, objectFit:'contain' }}/>
-                </div>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:f.done?'line-through':'none', lineHeight:1.35 }}>
-                    <span style={{ display:'inline-block', marginRight:8, padding:'1px 7px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:11, color:P.muted, letterSpacing:'0.04em' }}>#{idx+1}</span>
-                    {f.title}
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:6, fontFamily:F.body, fontSize:12, color:P.muted, flexWrap:'wrap' }}>
-                    <span>{f.category}</span><span>·</span><span>{f.est}</span><span>·</span>
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
-                      <span style={{ width:6, height:6, borderRadius:'50%', background:diffColor(f.difficulty) }}/>
-                      {f.difficulty}
-                    </span>
-                  </div>
-                </div>
-                <span style={{ flex:'0 0 auto', padding:'6px 12px', background:P.green, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:13, whiteSpace:'nowrap' }}>+{f.impact} pts</span>
-                <div style={{ display:'flex', gap:6, flex:'0 0 auto' }}>
-                  {f.requested ? (
-                    <span style={{ padding:'8px 12px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:12, letterSpacing:'0.04em', whiteSpace:'nowrap' }}>✓ Help requested</span>
-                  ) : (
-                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'8px 12px', fontSize:12.5, boxShadow:'none' }}>{f.requestOpen?'Cancel':'Get help'}</Btn>
-                  )}
-                </div>
-              </div>
-              <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13.5, color:P.muted, lineHeight:1.5 }}>{f.why}</div>
-              {f.how && <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13, color:P.accent, lineHeight:1.5 }}><b style={{ textTransform:'uppercase', fontSize:10, letterSpacing:'0.07em', display:'block', marginBottom:3 }}>How</b>{f.how}</div>}
-              {f.requestOpen && (
-                <div style={{ borderTop:`2px solid ${P.line}`, background:'rgba(82,71,184,0.06)', padding:'18px 16px 18px 102px' }}>
-                  <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Request support from BuilderAudit</div>
-                  <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:'0 0 14px', lineHeight:1.5, maxWidth:640 }}>Our team will reach out within 1 working day with a quote. Most fixes in this band are £{f.difficulty==='Easy'?'40-60':f.difficulty==='Medium'?'120-200':'300+'} including a free re-audit afterwards.</p>
-                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                    <Btn primary onClick={()=>submitReq(f.id)} style={{ padding:'10px 16px' }}>Send request</Btn>
-                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'10px 16px', boxShadow:'none' }}>Cancel</Btn>
-                    <span style={{ marginLeft:8, fontFamily:F.body, fontSize:12, color:P.muted }}>We'll email you at your registered address</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card style={{ background:P.ink, color:'#fff', borderColor:P.line }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
-          <div>
-            <Kicker color={P.fill}>Want all 10 done by next month?</Kicker>
-            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'12px 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Hand the whole list to our team</h3>
-            <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>One quote, one project. Typical turnaround: 2-4 weeks.</p>
-          </div>
-          <Btn primary style={{ padding:'14px 22px', fontSize:15 }}>Get a quote for all 10 →</Btn>
-        </div>
-      </Card>
-    </main>
-  );
-}
-
-// ── Builder: Competitor Audits ───────────────────────────────────
-function BuilderCompetitors({ latestAudit, user }) {
-  const report   = latestAudit?.report_json;
-  const domain   = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){ return 'yoursite.co.uk'; } })();
-  const isLoggedIn = !!user;
-
-  /* YOUR card — built from the live audit */
-  const you = {
-    name:      report?.business_snapshot?.company_name || 'Your company',
-    url:       domain,
-    loc:       report?.business_snapshot?.location || 'UK',
-    score:     report?.hero?.score || 64,
-    breakdown: (report?.trust_questions || []).slice(0,6).map((q,i) => {
-      const labels = ['Trust','Real projects','Reviews','Credentials','Contact','Trading'];
-      return { name: labels[i] || q.question.slice(0,12), s: q.score || 50 };
-    }).concat(
-      /* fallback if no trust_questions yet */
-      report?.trust_questions?.length ? [] :
-      [{ name:'Photos',s:48},{ name:'Trust',s:72},{ name:'Mobile',s:86},{ name:'Speed',s:54},{ name:'Clarity',s:58},{ name:'Quote flow',s:68}]
-    ).slice(0,6),
-    good: report?.competitor_gap?.you_have?.[0] || 'Mobile experience and copy feel genuine.',
-    bad:  report?.trust_breakpoints?.[0]?.title  || 'Stock photos and missing trade badges undermine trust.',
-  };
-
-  /* ── Paywall modal state ── */
-  const [showModal,  setShowModal]  = useState(false);
-  const [unlocked,   setUnlocked]   = useState(isLoggedIn);
-  const [pendingSlot,setPendingSlot] = useState(null); /* slot index that triggered the modal */
-
-  /* Form fields */
-  const [form, setForm] = useState({ name:'', email:'', phone:'', company:'', consentTos:false, consentAgency:false });
-  const [formErr, setFormErr]     = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const setF = (k, v) => setForm(f => ({...f, [k]: v}));
-
-  const submitSignup = async () => {
-    if (!form.name.trim())    return setFormErr('Please enter your name.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setFormErr('Please enter a valid email address.');
-    if (!form.phone.trim())   return setFormErr('Please enter your phone number.');
-    if (!form.company.trim()) return setFormErr('Please enter your company name.');
-    if (!form.consentTos)     return setFormErr('You must agree to the Terms of Service to continue.');
-
-    setSubmitting(true);
-    setFormErr('');
-    try {
-      /* Use the existing signup endpoint — password auto-generated, they can set it later */
-      const tempPw = 'BA-' + Math.random().toString(36).slice(2,10) + '!';
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          email:        form.email.trim().toLowerCase(),
-          password:     tempPw,
-          phone:        form.phone.trim(),
-          companyName:  form.company.trim(),
-          name:         form.name.trim(),
-          businessType: 'limited_company',
-          region:       'other',
-          consentTos:   true,
-          consentAuth:  true,
-          consentAgency: !!form.consentAgency,
-          consentWeekly: false,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Sign-up failed');
-
-      /* Unlock and run the pending slot straight away */
-      setUnlocked(true);
-      setShowModal(false);
-      if (pendingSlot !== null) runAudit(pendingSlot, true);
-    } catch(err) {
-      setFormErr(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  /* ── Slots ── */
-  const [slots, setSlots] = useState(
-    Array.from({length:5}, () => ({ draft:'', audited:false, data:null, loading:false, error:null }))
-  );
-  const setDraft  = (i,v)  => setSlots(s => s.map((sl,j) => j===i ? {...sl, draft:v} : sl));
-  const editAgain = (i)    => setSlots(s => s.map((sl,j) => j===i ? {...sl, audited:false, data:null, error:null, draft:sl.data?.url||sl.draft} : sl));
-
-  /* Pass skipGate=true when called immediately after sign-up */
-  const runAudit = async (i, skipGate = false) => {
-    const url = (slots[i]?.draft || '').trim();
-    if (!url) return;
-
-    /* Show paywall if not unlocked */
-    if (!unlocked && !skipGate) {
-      setPendingSlot(i);
-      setShowModal(true);
-      return;
-    }
-
-    const fullUrl = /^https?:\/\//i.test(url) ? url : 'https://' + url;
-    setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:true, error:null} : sl));
-
-    try {
-      const res = await fetch('/api/competitor-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ url: fullUrl }),
-      });
-      const data = await res.json();
-
-      /* If the server still says locked (e.g. cookie expired) re-show modal */
-      if (data.locked) {
-        setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:false} : sl));
-        setPendingSlot(i);
-        setShowModal(true);
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || 'Audit failed');
-
-      const d = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){ return url; } })();
-      setSlots(s => s.map((sl,j) => j===i ? {
-        ...sl, audited:true, loading:false, data:{
-          name:      data.company_name || d,
-          url:       d,
-          loc:       '',
-          score:     data.score,
-          breakdown: (data.categories||[]).map(c => ({ name:c.name, s:c.score })),
-          good:      data.verdict || '',
-          bad:       (data.top_actions||[])[0] || '',
-        }
-      } : sl));
-    } catch(err) {
-      setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:false, error:err.message} : sl));
-    }
-  };
-
-  const audited  = slots.filter(s => s.audited && s.data);
-  const ranked   = [you, ...audited.map(s => s.data)].sort((a,b) => b.score - a.score);
-  const youRank  = ranked.findIndex(x => x === you) + 1;
-
-  /* ── Sub-components ── */
-  const ScoreCard = ({ b, label, yellow, onEdit }) => {
-    const color = b.score >= 75 ? P.green : b.score >= 55 ? P.fill : P.red;
-    return (
-      <Card pad={22} style={{ background: yellow ? P.fill : '#fff' }}>
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:14 }}>
-          <div>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{label}</div>
-            <div style={{ fontFamily:F.display, fontWeight:800, fontSize:20, color:P.ink, lineHeight:1.1 }}>{b.name}</div>
-            <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:4 }}>{b.url}</div>
-            {onEdit && <button onClick={onEdit} style={{ background:'transparent', border:'none', cursor:'pointer', color:P.accent, fontFamily:F.body, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', padding:0, marginTop:4 }}>Change</button>}
-          </div>
-          <div style={{ flex:'0 0 auto', padding:'10px 14px', background:color, color:color===P.fill?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:24, lineHeight:1, textAlign:'center', boxShadow:`3px 3px 0 ${P.line}`, minWidth:60 }}>
-            {b.score}<div style={{ fontSize:9, fontWeight:700, marginTop:2, opacity:0.85, letterSpacing:'0.08em' }}>/ 100</div>
-          </div>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
-          {b.breakdown.map((cat,j) => {
-            const cc = cat.s >= 75 ? P.green : cat.s >= 55 ? P.fill : P.red;
-            return <div key={j} style={{ display:'grid', gridTemplateColumns:'90px 1fr 30px', gap:10, alignItems:'center' }}>
-              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.ink }}>{cat.name}</div>
-              <div style={{ height:8, background:'rgba(0,0,0,0.08)', border:`1.5px solid ${P.line}`, borderRadius:3, overflow:'hidden' }}><div style={{ width:`${cat.s}%`, height:'100%', background:cc }}/></div>
-              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{cat.s}</div>
-            </div>;
-          })}
-        </div>
-        {b.good && <div style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45, marginTop:6 }}><span style={{ color:P.green, fontWeight:800, flex:'0 0 auto' }}>✓</span>{b.good}</div>}
-        {b.bad  && <div style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45, marginTop:6 }}><span style={{ color:P.red,   fontWeight:800, flex:'0 0 auto' }}>!</span>{b.bad}</div>}
-      </Card>
-    );
-  };
-
-  const EmptySlot = ({ slot, i }) => (
-    <Card pad={28} style={{ borderStyle:'dashed', borderWidth:2.5, boxShadow:'none', minHeight:280, display:'flex', flexDirection:'column', justifyContent:'center', position:'relative' }}>
-      {!unlocked && (
-        <div style={{ position:'absolute', top:12, right:12, background:P.accent, color:'#fff', borderRadius:4, padding:'3px 8px', fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em' }}>🔒 SIGN UP TO UNLOCK</div>
-      )}
-      <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Competitor slot</div>
-      <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</h3>
-      <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>Paste a competitor's website. We'll run the same full audit and sit them next to you.</p>
-      <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`4px 4px 0 ${P.line}` }}>
-        <span style={{ padding:'0 12px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</span>
-        <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
-          placeholder="theirsite.co.uk"
-          style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
-        <button onClick={()=>runAudit(i)}
-          style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 16px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer', whiteSpace:'nowrap' }}>
-          {unlocked ? 'Run audit →' : 'Unlock & run →'}
-        </button>
-      </div>
-      <div style={{ marginTop:12, fontFamily:F.body, fontSize:12, color:P.muted }}>Takes about 60 seconds. They won't be told.</div>
-      {slot.error && <div style={{ marginTop:10, fontFamily:F.body, fontSize:12.5, color:P.red }}>{slot.error}</div>}
-    </Card>
-  );
-
-  const LoadingSlot = () => (
-    <Card pad={28} style={{ minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
-      <div style={{ width:32, height:32, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-      <div style={{ fontFamily:F.body, fontSize:14, color:P.muted }}>Auditing competitor…</div>
-      <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Usually takes 60–90 seconds</div>
-    </Card>
-  );
-
-  /* ── Paywall modal ── */
-  const Modal = () => (
-    <div style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.65)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
-      onClick={e=>{ if(e.target===e.currentTarget) setShowModal(false); }}>
-      <div style={{ background:'#fff', border:`3px solid ${P.line}`, borderRadius:10, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:480, width:'100%', maxHeight:'90vh', overflowY:'auto' }}>
-
-        {/* Header */}
-        <div style={{ background:P.fill, borderBottom:`2px solid ${P.line}`, padding:'22px 28px' }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Free access</div>
-          <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Unlock competitor audits</h2>
-          <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5 }}>Full-quality audits on any competitor's site — free. Just tell us who you are so we can keep the lights on.</p>
-        </div>
-
-        {/* Form */}
-        <div style={{ padding:'24px 28px', display:'flex', flexDirection:'column', gap:14 }}>
-
-          {/* Name */}
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Your name *</label>
-            <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="John Smith"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-
-          {/* Email */}
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Email address *</label>
-            <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="john@yourcompany.co.uk"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-
-          {/* Phone */}
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Phone number *</label>
-            <input value={form.phone} onChange={e=>setF('phone',e.target.value)} type="tel" placeholder="07700 900000"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-
-          {/* Company */}
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Company name *</label>
-            <input value={form.company} onChange={e=>setF('company',e.target.value)} placeholder="Heartly Builders Ltd"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-
-          {/* Divider */}
-          <div style={{ borderTop:`1px solid ${P.line}`, margin:'4px 0' }}/>
-
-          {/* Consent T&Cs — required */}
-          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer' }}>
-            <input type="checkbox" checked={form.consentTos} onChange={e=>setF('consentTos',e.target.checked)}
-              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
-            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-              I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>. I understand BuilderAudit may contact me about my account. <span style={{ color:P.red, fontWeight:700 }}>*</span>
-            </span>
-          </label>
-
-          {/* Consent marketing — optional */}
-          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer', padding:'12px 14px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-            <input type="checkbox" checked={form.consentAgency} onChange={e=>setF('consentAgency',e.target.checked)}
-              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
-            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-              <b style={{ display:'block', marginBottom:2 }}>I'm open to builder recommendations & marketing help</b>
-              I'm happy to be contacted about builder recommendations, website improvement services, and online marketing opportunities from BuilderAudit and trusted partners. <span style={{ color:P.muted }}>(Optional — you can opt out any time.)</span>
-            </span>
-          </label>
-
-          {/* Error */}
-          {formErr && <div style={{ fontFamily:F.body, fontSize:13, color:P.red, padding:'8px 12px', background:'rgba(217,83,79,0.08)', borderRadius:4, border:`1px solid ${P.red}` }}>{formErr}</div>}
-
-          {/* Submit */}
-          <button onClick={submitSignup} disabled={submitting}
-            style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'14px 20px', fontFamily:F.display, fontWeight:900, fontSize:16, cursor:submitting?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:submitting?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
-            {submitting ? 'Creating your account…' : 'Unlock competitor audits →'}
-          </button>
-
-          <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.5 }}>
-            Free forever. No payment needed. Already have an account? <a href="/login" style={{ color:P.accent, fontWeight:600 }}>Sign in</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  /* ── Main render ── */
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1300, margin:'0 auto', position:'relative' }}>
-      {showModal && <Modal/>}
-
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Competitor audits</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>How you stack up</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Add up to five competitor websites. We'll run the same full audit on each and rank everyone side by side.</p>
-        {!unlocked && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:10, marginTop:14, padding:'10px 16px', background:P.fill, border:`2px solid ${P.line}`, borderRadius:6, boxShadow:`3px 3px 0 ${P.line}` }}>
-            <span style={{ fontSize:16 }}>🔒</span>
-            <span style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>Free feature — create your account to unlock. Takes 30 seconds.</span>
-            <button onClick={()=>setShowModal(true)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'6px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer' }}>Unlock free →</button>
-          </div>
-        )}
-      </div>
-
-      {/* Grid: your card + 5 competitor slots */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:18, marginBottom:24 }}>
-        <ScoreCard b={you} label={`You · ${you.loc}`} yellow/>
-        {slots.map((slot, i) =>
-          slot.loading  ? <LoadingSlot key={i}/> :
-          slot.audited  ? <ScoreCard key={i} b={slot.data} label="Competitor" onEdit={()=>editAgain(i)}/> :
-                          <EmptySlot key={i} slot={slot} i={i}/>
-        )}
-      </div>
-
-      {/* Verdict band */}
-      {audited.length > 0 && (
-        <Card style={{ background:P.ink }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>The verdict</div>
-          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
-            {youRank === 1 ? 'You\'re ahead of the pack' : `You're ranked #${youRank} of ${ranked.length}`}
-          </h3>
-          <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>
-            {youRank === 1 ? 'Your site currently outscores all audited competitors. Keep fixing to stay there.' : `Address your top fixes to close the gap. You're ${ranked[0].score - you.score} points behind the leader.`}
-          </p>
-        </Card>
-      )}
-    </main>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// HOMEOWNER PAGES
-// ════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HOMEOWNER DASHBOARD — 5 tabs
-// Safety verdict | Red flags | Photo check | Questions | Company check
-// ═══════════════════════════════════════════════════════════════════════════
-
-const HO_TABS = [
-  { k:'verdict',  label:'Safety verdict',    icon:'🛡' },
-  { k:'redflags', label:'Red flags',         icon:'⚠' },
-  { k:'photos',   label:'Photo check',       icon:'📸' },
-  { k:'questions',label:'Questions to ask',  icon:'❓' },
-  { k:'company',  label:'Company check',     icon:'🏢' },
+// ─────────────────────────────────────────────────────────────────────────────
+// STOCK DOMAINS — instant flag
+// ─────────────────────────────────────────────────────────────────────────────
+const STOCK_DOMAINS = [
+  'shutterstock.com','istockphoto.com','gettyimages.com','getty.com',
+  'dreamstime.com','depositphotos.com','alamy.com','123rf.com',
+  'adobe.com/stock','stock.adobe.com','unsplash.com','pexels.com',
+  'freepik.com','canva.com','pixabay.com','stocksy.com',
 ];
 
-/* Pill colour by impact */
-function impactPill(impact) {
-  const map = { critical:P.red, high:'#E05C00', medium:P.amber||'#D97706', low:P.green };
-  const bg = map[impact] || P.muted;
-  return <span style={{ padding:'2px 8px', background:bg, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{impact}</span>;
-}
-
-/* ── Tab: Safety verdict ─────────────────────────────────────────────────── */
-function HoVerdict({ report, domain }) {
-  const score = report?.hero?.score ?? null;
-  const scoreColor = score >= 75 ? P.green : score >= 55 ? '#D97706' : P.red;
-  const verdict = score >= 75 ? 'This builder appears trustworthy' : score >= 55 ? 'Proceed carefully — some concerns' : 'Significant red flags — verify before signing';
-  const tq = report?.trust_questions || [];
-
-  return (
-    <div>
-      {/* Hero verdict */}
-      <Card style={{ background:P.ink, color:'#fff', marginBottom:24 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:24, alignItems:'center' }}>
-          <div style={{ textAlign:'center' }}>
-            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:72, color:scoreColor, lineHeight:1, letterSpacing:'-0.04em' }}>{score ?? '?'}</div>
-            <div style={{ fontFamily:F.body, fontSize:11, color:'rgba(255,255,255,0.55)', marginTop:2, textTransform:'uppercase', letterSpacing:'0.08em' }}>/ 100</div>
-          </div>
-          <div>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Overall verdict</div>
-            <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:'#fff', margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase' }}>{report?.hero?.headline || verdict}</h2>
-            {report?.hero?.subtext && <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.78)', margin:'0 0 12px', lineHeight:1.55 }}>{report.hero.subtext}</p>}
-            {report?.hero?.ai_voice_intro && <p style={{ fontFamily:F.body, fontSize:13.5, fontStyle:'italic', color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.fill}`, paddingLeft:12 }}>{report.hero.ai_voice_intro}</p>}
-          </div>
-        </div>
-      </Card>
-
-      {/* 6 trust question scores */}
-      {tq.length > 0 && (
-        <Card style={{ marginBottom:24 }}>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>6 things we checked</h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            {tq.map((q,i) => {
-              const s = q.score || 0;
-              const c = s>=75?P.green:s>=55?'#D97706':P.red;
-              return (
-                <div key={i}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5 }}>
-                    <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>{q.question}</div>
-                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:c, marginLeft:10, whiteSpace:'nowrap' }}>{s} / 100</div>
-                  </div>
-                  <div style={{ height:8, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden', marginBottom:4 }}>
-                    <div style={{ width:`${s}%`, height:'100%', background:c }}/>
-                  </div>
-                  {q.explanation && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.4 }}>{q.explanation}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      {/* Journey through the site */}
-      {report?.homeowner_journey?.length > 0 && (
-        <Card>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>How a homeowner experiences this site</h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            {report.homeowner_journey.map((j,i) => {
-              const labels = { first_impression:'First impression', scrolling:'Scrolling through', decision_moment:'The decision moment' };
-              return (
-                <div key={i} style={{ display:'flex', gap:14 }}>
-                  <div style={{ flex:'0 0 auto', width:28, height:28, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:11 }}>{i+1}</div>
-                  <div>
-                    <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{labels[j.stage]||j.stage}</div>
-                    <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, fontStyle:'italic', lineHeight:1.55, borderLeft:`3px solid ${P.fill}`, paddingLeft:10 }}>"{j.thought}"</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-/* ── Tab: Red flags deep-dive ────────────────────────────────────────────── */
-function HoRedFlags({ report }) {
-  const [openIdx, setOpenIdx] = React.useState(0);
-  const breakpoints = report?.trust_breakpoints || [];
-  const critical = breakpoints.filter(b => b.impact === 'critical' || b.impact === 'high');
-  const medium   = breakpoints.filter(b => b.impact === 'medium');
-  const low      = breakpoints.filter(b => b.impact === 'low');
-  const groups = [
-    { label:'Critical & high risk', items:critical, borderColor:P.red, bg:'rgba(217,83,79,0.05)' },
-    { label:'Medium risk',          items:medium,   borderColor:'#D97706', bg:'rgba(217,119,6,0.05)' },
-    { label:'Low risk / watch',     items:low,      borderColor:P.green, bg:'rgba(31,138,91,0.05)' },
-  ].filter(g => g.items.length > 0);
-
-  if (breakpoints.length === 0) return (
-    <Card><div style={{ textAlign:'center', padding:'2rem', fontFamily:F.body, fontSize:15, color:P.muted }}>No trust issues identified in this audit.</div></Card>
-  );
-
-  let globalIdx = 0;
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-      {groups.map((g, gi) => (
-        <div key={gi}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>{g.label} ({g.items.length})</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {g.items.map((b, bi) => {
-              const idx = globalIdx++;
-              const isOpen = openIdx === idx;
-              return (
-                <div key={bi} style={{ border:`2px solid ${g.borderColor}`, borderRadius:8, background:isOpen?g.bg:'#fff', overflow:'hidden', transition:'background .15s' }}>
-                  <button onClick={() => setOpenIdx(isOpen ? -1 : idx)}
-                    style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left' }}>
-                    {impactPill(b.impact)}
-                    <div style={{ flex:1, fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'0.01em' }}>{b.title}</div>
-                    <div style={{ flex:'0 0 auto', fontFamily:F.display, fontWeight:800, fontSize:18, color:P.muted, transition:'transform .15s', transform:isOpen?'rotate(45deg)':'rotate(0)' }}>+</div>
-                  </button>
-                  {isOpen && (
-                    <div style={{ padding:'0 16px 18px 16px', display:'flex', flexDirection:'column', gap:14 }}>
-                      {/* Homeowner inner monologue */}
-                      {b.homeowner_reaction && (
-                        <div style={{ borderLeft:`3px solid ${g.borderColor}`, paddingLeft:12 }}>
-                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>What a homeowner thinks</div>
-                          <div style={{ fontFamily:F.body, fontSize:14, fontStyle:'italic', color:P.ink, lineHeight:1.55 }}>"{b.homeowner_reaction}"</div>
-                        </div>
-                      )}
-                      {/* Evidence */}
-                      {b.evidence && (
-                        <div style={{ background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:6, padding:'12px 14px' }}>
-                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>What we found</div>
-                          <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.55 }}>{b.evidence}</div>
-                        </div>
-                      )}
-                      {/* What it means + what to ask */}
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                        <div style={{ background:'rgba(217,83,79,0.06)', border:`1.5px solid ${P.red}`, borderRadius:6, padding:'12px 14px' }}>
-                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.red, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>What this means</div>
-                          <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
-                            {b.impact === 'critical' ? 'This is a serious concern that should be resolved before you sign anything.' :
-                             b.impact === 'high' ? 'This increases your risk significantly. Ask for proof before proceeding.' :
-                             b.impact === 'medium' ? 'Worth investigating — this could indicate a problem or just poor website maintenance.' :
-                             'Minor concern. Good to know but unlikely to indicate a problem on its own.'}
-                          </div>
-                        </div>
-                        <div style={{ background:'rgba(82,71,184,0.06)', border:`1.5px solid ${P.accent}`, borderRadius:6, padding:'12px 14px' }}>
-                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.accent, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>Ask them this</div>
-                          <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5, fontStyle:'italic' }}>{b.fix || 'Can you provide documentation to verify this?'}</div>
-                        </div>
-                      </div>
-                      {/* Walk away signal */}
-                      {b.impact === 'critical' && (
-                        <div style={{ background:P.red, color:'#fff', borderRadius:6, padding:'10px 14px', fontFamily:F.body, fontSize:13.5, fontWeight:600 }}>
-                          🚨 Walk away if they can't answer this clearly and in writing.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ── Tab: Photo check ────────────────────────────────────────────────────── */
-function HoPhotoCheck({ report, imageUrls }) {
-  const pa = report?.photo_analysis;
-
-  function findBestUrl(description, usedIndices, urlList) {
-    if (!urlList.length) return null;
-    const descWords = (description || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
-    let bestIdx = -1, bestScore = 0;
-    urlList.forEach((img, i) => {
-      if (usedIndices.has(i)) return;
-      const combined = [...(img.alt||'').toLowerCase().split(/\W+/), ...img.src.toLowerCase().split(/[\W_]+/)].filter(w => w.length > 3);
-      const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
-      if (score > bestScore) { bestScore = score; bestIdx = i; }
+function reverseImageSearch(imageUrl) {
+  return new Promise((resolve) => {
+    if (!SERPAPI_KEY) return resolve({ verdict: 'unknown', reason: 'No SerpAPI key configured' });
+    const params = new URLSearchParams({
+      engine: 'google_reverse_image',
+      image_url: imageUrl,
+      api_key: SERPAPI_KEY,
     });
-    if (bestIdx === -1) for (let i = 0; i < urlList.length; i++) { if (!usedIndices.has(i)) { bestIdx = i; break; } }
-    return bestIdx;
-  }
-
-  const usedIndices = new Set();
-  const strong = (pa?.strong_images || []).map((p, i) => {
-    const idx = findBestUrl(p.description, usedIndices, imageUrls);
-    if (idx != null && idx !== -1) usedIndices.add(idx);
-    const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
-    return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Real photo', detail:p.why_it_works||'', verdict:'real' };
-  });
-  const weak = (pa?.weak_images || []).map((p, i) => {
-    const idx = findBestUrl(p.description, usedIndices, imageUrls);
-    if (idx != null && idx !== -1) usedIndices.add(idx);
-    const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
-    return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Flagged photo', detail:p.issue||'', verdict:'stock', confirmed:p.confirmed_stock, source:p.stock_source };
-  });
-
-  const allPhotos = [...strong, ...weak];
-  const realCount = strong.length;
-  const flaggedCount = weak.length;
-
-  if (allPhotos.length === 0) return (
-    <Card><div style={{ textAlign:'center', padding:'2rem', fontFamily:F.body, color:P.muted }}>No photo analysis available for this audit. Re-scan to get a full photo check.</div></Card>
-  );
-
-  return (
-    <div>
-      {pa?.summary && (
-        <Card style={{ background:P.fill, marginBottom:20 }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Overall photo verdict</div>
-          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>{pa.summary}</div>
-        </Card>
-      )}
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
-        <Card pad={18} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green, textAlign:'center' }}>
-          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:P.green, lineHeight:1 }}>{realCount}</div>
-          <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:4 }}>Real photos confirmed</div>
-        </Card>
-        <Card pad={18} style={{ background:flaggedCount>0?'rgba(217,83,79,0.08)':'rgba(31,138,91,0.08)', borderColor:flaggedCount>0?P.red:P.green, textAlign:'center' }}>
-          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:flaggedCount>0?P.red:P.green, lineHeight:1 }}>{flaggedCount}</div>
-          <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:flaggedCount>0?P.red:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:4 }}>{flaggedCount>0?'Stock or AI detected':'No stock photos found'}</div>
-        </Card>
-      </div>
-
-      {/* What to demand */}
-      <Card style={{ marginBottom:20, background:P.surface, borderColor:P.accent }}>
-        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>What to ask before hiring</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {[
-            'Ask to see the original photos from these jobs — taken on their phone, with EXIF data intact',
-            'Request the address or at least postcode for 2-3 of the projects shown',
-            'Ask if you can speak to a previous client from each project you\'re shown',
-            flaggedCount > 0 ? `${flaggedCount} photo${flaggedCount>1?'s are':' is'} flagged — ask them specifically about these before anything else` : null,
-          ].filter(Boolean).map((q,i) => (
-            <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
-              <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>→</span>{q}
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))', gap:14 }}>
-        {allPhotos.map((p, i) => {
-          const isReal = p.verdict === 'real';
-          return (
-            <div key={i} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden' }}>
-              <a href={p.pageUrl||p.src||'#'} target="_blank" rel="noopener noreferrer"
-                 style={{ display:'block', height:140, background:'#e8e4d8', position:'relative', overflow:'hidden' }}>
-                {p.src && <img src={p.src} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'}/>}
-                <span style={{ position:'absolute', top:8, left:8, padding:'3px 9px', background:isReal?P.green:P.red, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>
-                  {isReal ? 'Real' : p.confirmed ? 'Stock' : 'Flagged'}
-                </span>
-                {p.pageUrl && <span style={{ position:'absolute', bottom:6, right:6, padding:'2px 7px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>↗ View</span>}
-              </a>
-              <div style={{ padding:'12px 14px' }}>
-                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:13, color:P.ink, textTransform:'uppercase', marginBottom:4 }}>{p.label}</div>
-                <div style={{ fontFamily:F.body, fontSize:12.5, color:isReal?P.good:P.red, lineHeight:1.4 }}>{p.detail}</div>
-                {p.source && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, marginTop:4 }}>Found on: {p.source}</div>}
-              </div>
-            </div>
+    const url = 'https://serpapi.com/search.json?' + params.toString();
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const allResults = [
+            ...(json.image_results || []),
+            ...(json.inline_images || []),
+            ...(json.reverse_image_search || []),
+          ];
+          const sources = allResults.map(r => (r.link || r.source || '')).filter(Boolean);
+          const stockMatch = sources.find(src =>
+            STOCK_DOMAINS.some(domain => src.toLowerCase().includes(domain))
           );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ── Tab: Questions to ask ───────────────────────────────────────────────── */
-function HoQuestions({ report, domain }) {
-  const [printed, setPrinted] = React.useState(false);
-  const [checked, setChecked] = React.useState({});
-
-  /* Build the questions from top_actions + trust_breakpoints */
-  const questions = (() => {
-    const fromActions = (report?.top_actions || []).map((a, i) => {
-      const title = typeof a === 'string' ? a : (a.title || '');
-      const why   = typeof a === 'object' ? (a.why || '') : '';
-      return { id:'a'+i, category:'Action required', text: title, context: why };
-    });
-    const fromFlags = (report?.trust_breakpoints || [])
-      .filter(b => b.impact === 'critical' || b.impact === 'high')
-      .map((b, i) => ({
-        id:'f'+i,
-        category: b.impact === 'critical' ? '🚨 Critical' : '⚠ High risk',
-        text: b.fix || ('Can you provide evidence about: ' + b.title + '?'),
-        context: b.evidence || '',
-      }));
-    /* Deduplicate and cap at 10 */
-    return [...fromFlags, ...fromActions].slice(0, 10);
-  })();
-
-  const doneCount = Object.values(checked).filter(Boolean).length;
-
-  return (
-    <div>
-      <Card style={{ background:P.fill, marginBottom:20 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:16, alignItems:'center' }}>
-          <div>
-            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em', marginBottom:4 }}>Your pre-hire checklist</div>
-            <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, opacity:0.75 }}>
-              Specific to {domain}. Tick off each one as you get a satisfactory answer. Don't sign anything until all critical questions are answered.
-            </div>
-          </div>
-          <div style={{ textAlign:'center' }}>
-            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:36, color:P.ink, lineHeight:1 }}>{doneCount}/{questions.length}</div>
-            <div style={{ fontFamily:F.body, fontSize:11, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em' }}>answered</div>
-          </div>
-        </div>
-      </Card>
-
-      <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
-        {questions.map((q, i) => {
-          const isCritical = q.category.includes('Critical');
-          const done = checked[q.id];
-          return (
-            <div key={q.id} onClick={() => setChecked(c => ({...c, [q.id]: !c[q.id]}))}
-              style={{ display:'flex', gap:14, padding:'14px 16px', background:done?P.surface:'#fff', border:`2px solid ${done?P.line:isCritical?P.red:P.line}`, borderRadius:8, cursor:'pointer', opacity:done?0.7:1, transition:'all .15s' }}>
-              <div style={{ flex:'0 0 auto', width:24, height:24, borderRadius:5, background:done?P.green:'#fff', border:`2.5px solid ${done?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13, marginTop:1 }}>{done?'✓':''}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                  <span style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:isCritical?P.red:P.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>{q.category}</span>
-                </div>
-                <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:done?'line-through':'none', lineHeight:1.4 }}>{q.text}</div>
-                {q.context && !done && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:5, lineHeight:1.4 }}>{q.context}</div>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <Card style={{ background:'rgba(27,26,23,0.04)', borderColor:P.line }}>
-        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>General rules before signing any builder contract</div>
-        {[
-          'Always get 3 quotes — compare them line by line, not just total price',
-          'Never pay more than 10-15% upfront — stage payments only',
-          'Get everything in writing: spec, timeline, payment schedule, who\'s responsible for planning',
-          'Check their public liability insurance certificate yourself — don\'t just take their word',
-          'Search their company name + "review" and "complaint" separately from their own site',
-        ].map((tip, i) => (
-          <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'5px 0', lineHeight:1.45, borderBottom:i<4?`1px solid ${P.surface}`:'none' }}>
-            <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>{i+1}.</span>{tip}
-          </div>
-        ))}
-      </Card>
-    </div>
-  );
-}
-
-/* ── Tab: Company check ─────────────────────────────────────────────────── */
-function HoCompanyCheck({ report, latestAudit }) {
-  const [searchState,   setSearchState]  = React.useState('idle'); /* idle|loading|done|error */
-  const [profileState,  setProfileState] = React.useState('idle'); /* idle|loading|done|error */
-  const [candidates,    setCandidates]   = React.useState([]);
-  const [profile,       setProfile]      = React.useState(null);
-  const [selectedNum,   setSelectedNum]  = React.useState(null);
-  const [searchTerm,    setSearchTerm]   = React.useState('');
-  const [errorMsg,      setErrorMsg]     = React.useState('');
-  const [manualSearch,  setManualSearch] = React.useState('');
-
-  const companyName = report?.business_snapshot?.company_name || '';
-  const domain      = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return '';} })();
-  const siteNumber  = report?.business_snapshot?.contact?.company_number || null;
-  const siteInfo    = report?.business_snapshot;
-
-  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', liquidation:'In liquidation ⚠', administration:'In administration ⚠' };
-  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
-
-  /* ── Step 1: search for candidates ── */
-  async function runSearch(overrideName) {
-    const term = overrideName || companyName || domain.split('.')[0];
-    setSearchTerm(term);
-    setSearchState('loading');
-    setProfile(null);
-    setSelectedNum(null);
-    setProfileState('idle');
-    try {
-      const params = new URLSearchParams();
-      params.set('name', term);
-      if (domain) params.set('domain', domain);
-      const res  = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
-      const data = await res.json();
-      if (!data.available) throw new Error(data.reason || 'Unavailable');
-      setCandidates(data.companies || []);
-      setSearchState('done');
-
-      /* If a company number is on the site, auto-select it */
-      if (siteNumber) {
-        const match = (data.companies||[]).find(c => c.number === siteNumber);
-        if (match) pickCandidate(match.number);
-      }
-    } catch(e) {
-      setErrorMsg(e.message || 'Search failed');
-      setSearchState('error');
-    }
-  }
-
-  /* ── Step 2: fetch full profile for chosen company number ── */
-  async function pickCandidate(number) {
-    setSelectedNum(number);
-    setProfileState('loading');
-    try {
-      const res  = await fetch('/api/company-profile/' + number, { credentials:'include' });
-      const data = await res.json();
-      if (!res.ok || !data.profile) throw new Error(data.error || 'Profile fetch failed');
-      setProfile(data.profile);
-      setProfileState('done');
-    } catch(e) {
-      setErrorMsg(e.message);
-      setProfileState('error');
-    }
-  }
-
-  /* ── Profile card ── */
-  const ProfileCard = ({ p }) => (
-    <div style={{ marginTop:20 }}>
-      {/* Status banner */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:p.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${p.status==='active'?P.green:P.red}`, borderRadius:8, marginBottom:16 }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, marginBottom:3 }}>{p.name}</div>
-          <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>Company #{p.number} · Incorporated {p.incorporated}</div>
-        </div>
-        <span style={{ padding:'5px 12px', background:statusColor[p.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
-          {statusLabel[p.status] || p.status}
-        </span>
-      </div>
-
-      {/* Alert if not active */}
-      {p.status !== 'active' && (
-        <div style={{ padding:'14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14.5, color:P.red, fontWeight:700, marginBottom:14 }}>
-          🚨 This company's status is "{p.status}" — do NOT pay them any money until you understand what this means.
-        </div>
-      )}
-
-      {/* Details grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-        {[
-          ['Registered address',    p.registeredAddress],
-          ['Last accounts filed',   p.lastAccounts || 'Unknown'],
-          ['Company type',          p.type],
-          ['Next confirmation due', p.nextConfirmation || 'Unknown'],
-        ].map(([label, val], i) => (
-          <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-            <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
-            <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontStyle:val?'normal':'italic' }}>{val||'—'}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Directors */}
-      {p.officers?.length > 0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Current directors & officers</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {p.officers.map((o, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
-                <div style={{ width:32, height:32, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:13, flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
-                <div>
-                  <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:P.ink }}>{o.name}</div>
-                  <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SIC codes */}
-      {p.sicCodes?.length > 0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Registered business activities</div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-            {p.sicCodes.map((s,i) => <span key={i} style={{ padding:'4px 10px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:12, color:P.ink }}>{s}</span>)}
-          </div>
-        </div>
-      )}
-
-      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
-        <a href={p.chUrl} target="_blank" rel="noopener noreferrer"
-          style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:14, color:P.ink, textDecoration:'none' }}>
-          View full filing history ↗
-        </a>
-        <button onClick={()=>{ setProfile(null); setSelectedNum(null); setProfileState('idle'); }}
-          style={{ background:'transparent', border:'none', cursor:'pointer', fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'underline', padding:0 }}>
-          ← Pick a different company
-        </button>
-      </div>
-    </div>
-  );
-
-  /* ── Candidate picker ── */
-  const CandidatePicker = () => (
-    <div style={{ marginTop:16 }}>
-      <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55, padding:'10px 14px', background:'rgba(217,119,6,0.07)', border:`1.5px solid #D97706`, borderRadius:6, marginBottom:14 }}>
-        <b>Builder websites often use a trading name, not their registered company name.</b> Here are the closest matches for "<b>{searchTerm}</b>" — pick the one that looks right based on address and incorporation date.
-      </div>
-
-      {candidates.length === 0 ? (
-        <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic', marginBottom:14 }}>
-          No matches found for "{searchTerm}". Try searching by a different name below.
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-          {candidates.map((c, i) => {
-            const color = statusColor[c.status] || P.muted;
-            const isSelected = selectedNum === c.number;
-            return (
-              <button key={i} onClick={()=>pickCandidate(c.number)}
-                style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12,
-                  padding:'14px 16px', background:isSelected?P.fill:'#fff',
-                  border:`2px solid ${isSelected?P.line:P.line}`,
-                  borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%',
-                  boxShadow:isSelected?`3px 3px 0 ${P.line}`:'none',
-                  outline:'none', transition:'background .1s' }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:2 }}>{c.name}</div>
-                  <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>
-                    #{c.number} · Incorporated {c.incorporated || '—'} · {c.address || 'No address'}
-                  </div>
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                  <span style={{ padding:'3px 9px', background:color, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700 }}>{c.status}</span>
-                  {profileState === 'loading' && isSelected
-                    ? <div style={{ width:16, height:16, border:`2.5px solid ${P.surface}`, borderTop:`2.5px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.7s linear infinite', flexShrink:0 }}/>
-                    : <span style={{ fontFamily:F.body, fontSize:12, color:P.accent, fontWeight:700, whiteSpace:'nowrap' }}>Select →</span>
-                  }
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Manual search */}
-      <div style={{ borderTop:`1px solid ${P.line}`, paddingTop:14 }}>
-        <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:8 }}>Not seeing the right company? Search by a different name</div>
-        <div style={{ display:'flex', gap:8 }}>
-          <input value={manualSearch} onChange={e=>setManualSearch(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&manualSearch.trim()&&runSearch(manualSearch.trim())}
-            placeholder={`Try "${companyName} Ltd" or "Create Properties"…`}
-            style={{ flex:1, border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 12px', fontFamily:F.body, fontSize:14, color:P.ink, outline:'none' }}/>
-          <button onClick={()=>manualSearch.trim()&&runSearch(manualSearch.trim())}
-            style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer', whiteSpace:'nowrap' }}>
-            Search →
-          </button>
-        </div>
-        <div style={{ marginTop:10 }}>
-          <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer"
-            style={{ fontFamily:F.body, fontSize:13, color:P.accent, fontWeight:700, textDecoration:'none' }}>
-            Search Companies House directly ↗
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div>
-      {/* What their site claims */}
-      <Card style={{ marginBottom:20 }}>
-        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>What their site claims</h3>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          {[
-            ['Company name',           siteInfo?.company_name],
-            ['Location',               siteInfo?.location],
-            ['Founded / trading',      siteInfo?.established ? `${siteInfo.established}${siteInfo.years_trading?' ('+siteInfo.years_trading+')':''}` : siteInfo?.years_trading],
-            ['Service area',           siteInfo?.service_area],
-            ['Contact phone',          siteInfo?.contact?.phone],
-            ['Contact email',          siteInfo?.contact?.email],
-            ['Address on site',        siteInfo?.contact?.address],
-            ['Company number on site', siteNumber || null],
-          ].map(([label, val], i) => (
-            <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-              <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
-              <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.red, fontStyle:val?'normal':'italic' }}>
-                {val || (label === 'Company number on site' ? '⚠ Not displayed' : 'Not found on site')}
-              </div>
-            </div>
-          ))}
-        </div>
-        {!siteNumber && (
-          <div style={{ marginTop:12, padding:'9px 12px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-            ⚠ <b>No company number on this site.</b> That makes it harder to verify — we'll search by name below, but you'll need to confirm which company is theirs.
-          </div>
-        )}
-      </Card>
-
-      {/* Companies House lookup */}
-      <Card>
-        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House verification</h3>
-        <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>
-          We search the official UK register for businesses matching this company's name. Because builders often use a trading name rather than their registered name, we'll show you the closest matches so <b>you can confirm which one is theirs</b>.
-        </p>
-
-        {searchState === 'idle' && (
-          <button onClick={()=>runSearch()} style={{ padding:'13px 24px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
-            Search Companies House →
-          </button>
-        )}
-
-        {searchState === 'loading' && (
-          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'16px', background:P.surface, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.muted }}>
-            <div style={{ width:20, height:20, border:`3px solid ${P.surface}`, borderTop:`3px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-            Searching the Companies House register for "{searchTerm || companyName}"…
-          </div>
-        )}
-
-        {searchState === 'error' && (
-          <div style={{ padding:'14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.red }}>
-            {errorMsg}. <button onClick={()=>runSearch()} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
-          </div>
-        )}
-
-        {searchState === 'done' && (
-          profileState === 'done' && profile
-            ? <ProfileCard p={profile}/>
-            : <CandidatePicker/>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ── Homeowner: Compare Builders ─────────────────────────────────
-function HomeownerCompare({ user }) {
-  const isLoggedIn = !!user;
-  const [unlocked,    setUnlocked]    = useState(isLoggedIn);
-  const [showModal,   setShowModal]   = useState(false);
-  const [pendingSlot, setPendingSlot] = useState(null);
-
-  /* Sign-up form */
-  const [form,       setForm]       = useState({ name:'', email:'', phone:'', consentTos:false, consentAgency:false });
-  const [formErr,    setFormErr]    = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const setF = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  const submitSignup = async () => {
-    if (!form.name.trim())  return setFormErr('Please enter your name.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setFormErr('Please enter a valid email address.');
-    if (!form.phone.trim()) return setFormErr('Please enter your phone number.');
-    if (!form.consentTos)   return setFormErr('You must agree to the Terms of Service to continue.');
-    setSubmitting(true); setFormErr('');
-    try {
-      const tempPw = 'BA-' + Math.random().toString(36).slice(2,10) + '!';
-      const res = await fetch('/api/auth/signup', {
-        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-        body: JSON.stringify({
-          email: form.email.trim().toLowerCase(), password: tempPw,
-          phone: form.phone.trim(), companyName: form.name.trim() + ' (homeowner)',
-          name: form.name.trim(), businessType:'other', region:'other',
-          consentTos:true, consentAuth:true,
-          consentAgency:!!form.consentAgency, consentWeekly:false,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Sign-up failed');
-      setUnlocked(true); setShowModal(false);
-      if (pendingSlot !== null) runAudit(pendingSlot, true);
-    } catch(err) { setFormErr(err.message); }
-    finally { setSubmitting(false); }
-  };
-
-  /* Slots */
-  const [slots, setSlots] = useState(Array.from({length:5}, ()=>({draft:'', audited:false, data:null, loading:false, error:null})));
-  const setDraft  = (i,v) => setSlots(s=>s.map((sl,j)=>j===i?{...sl,draft:v}:sl));
-  const clearSlot = (i)   => setSlots(s=>s.map((sl,j)=>j===i?{...sl,audited:false,data:null,error:null,draft:''}:sl));
-
-  const runAudit = async (i, skipGate=false) => {
-    const raw = (slots[i]?.draft||'').trim();
-    if (!raw) return;
-    if (!unlocked && !skipGate) { setPendingSlot(i); setShowModal(true); return; }
-    const fullUrl = /^https?:\/\//i.test(raw) ? raw : 'https://'+raw;
-    setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:true,error:null}:sl));
-    try {
-      const res  = await fetch('/api/competitor-check', {
-        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-        body: JSON.stringify({ url: fullUrl }),
-      });
-      const data = await res.json();
-      if (data.locked) { setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:false}:sl)); setPendingSlot(i); setShowModal(true); return; }
-      if (!res.ok) throw new Error(data.error||'Audit failed');
-      const domain = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){return raw;} })();
-      const cats = (data.categories||[]).map(c=>({name:c.name, s:c.score}));
-      setSlots(s=>s.map((sl,j)=>j===i?{...sl, audited:true, loading:false, data:{
-        name: data.company_name||domain, url:domain,
-        score:data.score, cats, verdict:data.verdict||'',
-      }}:sl));
-    } catch(err) { setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:false,error:err.message}:sl)); }
-  };
-
-  const audited = slots.filter(s=>s.audited&&s.data);
-  const ranked  = [...audited].sort((a,b)=>b.data.score-a.data.score);
-  const topPick = ranked[0]?.data;
-  const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
-
-  /* Tile */
-  const Tile = ({slot, i}) => {
-    if (slot.loading) return (
-      <div style={{ border:`2px dashed ${P.muted}`, borderRadius:8, padding:18, background:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, minHeight:220 }}>
-        <div style={{ width:28,height:28,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
-        <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Checking…</div>
-      </div>
-    );
-    if (!slot.audited) return (
-      <div style={{ border:`2px dashed ${P.muted}`, borderRadius:8, padding:18, background:'#fff', display:'flex', flexDirection:'column', gap:10, minHeight:220, justifyContent:'center', position:'relative' }}>
-        {!unlocked && <div style={{ position:'absolute',top:10,right:10,background:P.accent,color:'#fff',borderRadius:4,padding:'3px 8px',fontFamily:F.body,fontSize:10,fontWeight:700 }}>🔒 SIGN UP</div>}
-        <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase' }}>Builder {i+1}</div>
-        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase' }}>Add a builder</div>
-        <div style={{ display:'flex', alignItems:'center', background:P.surface, border:`2px solid ${P.line}`, borderRadius:4, padding:4, boxShadow:`3px 3px 0 ${P.line}` }}>
-          <span style={{ padding:'0 7px', fontFamily:F.body, fontSize:11, fontWeight:600, color:P.muted, flexShrink:0 }}>https://</span>
-          <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)} onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
-            placeholder="theirsite.co.uk"
-            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:12, color:P.ink, padding:'7px 3px', minWidth:0 }}/>
-          <button onClick={()=>runAudit(i)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'7px 10px', fontFamily:F.body, fontWeight:700, fontSize:11, cursor:'pointer', whiteSpace:'nowrap' }}>
-            {unlocked?'Check →':'Unlock →'}
-          </button>
-        </div>
-        {slot.error && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.red }}>{slot.error}</div>}
-      </div>
-    );
-    const d=slot.data, color=sc(d.score), isTop=topPick&&d.url===topPick.url;
-    return (
-      <div style={{ border:`2px solid ${isTop?P.green:P.line}`, borderRadius:8, background:isTop?'rgba(31,138,91,0.04)':'#fff', overflow:'hidden', boxShadow:`4px 4px 0 ${isTop?P.green:P.line}` }}>
-        {isTop && <div style={{ background:P.green,color:'#fff',fontFamily:F.body,fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase',padding:'4px 10px',textAlign:'center' }}>★ Top pick</div>}
-        <div style={{ padding:'14px' }}>
-          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
-            <div>
-              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, letterSpacing:'-0.01em' }}>{d.name}</div>
-              <div style={{ fontFamily:F.body, fontSize:11, color:P.muted, marginTop:1 }}>{d.url}</div>
-            </div>
-            <div style={{ background:color, color:color===P.fill?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'4px 9px', fontFamily:F.display, fontWeight:900, fontSize:20, lineHeight:1, boxShadow:`2px 2px 0 ${P.line}`, flexShrink:0, marginLeft:8 }}>{d.score}</div>
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
-            {d.cats.map((c,ci)=>(
-              <div key={ci} style={{ display:'grid', gridTemplateColumns:'56px 1fr 18px', alignItems:'center', gap:5 }}>
-                <span style={{ fontFamily:F.body, fontSize:10, fontWeight:600, color:P.ink }}>{c.name}</span>
-                <div style={{ height:6, background:P.surface, border:`1px solid ${P.line}`, borderRadius:3, overflow:'hidden' }}><div style={{ width:`${c.s}%`, height:'100%', background:sc(c.s) }}/></div>
-                <span style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.ink, textAlign:'right' }}>{c.s}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontFamily:F.body, fontSize:11.5, fontWeight:600, color:color, padding:'5px 8px', background:color===P.green?'rgba(31,138,91,0.08)':color==='#D97706'?'rgba(217,119,6,0.08)':'rgba(217,83,79,0.08)', borderRadius:5 }}>{d.verdict}</div>
-          <button onClick={()=>clearSlot(i)} style={{ marginTop:8, background:'transparent', border:'none', cursor:'pointer', fontFamily:F.body, fontSize:10.5, color:P.muted, padding:0, textDecoration:'underline' }}>Remove</button>
-        </div>
-      </div>
-    );
-  };
-
-  /* Modal — homeowner framing */
-  const Modal = () => (
-    <div style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.65)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
-      onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
-      <div style={{ background:'#fff', border:`3px solid ${P.line}`, borderRadius:10, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:460, width:'100%', maxHeight:'90vh', overflowY:'auto' }}>
-        <div style={{ background:P.fill, borderBottom:`2px solid ${P.line}`, padding:'22px 28px' }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Free access</div>
-          <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Compare builders free</h2>
-          <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5 }}>Full-quality audits on any builder's site — free. Just tell us who you are before you start comparing.</p>
-        </div>
-        <div style={{ padding:'24px 28px', display:'flex', flexDirection:'column', gap:14 }}>
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Your name *</label>
-            <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="Jane Smith"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Email address *</label>
-            <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="jane@example.co.uk"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-          <div>
-            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Phone number *</label>
-            <input value={form.phone} onChange={e=>setF('phone',e.target.value)} type="tel" placeholder="07700 900000"
-              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
-          </div>
-          <div style={{ borderTop:`1px solid ${P.line}`, margin:'2px 0' }}/>
-          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer' }}>
-            <input type="checkbox" checked={form.consentTos} onChange={e=>setF('consentTos',e.target.checked)}
-              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
-            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-              I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>. <span style={{ color:P.red, fontWeight:700 }}>*</span>
-            </span>
-          </label>
-          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer', padding:'12px 14px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-            <input type="checkbox" checked={form.consentAgency} onChange={e=>setF('consentAgency',e.target.checked)}
-              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
-            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-              <b style={{ display:'block', marginBottom:2 }}>I'd like builder recommendations &amp; advice</b>
-              I'm happy to be contacted about trusted builder recommendations and home improvement services from BuilderAudit and partners. <span style={{ color:P.muted }}>(Optional — opt out any time.)</span>
-            </span>
-          </label>
-          {formErr && <div style={{ fontFamily:F.body, fontSize:13, color:P.red, padding:'8px 12px', background:'rgba(217,83,79,0.08)', borderRadius:4, border:`1px solid ${P.red}` }}>{formErr}</div>}
-          <button onClick={submitSignup} disabled={submitting}
-            style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'14px 20px', fontFamily:F.display, fontWeight:900, fontSize:16, cursor:submitting?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:submitting?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
-            {submitting ? 'Setting up your account…' : 'Start comparing free →'}
-          </button>
-          <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.5 }}>
-            Free forever. No payment needed. Already have an account? <a href="/login" style={{ color:P.accent, fontWeight:600 }}>Sign in</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto', position:'relative' }}>
-      {showModal && <Modal/>}
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Compare builders</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Up to 5 builders, side by side</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:680 }}>Paste up to 5 builder websites. We run the same full forensic audit on each and rank them so you know who looks most trustworthy before you pick up the phone.</p>
-        {!unlocked && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:10, marginTop:14, padding:'10px 16px', background:P.fill, border:`2px solid ${P.line}`, borderRadius:6, boxShadow:`3px 3px 0 ${P.line}` }}>
-            <span style={{ fontSize:16 }}>🔒</span>
-            <span style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>Free feature — create your account to unlock. Takes 30 seconds.</span>
-            <button onClick={()=>setShowModal(true)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'6px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer' }}>Unlock free →</button>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:14, marginBottom:24 }}>
-        {slots.map((slot, i) => <Tile key={i} slot={slot} i={i}/>)}
-      </div>
-
-      {audited.length >= 2 && (
-        <Card style={{ background:P.ink, marginBottom:24 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
-            <div>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.5)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>The verdict</div>
-              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>{topPick?.name} looks strongest</h3>
-              <p style={{ fontFamily:F.body, fontSize:13.5, color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.5 }}>
-                {ranked.map((r,idx)=>`#${idx+1} ${r.data.name} (${r.data.score})`).join(' · ')}
-              </p>
-            </div>
-            <div style={{ textAlign:'center', flexShrink:0 }}>
-              <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:P.fill, lineHeight:1 }}>{topPick?.score}</div>
-              <div style={{ fontFamily:F.body, fontSize:10, color:'rgba(255,255,255,0.5)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Top score</div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <Card style={{ background:P.surface }}>
-        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Good to know</div>
-        {['A high score means a better-presented website — not a guarantee of quality work.','Always get at least 3 quotes and compare them line by line, not just the total price.','Use the Questions tab on each individual audit to know what to ask before you sign.'].map((t,i)=>(
-          <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'6px 0', borderBottom:i<2?`1px solid ${P.line}`:'none', lineHeight:1.45 }}>
-            <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>{i+1}.</span>{t}
-          </div>
-        ))}
-      </Card>
-    </main>
-  );
-}
-
-/* ── Main HomeownerDashboard ─────────────────────────────────────────────── */
-function HomeownerDashboard({ auditData, latestAudit }) {
-  const report = latestAudit?.report_json || null;
-  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
-  const [tab, setTab] = React.useState('verdict');
-
-  /* Show the 5-tab report if we have real data */
-  if (latestAudit && report) {
-
-    return (
-      <main style={{ padding:'32px 36px 80px', maxWidth:1100, margin:'0 auto' }}>
-        {/* Header */}
-        <div style={{ marginBottom:24 }}>
-          <Kicker color={P.accent}>Homeowner safety check</Kicker>
-          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:36, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 4px' }}>{domain}</h1>
-          <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
-        </div>
-
-        {/* Tab bar */}
-        <div style={{ display:'flex', gap:0, marginBottom:28, borderBottom:`2px solid ${P.line}`, overflowX:'auto' }}>
-          {HO_TABS.map(t => (
-            <button key={t.k} onClick={() => setTab(t.k)}
-              style={{ padding:'11px 18px', background:tab===t.k?P.fill:'transparent', border:'none', borderBottom:tab===t.k?`3px solid ${P.line}`:'3px solid transparent', cursor:'pointer', fontFamily:F.body, fontWeight:700, fontSize:13.5, color:tab===t.k?P.ink:P.muted, whiteSpace:'nowrap', transition:'all .15s', marginBottom:-2 }}>
-              <span style={{ marginRight:6 }}>{t.icon}</span>{t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        {tab === 'verdict'   && <HoVerdict     report={report} domain={domain}/>}
-        {tab === 'redflags'  && <HoRedFlags     report={report}/>}
-        {tab === 'photos'    && <HoPhotoCheck   report={report} imageUrls={auditData?.imageUrls||[]}/>}
-        {tab === 'questions' && <HoQuestions    report={report} domain={domain}/>}
-        {tab === 'company'   && <HoCompanyCheck report={report} latestAudit={latestAudit}/>}
-
-        {/* Check another CTA */}
-        <div style={{ marginTop:40, paddingTop:28, borderTop:`2px solid ${P.line}` }}>
-          <Card style={{ background:P.fill }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
-              <div>
-                <Kicker color={P.ink}>Got another quote?</Kicker>
-                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check another builder</h3>
-                <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Paste their website — we'll vet them the same way.</p>
-              </div>
-              <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
-            </div>
-          </Card>
-        </div>
-      </main>
-    );
-  }
-
-  /* No audit data — show the landing/empty state */
-
-  const builders = auditData?.builders || [
-    { name:'Heartly Builders Ltd', url:'heartlybuilders.co.uk', loc:'Bath', score:64, lastChecked:'2 days ago', notes:'Stock photos · no accreditations shown', saved:true },
-    { name:'Greenfield Construction', url:'greenfieldconstruction.co.uk', loc:'Bristol', score:78, lastChecked:'5 days ago', notes:'FMB accredited · 14 real photos', saved:true },
-  ];
-
-  return (
-    <main style={{ padding:'40px 36px', maxWidth:900, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Homeowner safety checks</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Vet a builder before you sign</h1>
-        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 0 24px' }}>Paste any UK builder's website. We'll run a forensic trust audit — photos, accreditations, Companies House, the lot.</p>
-        <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
-      </div>
-      {builders.length > 0 && (
-        <Card>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Recent checks</h3>
-          {builders.map((b,i) => (
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:16, padding:'12px 0', borderBottom:i<builders.length-1?`1px solid ${P.surface}`:'none' }}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{b.name}</div>
-                <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, marginTop:2 }}>{b.url} · {b.loc}</div>
-              </div>
-              <div style={{ padding:'8px 14px', background:b.score>=75?P.green:b.score>=55?P.fill:P.red, color:b.score>=55&&b.score<75?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:20 }}>{b.score}</div>
-              <Btn style={{ padding:'8px 12px', fontSize:12, boxShadow:'none' }} onClick={()=>window.location.href=`/audit?url=https://${b.url}&audience=homeowner`}>Re-check</Btn>
-            </div>
-          ))}
-        </Card>
-      )}
-    </main>
-  );
-}
-
-function Loading() {
-  return (
-    <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', fontFamily:F.body, fontSize:16, color:P.muted }}>
-      <div style={{ textAlign:'center' }}>
-        <div style={{ width:48, height:48, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto 16px' }}/>
-        Loading your dashboard…
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    </div>
-  );
-}
-
-// ── Error state ──────────────────────────────────────────────────
-function ErrorState({ msg }) {
-  return (
-    <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', padding:'40px' }}>
-      <Card style={{ maxWidth:480, textAlign:'center' }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>⚠</div>
-        <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, textTransform:'uppercase', margin:'0 0 12px' }}>Something went wrong</h2>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:'0 0 20px', lineHeight:1.5 }}>{msg}</p>
-        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-          <Btn primary onClick={()=>window.location.reload()}>Try again</Btn>
-          <Btn onClick={()=>window.location.href='/'}>Go home</Btn>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ROOT APP
-// ═══════════════════════════════════════════════════════════════
-function DashboardApp() {
-  const params = new URLSearchParams(window.location.search);
-  const auditIdFromUrl = params.get('id') || null;    // set when redirected from /audit
-  const [role, setRole] = useState(params.get('role')==='homeowner'?'homeowner':'builder');
-  const [page, setPage] = useState(params.get('page')||'dashboard');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [user, setUser] = useState(null);
-  const [latestAudit, setLatestAudit] = useState(null);
-  const [auditData, setAuditData] = useState(null);
-  const [imageUrls, setImageUrls] = useState([]);
-  const [excludedPhotoIds, setExcludedPhotoIds] = useState(new Set());
-  const [completedFixIds, setCompletedFixIds] = useState(new Set());
-  const [adjustedScore, setAdjustedScore] = useState(null);
-
-  /* Save an override to the server and update the adjusted score */
-  const saveOverride = useCallback(async (payload) => {
-    if (!auditIdFromUrl) return;
-    try {
-      const res = await fetch('/api/report/' + auditIdFromUrl + '/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await res.json().catch(()=>null);
-        if (data?.adjustedScore != null) setAdjustedScore(data.adjustedScore);
-      }
-    } catch(e) { /* silent — state still updates locally */ }
-  }, [auditIdFromUrl]);
-
-  // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    p.set('role', role); p.set('page', page);
-    if (auditIdFromUrl) p.set('id', auditIdFromUrl);
-    window.history.replaceState({}, '', window.location.pathname+'?'+p.toString());
-  }, [role, page]);
-
-  // Fetch data — priority: specific audit by ?id= > user's latest audit > demo mode
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      setError(null);
-      try {
-        // 1. If ?id= is in the URL, load that specific audit directly
-        if (auditIdFromUrl) {
-          const auditRes = await fetch('/api/report/' + auditIdFromUrl + '/data', { credentials:'include' }).catch(()=>null);
-          if (auditRes?.ok) {
-            const data = await auditRes.json().catch(()=>null);
-            if (data && !data.locked && data.report) {
-              setLatestAudit({ id: auditIdFromUrl, url: data.url, report_json: data.report, created_at: data.scannedAt });
-              setImageUrls(data.imageUrls || []);
-              /* Restore saved fix completions + photo exclusions from overrides */
-              const ov = data.overrides || {};
-              const savedFixes = new Set(Object.keys(ov).filter(k => k.startsWith('fix_') && ov[k] === 'completed').map(k => parseInt(k.replace('fix_',''))));
-              const savedPhotos = new Set(Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').map(k => parseInt(k.replace('photo_excluded_',''))));
-              setCompletedFixIds(savedFixes);
-              setExcludedPhotoIds(savedPhotos);
-              setAuditData({
-                count:   1,
-                company: data.report?.business_snapshot?.company_name || data.url || 'Your company',
-                history: [{ date: 'Latest', score: data.report?.hero?.score || 0 }],
-                imageUrls: data.imageUrls || [],
-              });
-              setLoading(false);
-              return;
-            }
+          if (stockMatch) {
+            const domain = STOCK_DOMAINS.find(d => stockMatch.toLowerCase().includes(d));
+            return resolve({
+              verdict: 'stock',
+              reason: 'Found on ' + domain,
+              source: stockMatch,
+              matchCount: sources.length,
+              matchedSites: [stockMatch],
+            });
           }
-        }
-
-        // 2. Try to fetch user's own data (logged-in user)
-        const [profileRes, auditsRes] = await Promise.all([
-          fetch('/api/user/profile', { credentials:'include' }).catch(()=>null),
-          fetch('/api/user/audits',  { credentials:'include' }).catch(()=>null),
-        ]);
-
-        if (profileRes?.ok) {
-          const profile = await profileRes.json().catch(()=>null);
-          if (profile) setUser(profile);
-        }
-
-        if (auditsRes?.ok) {
-          const audits = await auditsRes.json().catch(()=>null);
-          if (audits?.latest) setLatestAudit(audits.latest);
-          if (audits) setAuditData({
-            count:   audits.total_count || 1,
-            company: audits.latest?.report_json?.business_snapshot?.company_name || audits.latest?.url || 'Your company',
-            history: audits.history || [],
+          const externalMatches = sources.filter(src => {
+            try { return !src.includes(new URL(imageUrl).hostname); } catch { return false; }
           });
+          if (externalMatches.length >= 3) {
+            /* Extract unique hostnames from matches */
+            const hostnameMap = {};
+            externalMatches.forEach(src => {
+              try {
+                const h = new URL(src).hostname.replace(/^www\./, '');
+                if (!hostnameMap[h]) hostnameMap[h] = src;
+              } catch {}
+            });
+            const uniqueSites = Object.entries(hostnameMap).slice(0, 8).map(([hostname, fullUrl]) => ({ hostname, url: fullUrl }));
+            return resolve({
+              verdict: 'duplicated',
+              reason: 'Image found on ' + Object.keys(hostnameMap).length + ' other websites',
+              sources: externalMatches.slice(0, 3),
+              matchCount: externalMatches.length,
+              matchedSites: uniqueSites,
+            });
+          }
+          resolve({ verdict: 'original', reason: 'No stock or duplicate matches found', matchCount: sources.length });
+        } catch (e) {
+          resolve({ verdict: 'error', reason: 'Parse error: ' + e.message });
         }
-      } catch(e) {
-        // Silent — fall through to demo mode
-      }
-
-      // 3. Fall back to demo mode (mock data already baked into components)
-      setLoading(false);
-    }
-    loadData();
-  }, []);
-
-  if (loading) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
-
-  const pages = role==='builder' ? {
-    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
-    about:       <BuilderAbout       latestAudit={latestAudit}/>,
-    review:      <BuilderReview      latestAudit={latestAudit}/>,
-    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride}/>,
-    fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
-    competitors: <BuilderCompetitors latestAudit={latestAudit} user={user}/>,
-  } : {
-    dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
-    compare:   <HomeownerCompare user={user}/>,
-    shortlist: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
-    account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
-  };
-
-  return (
-    <div style={{ minHeight:'100vh', background:P.surface }}>
-      <Nav role={role} page={page} setPage={setPage} user={user}/>
-      {pages[page] || pages['dashboard']}
-    </div>
-  );
+      });
+    }).on('error', (e) => resolve({ verdict: 'error', reason: 'Request failed: ' + e.message }));
+  });
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<DashboardApp/>);
-</script>
-</body>
-</html>
-   
+function selectImagesForVerification(allImages, max = 14) {
+  /* Filter by size + exclude obvious non-project images via URL hints */
+  const candidates = allImages
+    .filter(img => img.width > 400 && img.height > 300)
+    .filter(img => {
+      /* Skip images that are clearly square (likely avatars/icons/logos) */
+      const ratio = img.width / img.height;
+      if (ratio > 0.85 && ratio < 1.15 && img.width < 600) return false;
+      return true;
+    })
+    .filter(img => {
+      const s = img.src.toLowerCase();
+      const excludeHints = [
+        'logo', 'icon', 'badge', 'avatar', 'favicon', 'headshot',
+        'staff', 'profile', 'signature', 'thumb', 'sprite',
+        '/team/', '/staff/', '/people/', '/about/', '/employees/',
+        'accreditation', 'certification', 'trustmark', 'fmb-',
+        'nhbc-', 'chas-', 'gas-safe', 'niceic-', 'checkatrade-',
+        'which-trusted', 'award', 'certificate', 'illustration',
+        'cartoon', 'vector', '.svg', 'graphic', 'banner-',
+        'header-', 'footer-', 'nav-', 'bg-', 'background-',
+        'pattern-', 'texture-', 'gradient-',
+      ];
+      return !excludeHints.some(h => s.includes(h));
+    })
+    .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+  const seen = new Set();
+  const unique = [];
+  for (const img of candidates) {
+    if (!seen.has(img.src)) {
+      seen.add(img.src);
+      unique.push(img);
+    }
+    if (unique.length >= max) break;
+  }
+  return unique;
+}
+
+/*
+ * Classify images via Claude vision to only audit real project/property photos.
+ * Sends the candidate images as URLs (batch) and asks Claude to return
+ * which are construction work / interiors / exteriors vs UI / team / logo.
+ */
+async function classifyProjectImages(candidates) {
+  if (candidates.length === 0) return [];
+
+  /* Batch up to 10 images per Claude call. */
+  const batches = [];
+  for (let i = 0; i < candidates.length; i += 10) {
+    batches.push(candidates.slice(i, i + 10));
+  }
+
+  const classifications = [];
+  for (const batch of batches) {
+    try {
+      const imgBlocks = batch.map(img => ({
+        type: 'image',
+        source: { type: 'url', url: img.src },
+      }));
+
+      const prompt = 'You are classifying images from a UK construction company website. You must be STRICT and CAUTIOUS.\n\n' +
+        'For each of the ' + batch.length + ' images I have provided (in order), decide whether it is a PROJECT IMAGE or NOT.\n\n' +
+        'PROJECT IMAGE = A photograph (not illustration, not cartoon, not vector) of:\n' +
+        '- A finished building or property (exterior, full-house shot, front view)\n' +
+        '- Construction work in progress (scaffolding, bricklaying, framing)\n' +
+        '- Interior rooms that show completed work (kitchens, bathrooms, living rooms, bedrooms)\n' +
+        '- Extensions, loft conversions, garden/landscape work\n' +
+        'These are images that prove what the builder has actually built.\n\n' +
+        'NOT A PROJECT IMAGE — classify as not_project if ANY of these apply:\n' +
+        '- Any photo containing a person as the main subject (team photos, headshots, portraits, staff photos, customer photos)\n' +
+        '- Any illustration, cartoon, drawing, sketch, vector graphic, or animated image (NOT a real photograph)\n' +
+        '- Company logos, brand marks, or wordmarks\n' +
+        '- Accreditation badges or logos (FMB, NHBC, CHAS, TrustMark, Gas Safe, NICEIC, Checkatrade, Which Trusted Trader, etc)\n' +
+        '- Awards, certificates, or trophy images\n' +
+        '- Icons, symbols, or UI elements\n' +
+        '- Charts, diagrams, floor plans, or technical drawings\n' +
+        '- Decorative banners, textures, patterns, or abstract backgrounds\n' +
+        '- Screenshots of anything\n' +
+        '- Stock illustration style images even if they show buildings (look for cartoon/flat design style)\n\n' +
+        'IMPORTANT: When in doubt, classify as not_project. False positives (flagging a team photo as a project) are worse than false negatives.\n\n' +
+        'Return ONLY a JSON array with one entry per image in order. Each entry must be:\n' +
+        '{"type": "project" | "not_project", "subject": "<brief description>"}\n\n' +
+        'Example: [{"type":"project","subject":"kitchen extension interior"},{"type":"not_project","subject":"team member headshot"},{"type":"not_project","subject":"cartoon illustration of houses"}]\n\n' +
+        'Return nothing else. No markdown, no explanation.';
+
+      const resp = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: [...imgBlocks, { type: 'text', text: prompt }] }],
+      });
+
+      const text = resp.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(text);
+      parsed.forEach((c, i) => {
+        if (batch[i]) classifications.push({ ...batch[i], classification: c });
+      });
+    } catch (err) {
+      console.warn('Classify batch failed:', err.message);
+      /* On failure, assume NOT project to avoid false flags on team photos / logos */
+      batch.forEach(img => classifications.push({ ...img, classification: { type: 'not_project', subject: 'classifier_failed' } }));
+    }
+  }
+
+  return classifications;
+}
+
+async function verifyImages(allImages) {
+  const candidates = selectImagesForVerification(allImages, 12);
+  console.log('Classifying ' + candidates.length + ' candidate images...');
+
+  /* 1. Classify with vision — only audit real project photos */
+  const classified = await classifyProjectImages(candidates);
+  const projectImages = classified.filter(c => c.classification?.type === 'project');
+  const skippedImages = classified.filter(c => c.classification?.type !== 'project');
+
+  console.log('Kept ' + projectImages.length + ' project images, skipped ' + skippedImages.length + ' (logos/team/icons)');
+
+  /* Cap at 8 reverse-image lookups to save SerpAPI credits */
+  const toCheck = projectImages.slice(0, 8);
+
+  /* 2. Reverse-image search only project photos */
+  const results = [];
+  for (const img of toCheck) {
+    const result = await reverseImageSearch(img.src);
+    results.push({
+      src: img.src,
+      alt: img.alt,
+      width: img.width,
+      height: img.height,
+      subject: img.classification?.subject || '',
+      ...result,
+    });
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return {
+    checked: results.filter(r => r.verdict !== 'error' && r.verdict !== 'unknown').length,
+    total: allImages.length,
+    projectImagesFound: projectImages.length,
+    skippedNonProject: skippedImages.length,
+    stockImages: results.filter(r => r.verdict === 'stock'),
+    duplicatedImages: results.filter(r => r.verdict === 'duplicated'),
+    originalImages: results.filter(r => r.verdict === 'original'),
+    allResults: results,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CRAWLER — ScrapFly only.
+// ─────────────────────────────────────────────────────────────────────────────
+// We removed the in-house Playwright crawler in favour of ScrapFly. ScrapFly
+// handles Cloudflare, residential proxies, JS rendering and screenshots in
+// one HTTP call, so the server no longer needs a local Chromium image.
+// If SCRAPFLY_API_KEY is missing or ScrapFly fails, we surface a clear error
+// instead of silently falling back to a broken second crawler.
+async function smartCrawl(startUrl, opts = {}) {
+  if (!isScrapFlyAvailable()) {
+    throw new Error('Crawler unavailable: SCRAPFLY_API_KEY is not configured on the server.');
+  }
+  console.log('[smart-crawl] Using ScrapFly for', startUrl);
+  const result = await crawlWebsiteScrapFly(startUrl, opts);
+  const pages = opts.debug ? result.pages : result;
+  if (!pages || pages.length === 0) {
+    throw new Error('ScrapFly returned no pages. The target site may block all bots, be offline, or require captcha.');
+  }
+  return result;
+}
+
+
+function normaliseUrl(raw) {
+  try {
+    const u = new URL(raw);
+    u.hash = '';
+    u.search = '';
+    return u.toString().replace(/\/$/, '');
+  } catch { return raw; }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({
+  status: 'ok',
+  serpapi: !!SERPAPI_KEY,
+  database: db.isEnabled(),
+}));
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   COMPETITOR CHECK — full-quality audit, gated behind account sign-up.
+   Logged-in users get the full crawl + Sonnet scoring (same as a normal audit).
+   Anonymous users get { locked: true } — they must create a free account.
+   This is the lead-generation gate: free access in exchange for contact details
+   + consent for builder marketing/recommendation services.
+   POST /api/competitor-check  { url: "https://theirsite.co.uk" }
+   ───────────────────────────────────────────────────────────────────────────── */
+app.post('/api/competitor-check', async (req, res) => {
+  /* Gate: must be logged in */
+  if (!req.user) {
+    return res.status(401).json({ locked: true, reason: 'account_required' });
+  }
+
+  const { url } = req.body;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'Provide a full URL starting with https://' });
+  }
+  if (!isScrapFlyAvailable()) {
+    return res.status(503).json({ error: 'Crawler not configured' });
+  }
+
+  try {
+    console.log('[competitor-check] Full crawl for', url, 'by user', req.user.id);
+    const { pages, imageVerification } = await crawlWebsiteScrapFly(url);
+
+    if (!pages || pages.length === 0) {
+      return res.status(422).json({ error: 'Could not crawl that site — it may be blocking automated requests.' });
+    }
+
+    const userContext = {
+      businessType: req.user.business_type,
+      region:       req.user.region,
+      companyName:  req.user.company_name,
+    };
+
+    /* Full Sonnet scoring — same quality as a normal audit */
+    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext, 'builder');
+
+    const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e){ return url; } })();
+    res.json({
+      url,
+      domain,
+      score:       report.hero?.score || 0,
+      company_name: report.business_snapshot?.company_name || domain,
+      verdict:     report.hero?.headline || '',
+      subtext:     report.hero?.subtext || '',
+      categories:  (report.trust_questions || []).map(q => ({
+        name:  q.question.replace('?','').replace('Can I verify this is a legitimate registered business','Legitimacy').replace('Do I believe these are real projects by this company','Real projects').replace('Do other homeowners trust and recommend this company','Reviews').replace('Do they have credentials to handle my project safely','Credentials').replace('Will they be easy to contact and communicate with','Contactability').replace('Is this business actively trading right now','Trading'),
+        score: q.score || 50,
+        note:  q.explanation || '',
+      })),
+      top_actions: (report.top_actions || []).slice(0, 3).map(a => typeof a === 'string' ? a : a.title),
+    });
+  } catch (err) {
+    console.error('[competitor-check] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Competitor check failed' });
+  }
+});
+
+/* Fetch charges (mortgages/charges registered against a company).
+   Used to flag financial encumbrances to homeowners.
+   GET /api/company-charges/:number */
+app.get('/api/company-charges/:number', async (req, res) => {
+  const { number } = req.params;
+  const CH_KEY = config.COMPANIES_HOUSE_API_KEY;
+  if (!CH_KEY) return res.json({ available: false });
+  try {
+    const authHeader = 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64');
+    const r = await fetch(`https://api.company-information.service.gov.uk/company/${number}/charges`, { headers:{ Authorization: authHeader } });
+    if (!r.ok) return res.json({ available: true, totalCount: 0, outstanding: 0, satisfied: 0 });
+    const d = await r.json();
+    const items = d.items || [];
+    res.json({
+      available:   true,
+      totalCount:  d.total_count || 0,
+      outstanding: items.filter(c => c.status === 'outstanding').length,
+      satisfied:   items.filter(c => c.status === 'fully-satisfied' || c.status === 'part-satisfied').length,
+    });
+  } catch(e) {
+    res.json({ available: false });
+  }
+});
+
+
+/* Called when the homeowner picks from the candidate list.
+   GET /api/company-profile/:number */
+app.get('/api/company-profile/:number', async (req, res) => {
+  const { number } = req.params;
+  const CH_KEY = config.COMPANIES_HOUSE_API_KEY;
+  if (!CH_KEY) return res.json({ available: false, reason: 'Companies House API key not configured' });
+
+  try {
+    const auth = 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64');
+    const [profileRes, officersRes] = await Promise.all([
+      fetch(`https://api.company-information.service.gov.uk/company/${number}`,         { headers:{ Authorization: auth } }),
+      fetch(`https://api.company-information.service.gov.uk/company/${number}/officers?items_per_page=10`, { headers:{ Authorization: auth } }),
+    ]);
+    if (!profileRes.ok) return res.status(profileRes.status).json({ error: 'Company not found' });
+    const pd = await profileRes.json();
+    const officers = officersRes.ok ? await officersRes.json() : {};
+
+    res.json({
+      available: true,
+      profile: {
+        number:            pd.company_number,
+        name:              pd.company_name,
+        status:            pd.company_status,
+        type:              pd.type,
+        incorporated:      pd.date_of_creation,
+        lastAccounts:      pd.accounts?.last_accounts?.made_up_to || null,
+        nextConfirmation:  pd.confirmation_statement?.next_due || null,
+        registeredAddress: pd.registered_office_address
+          ? [pd.registered_office_address.address_line_1, pd.registered_office_address.address_line_2, pd.registered_office_address.locality, pd.registered_office_address.postal_code].filter(Boolean).join(', ')
+          : null,
+        sicCodes: pd.sic_codes || [],
+        officers: (officers.items || []).filter(o => !o.resigned_on).map(o => ({
+          name:      o.name,
+          role:      o.officer_role,
+          appointed: o.appointed_on,
+        })),
+        chUrl: `https://find-and-update.company-information.service.gov.uk/company/${pd.company_number}`,
+      },
+    });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+/* Proxies requests to the free UK Companies House API so the key never
+   reaches the browser. Returns structured data for the homeowner company check.
+   GET /api/company-check?name=Create+Builders&domain=create-builders.co.uk
+   ───────────────────────────────────────────────────────────────────────────── */
+app.get('/api/company-check', async (req, res) => {
+  const { name, domain } = req.query;
+  if (!name && !domain) return res.status(400).json({ error: 'Provide ?name= or ?domain=' });
+
+  const CH_KEY = config.COMPANIES_HOUSE_API_KEY;
+  if (!CH_KEY) {
+    return res.json({ available: false, reason: 'Companies House API key not configured' });
+  }
+
+  const searchTerm = name || (domain || '').replace(/^www\./, '').replace(/\.[a-z]+$/, '').replace(/-/g, ' ');
+
+  try {
+    /* Search for companies matching the name */
+    const searchRes = await fetch(
+      `https://api.company-information.service.gov.uk/search/companies?q=${encodeURIComponent(searchTerm)}&items_per_page=5`,
+      { headers: { Authorization: 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64') } }
+    );
+
+    if (!searchRes.ok) {
+      console.warn('[ch] Search failed:', searchRes.status, await searchRes.text().catch(()=>''));
+      return res.json({ available: false, reason: 'Companies House search failed (' + searchRes.status + ')' });
+    }
+
+    const searchData = await searchRes.json();
+    const companies = (searchData.items || []).map(c => ({
+      name: c.title,
+      number: c.company_number,
+      status: c.company_status,
+      type: c.company_type,
+      incorporated: c.date_of_creation,
+      address: c.registered_office_address
+        ? [c.registered_office_address.address_line_1, c.registered_office_address.locality, c.registered_office_address.postal_code].filter(Boolean).join(', ')
+        : null,
+      matchScore: (() => {
+        const s = (c.title || '').toLowerCase();
+        const q = searchTerm.toLowerCase();
+        const words = q.split(/\s+/);
+        return words.filter(w => s.includes(w)).length / words.length;
+      })(),
+    })).sort((a, b) => b.matchScore - a.matchScore);
+
+    /* If we have a strong match, fetch full profile for the top result */
+    let profile = null;
+    const topMatch = companies[0];
+    if (topMatch && topMatch.matchScore >= 0.5) {
+      try {
+        const profileRes = await fetch(
+          `https://api.company-information.service.gov.uk/company/${topMatch.number}`,
+          { headers: { Authorization: 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64') } }
+        );
+        if (profileRes.ok) {
+          const pd = await profileRes.json();
+          /* Also fetch officers (directors) */
+          const officersRes = await fetch(
+            `https://api.company-information.service.gov.uk/company/${topMatch.number}/officers?items_per_page=10`,
+            { headers: { Authorization: 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64') } }
+          );
+          const officers = officersRes.ok ? await officersRes.json() : {};
+          profile = {
+            number: pd.company_number,
+            name: pd.company_name,
+            status: pd.company_status,          /* active | dissolved | liquidation | etc */
+            type: pd.type,
+            incorporated: pd.date_of_creation,
+            lastAccounts: pd.accounts?.last_accounts?.made_up_to || null,
+            nextConfirmation: pd.confirmation_statement?.next_due || null,
+            registeredAddress: pd.registered_office_address
+              ? [pd.registered_office_address.address_line_1, pd.registered_office_address.address_line_2, pd.registered_office_address.locality, pd.registered_office_address.postal_code].filter(Boolean).join(', ')
+              : null,
+            sicCodes: pd.sic_codes || [],
+            officers: (officers.items || []).filter(o => o.resigned_on == null).map(o => ({
+              name: o.name,
+              role: o.officer_role,
+              appointed: o.appointed_on,
+            })),
+            chUrl: `https://find-and-update.company-information.service.gov.uk/company/${pd.company_number}`,
+          };
+        }
+      } catch (e) {
+        console.warn('[ch] Profile fetch failed:', e.message);
+      }
+    }
+
+    res.json({
+      available: true,
+      searchTerm,
+      companies: companies.slice(0, 5),
+      profile,   /* full profile for best match, or null */
+    });
+  } catch (err) {
+    console.error('[ch] Error:', err.message);
+    res.json({ available: false, reason: err.message });
+  }
+});
+
+/* In-memory map of audit-ID → { email, audience }.
+ * When a user opts in to "email me when ready" mid-audit, we store their
+ * email here. When the audit completes, we look it up and fire the email.
+ *
+ * Why a Map and not the DB: this is the lean-MVP path. The audit lifecycle
+ * is server-bound (one request, one process), so an in-memory map is fine.
+ * If the server crashes mid-audit, the audit is lost anyway. We'll move to
+ * a DB column when the audit goes fully async (separate worker process). */
+const pendingNotifications = new Map();
+const NOTIFICATION_TTL_MS = 30 * 60 * 1000; // 30 minutes — well beyond max audit duration
+
+/* Periodic cleanup so the map doesn't grow forever on a long-running server */
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of pendingNotifications) {
+    if (now - entry.registeredAt > NOTIFICATION_TTL_MS) {
+      pendingNotifications.delete(id);
+    }
+  }
+}, 5 * 60 * 1000); // every 5 minutes
+
+/* Register an email for an in-progress audit. Called from the client when the
+ * user submits the "email me when ready" form. Idempotent: re-submitting with
+ * the same audit ID overwrites the email. */
+app.post('/api/audit/notify', (req, res) => {
+  const { auditId, email } = req.body || {};
+  if (!auditId || typeof auditId !== 'string') {
+    return res.status(400).json({ error: 'auditId required' });
+  }
+  if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+  /* Only allow registering against IDs that look like our format */
+  if (!/^rpt_[A-Za-z0-9]{6,}$/.test(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID format' });
+  }
+  pendingNotifications.set(auditId, { email: email.trim().toLowerCase(), registeredAt: Date.now() });
+  console.log('[audit-notify] Registered', email, 'for', auditId);
+  res.json({ ok: true });
+});
+
+// Run an audit — streams progress via SSE, saves to DB on complete
+app.post('/api/audit', async (req, res) => {
+  const { url } = req.body;
+  if (!url || !url.startsWith('http')) {
+    return res.status(400).json({ error: 'Please provide a valid URL starting with http/https' });
+  }
+
+  /* Generate the audit ID NOW (not at the end) so the client can register an
+   * email against it via /api/audit/notify while the audit is still running. */
+  const auditId = 'rpt_' + nanoid();
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  /* Tell proxies (Railway, nginx, Cloudflare) to never buffer this response.
+     Without this, the SSE stream gets buffered and the client sees nothing
+     until the connection ends. */
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const send = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
+
+  /* SSE heartbeat: long crawls (5+ minutes for stubborn sites) cause Railway's
+     proxy to time out the connection after ~60s of idle. We send a comment
+     line every 15s — EventSource ignores it client-side but the bytes keep
+     the TCP connection from being killed for inactivity. */
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat ' + Date.now() + '\n\n');
+    } catch (e) { /* connection already closed; let the audit finish on its own */ }
+  }, 15000);
+
+  /* Always clear the heartbeat when we're done — never leave intervals running */
+  const cleanup = () => clearInterval(heartbeat);
+  res.on('close', cleanup);
+  res.on('finish', cleanup);
+
+  try {
+    /* Send the audit ID FIRST so the client can register an email against it
+     * via /api/audit/notify while the audit is still in progress. */
+    send('audit_id', { id: auditId });
+
+    send('status', { message: 'Crawling website...', step: 1, total: 4 });
+    const pages = await smartCrawl(url);
+
+    /* Blocked-site detection. We bail out early in three cases:
+       1. Zero pages crawled (hard block, DNS failure, total timeout)
+       2. Only 1 page crawled — likely the homepage came back but no internal links
+          could be reached. Almost always indicates anti-bot protection.
+       3. Pages came back but their text content is below 200 chars total — that means
+          we got challenge pages (e.g. Cloudflare "Just a moment...") rather than real content.
+       In all three cases the AI would hallucinate, so we'd rather refuse than fake it. */
+    const totalTextLength = pages.reduce((sum, p) => sum + (p.textContent || '').length, 0);
+    const isBlocked =
+      pages.length === 0 ||
+      (pages.length === 1 && totalTextLength < 500) ||
+      totalTextLength < 200;
+
+    if (isBlocked) {
+      const reason = pages.length === 0 ? 'no_pages_reached'
+        : pages.length === 1 ? 'only_homepage_no_links'
+        : 'empty_content';
+      console.warn('[audit] Site blocked or empty:', url, { reason, pages: pages.length, totalTextLength });
+      send('blocked', {
+        reason,
+        pagesAttempted: pages.length,
+        message: 'We could not audit this website. It appears to be using bot protection (e.g. Cloudflare, custom WAF) that blocks automated analysis tools.',
+        suggestion: 'This is unusual for legitimate UK construction websites. If you own this site, check your anti-bot settings or contact us at gthangavel1@gmail.com so we can review your case.',
+      });
+      /* Notify the user that the audit didn't complete, if they opted in */
+      const notify = pendingNotifications.get(auditId);
+      if (notify && email.isEnabled()) {
+        try {
+          await email.sendAuditReady({
+            email: notify.email,
+            auditId,
+            auditUrl: url,
+            score: null,
+            appBaseUrl: process.env.APP_BASE_URL,
+          });
+        } catch (e) { console.warn('[audit] notify-on-blocked failed:', e.message); }
+        pendingNotifications.delete(auditId);
+      }
+      cleanup();
+      return res.end();
+    }
+
+    const allImages = pages.flatMap(p => p.images);
+    send('status', {
+      message: 'Crawled ' + pages.length + ' pages, ' + allImages.length + ' images. Verifying photos...',
+      step: 2, total: 4,
+    });
+
+    const imageVerification = await verifyImages(allImages);
+    const flagged = imageVerification.stockImages.length + imageVerification.duplicatedImages.length;
+    send('status', {
+      message: flagged > 0 ? flagged + ' suspicious image' + (flagged > 1 ? 's' : '') + ' found. Running AI analysis...' : 'Images verified. Running AI analysis...',
+      step: 3, total: 4,
+    });
+
+    const userContext = req.user ? {
+      businessType: req.user.business_type,
+      region: req.user.region,
+      companyName: req.user.company_name,
+    } : null;
+    const audience = (req.body.audience === 'homeowner') ? 'homeowner' : 'builder';
+    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext, audience);
+
+    send('status', { message: 'Saving your report...', step: 4, total: 4 });
+
+    /* Save to database using the ID we generated up front.
+       rawData includes the crawled pages + image URLs — stored so the dashboard
+       can show real photo thumbnails and link back to the page they're on. */
+    if (db.isEnabled()) {
+      await db.saveAudit({ id: auditId, url, report, rawData: { pages, imageVerification } });
+    }
+
+    /* Notify the user if they opted in via /api/audit/notify */
+    const notify = pendingNotifications.get(auditId);
+    if (notify && email.isEnabled()) {
+      try {
+        await email.sendAuditReady({
+          email: notify.email,
+          auditId,
+          auditUrl: url,
+          score: report?.hero?.score ?? null,
+          appBaseUrl: process.env.APP_BASE_URL,
+        });
+      } catch (e) { console.warn('[audit] sendAuditReady failed:', e.message); }
+      pendingNotifications.delete(auditId);
+    }
+
+    send('complete', { id: auditId, url, scannedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error(err);
+    send('error', { message: err.message || 'Audit failed. Please try again.' });
+  }
+  cleanup();
+  res.end();
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AUTH ROUTES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const VALID_BUSINESS_TYPES = ['ltd', 'sole_trader', 'partnership', 'llp', 'homeowner'];
+
+const VALID_REGIONS = [
+  'London','South East','South West','East of England','East Midlands',
+  'West Midlands','Yorkshire and the Humber','North West','North East',
+  'Scotland','Wales','Northern Ireland',
+];
+
+app.post('/api/auth/signup', async (req, res) => {
+  const {
+    email, password, phone, companyName, businessType, region,
+    consentTos, consentAuth, consentAgency, consentWeekly,
+    claimAuditId,
+  } = req.body;
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address' });
+  }
+  if (!password || password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+  if (!phone || phone.replace(/\D/g, '').length < 10) {
+    return res.status(400).json({ error: 'Please enter a valid UK phone number' });
+  }
+  if (!companyName || companyName.trim().length < 2) {
+    return res.status(400).json({ error: 'Please enter your company name' });
+  }
+  if (!VALID_BUSINESS_TYPES.includes(businessType)) {
+    return res.status(400).json({ error: 'Please select a business type' });
+  }
+  if (!VALID_REGIONS.includes(region)) {
+    return res.status(400).json({ error: 'Please select your region' });
+  }
+  /* Required GDPR consents — refuse signup if not given */
+  if (!consentTos) {
+    return res.status(400).json({ error: 'You must agree to the Terms of Service and Privacy Policy' });
+  }
+  if (!consentAuth) {
+    return res.status(400).json({ error: 'You must confirm you are authorised to use this service for the business' });
+  }
+
+  try {
+    const passwordHash = await auth.hashPassword(password);
+    const userId = 'usr_' + nanoid();
+
+    /* Create the user with consent state. createUser writes the booleans + timestamps. */
+    const user = await db.createUser({
+      id: userId,
+      email,
+      passwordHash,
+      companyName: companyName.trim(),
+      businessType,
+      region,
+      phone: phone.trim(),
+      consentTos: !!consentTos,
+      consentAuth: !!consentAuth,
+      consentAgency: !!consentAgency,
+      consentWeekly: !!consentWeekly,
+    });
+
+    /* Append consent events to the immutable audit log. Required by GDPR Art 7(1).
+       We capture IP and user-agent at consent time so we can defend against later challenges. */
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    const ua = req.headers['user-agent'] || null;
+    await db.logConsent({ userId, consentType: 'tos_and_privacy', granted: true, ipAddress: ip, userAgent: ua });
+    await db.logConsent({ userId, consentType: 'authorised_to_use', granted: true, ipAddress: ip, userAgent: ua });
+    if (consentAgency) {
+      await db.logConsent({ userId, consentType: 'agency_partners', granted: true, ipAddress: ip, userAgent: ua });
+    }
+    if (consentWeekly) {
+      await db.logConsent({ userId, consentType: 'weekly_emails', granted: true, ipAddress: ip, userAgent: ua });
+    }
+
+    if (claimAuditId) {
+      try { await db.claimAudit(claimAuditId, userId); } catch (e) { console.warn('claim failed:', e.message); }
+    }
+
+    auth.setSessionCookie(res, userId);
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const user = await db.getUserByEmail(email);
+  if (!user) return res.status(401).json({ error: 'Incorrect email or password' });
+
+  const ok = await auth.verifyPassword(password, user.password_hash);
+  if (!ok) return res.status(401).json({ error: 'Incorrect email or password' });
+
+  await db.recordLogin(user.id);
+  auth.setSessionCookie(res, user.id);
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      companyName: user.company_name,
+      businessType: user.business_type,
+      region: user.region,
+    },
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  auth.clearSessionCookie(res);
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.user) return res.json({ user: null });
+  res.json({
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      phone: req.user.phone || null,
+      companyName: req.user.company_name,
+      businessType: req.user.business_type,
+      region: req.user.region,
+      weeklyEmailOptIn: !!req.user.weekly_email_opt_in,
+      lastWeeklyEmailAt: req.user.last_weekly_email_at,
+      consentAgency: !!req.user.consent_agency,
+      consentAgencyAt: req.user.consent_agency_at,
+    },
+  });
+});
+
+/* Update user settings — weekly-email toggle and agency-consent toggle */
+app.post('/api/auth/settings', auth.requireAuth, async (req, res) => {
+  const { weeklyEmailOptIn, consentAgency } = req.body || {};
+
+  /* Accept any subset; reject if neither specified */
+  if (typeof weeklyEmailOptIn !== 'boolean' && typeof consentAgency !== 'boolean') {
+    return res.status(400).json({ error: 'Provide weeklyEmailOptIn and/or consentAgency as booleans' });
+  }
+
+  try {
+    await db.updateUserSettings(req.user.id, { weeklyEmailOptIn, consentAgency });
+
+    /* Log consent changes to the immutable audit trail */
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    const ua = req.headers['user-agent'] || null;
+    if (typeof consentAgency === 'boolean') {
+      await db.logConsent({ userId: req.user.id, consentType: 'agency_partners', granted: consentAgency, ipAddress: ip, userAgent: ua });
+    }
+    if (typeof weeklyEmailOptIn === 'boolean') {
+      await db.logConsent({ userId: req.user.id, consentType: 'weekly_emails', granted: weeklyEmailOptIn, ipAddress: ip, userAgent: ua });
+    }
+
+    res.json({ success: true, weeklyEmailOptIn, consentAgency });
+  } catch (err) {
+    console.error('Settings update failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DASHBOARD / MY AUDITS / ENQUIRIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+app.get('/api/my/audits', auth.requireAuth, async (req, res) => {
+  const audits = await db.listAuditsForUser(req.user.id);
+  res.json({ audits });
+});
+
+app.get('/api/my/enquiries', auth.requireAuth, async (req, res) => {
+  const enquiries = await db.listEnquiriesForUser(req.user.id);
+  res.json({ enquiries });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SERVICE ENQUIRIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const VALID_SERVICES = ['web_rebuild', 'seo', 'photography', 'testimonials', 'managed_service'];
+
+app.post('/api/enquiry', auth.requireAuth, async (req, res) => {
+  const { service, notes, auditId } = req.body;
+
+  if (!VALID_SERVICES.includes(service)) {
+    return res.status(400).json({ error: 'Invalid service' });
+  }
+
+  let audit = null;
+  if (auditId) {
+    audit = await db.getAudit(auditId);
+    if (!audit) return res.status(404).json({ error: 'Audit not found' });
+    if (audit.user_id !== req.user.id) return res.status(403).json({ error: 'Not your audit' });
+  }
+
+  const enquiryId = 'enq_' + nanoid();
+  await db.createEnquiry({
+    id: enquiryId,
+    userId: req.user.id,
+    auditId: auditId || null,
+    service,
+    notes: notes?.trim() || null,
+  });
+
+  const host = req.get('host') || 'builderaudit.co.uk';
+  const protocol = req.protocol || 'https';
+  const reportUrl = auditId ? `${protocol}://${host}/dashboard?id=${auditId}` : `${protocol}://${host}/dashboard`;
+
+  const userForEmail = {
+    email: req.user.email,
+    companyName: req.user.company_name,
+    businessType: req.user.business_type,
+    region: req.user.region,
+  };
+
+  const emailResult = await email.sendEnquiryNotification({
+    service,
+    notes,
+    user: userForEmail,
+    auditUrl: audit?.url || null,
+    auditId,
+    reportUrl,
+  });
+
+  email.sendEnquiryConfirmationToUser({ service, user: userForEmail }).catch(err => {
+    console.warn('Confirmation email failed:', err.message);
+  });
+
+  res.json({
+    success: true,
+    enquiryId,
+    emailSent: emailResult?.success || false,
+  });
+});
+
+// Get full report data (requires login + ownership, or auto-claim unowned)
+app.get('/api/report/:id/data', async (req, res) => {
+  const { id } = req.params;
+
+  if (!db.isEnabled()) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  try {
+    const audit = await db.getAudit(id);
+    if (!audit) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+
+    /* AUTO-CLAIM: if logged-in user visits an audit with no owner, claim it for them. */
+    if (req.user && !audit.user_id) {
+      try {
+        await db.claimAudit(id, req.user.id);
+        audit.user_id = req.user.id;
+        console.log('Auto-claimed audit', id, 'for user', req.user.id);
+      } catch (e) {
+        console.warn('Auto-claim failed:', e.message);
+      }
+    }
+
+    const isOwner = req.user && audit.user_id === req.user.id;
+    const isUnclaimed = !audit.user_id && req.cookies['audit_unlock_' + id] === '1';
+
+    if (!isOwner && !isUnclaimed) {
+      return res.json({
+        locked: true,
+        needsAuth: !req.user,
+        url: audit.url,
+        score: audit.score,
+        companyName: audit.report_json?.business_snapshot?.company_name || null,
+        headline: audit.report_json?.hero?.headline || null,
+        scannedAt: audit.created_at,
+      });
+    }
+
+    /* Extract real image URLs from raw_data pages so the dashboard can show
+       actual photos rather than placeholder boxes. We pair AI analysis descriptions
+       with the actual scraped image src URLs by position. */
+    const rawPages = audit.raw_data?.pages || [];
+    const allImageUrls = rawPages.flatMap(p =>
+      (p.images || []).map(img => ({ src: img.src, alt: img.alt || '', pageUrl: p.url }))
+    ).filter(img => /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src));
+
+    res.json({
+      locked: false,
+      id: audit.id,
+      url: audit.url,
+      report: audit.report_json,
+      overrides: audit.overrides || {},
+      audience: audit.audience || 'builder',
+      scannedAt: audit.created_at,
+      imageUrls: allImageUrls.slice(0, 30), /* Cap at 30 to keep response lean */
+    });
+  } catch (err) {
+    console.error('GET /api/report/' + id + '/data failed:', err);
+    res.status(500).json({ error: 'Could not load report: ' + err.message });
+  }
+});
+
+// Meta check (for the report shell to show the right locked/unlocked UI)
+app.get('/api/report/:id/meta', async (req, res) => {
+  const { id } = req.params;
+  if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
+  const meta = await db.getAuditMeta(id);
+  if (!meta) return res.status(404).json({ error: 'Not found' });
+
+  /* AUTO-CLAIM unowned audit for logged-in user */
+  if (req.user && !meta.user_id) {
+    try {
+      await db.claimAudit(id, req.user.id);
+      meta.user_id = req.user.id;
+    } catch (e) { /* swallow */ }
+  }
+
+  const isOwner = req.user && meta.user_id === req.user.id;
+  const isUnclaimed = !meta.user_id && req.cookies['audit_unlock_' + id] === '1';
+
+  res.json({
+    id: meta.id,
+    url: meta.url,
+    score: meta.score,
+    scannedAt: meta.created_at,
+    lastAnalyzedAt: meta.last_analyzed_at,
+    canReanalyze: meta.has_raw_data,
+    unlocked: isOwner || isUnclaimed,
+    hasUser: !!meta.user_id,
+    loggedIn: !!req.user,
+  });
+});
+
+/* Re-analyse — reuses stored raw data, just runs the AI prompt again.
+   Cheap and fast: no crawl, no image search. Costs roughly one AI call. */
+app.post('/api/report/:id/reanalyze', async (req, res) => {
+  const { id } = req.params;
+
+  if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
+  if (req.cookies['audit_unlock_' + id] !== '1') {
+    return res.status(403).json({ error: 'Report not unlocked' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const send = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
+
+  try {
+    send('status', { message: 'Loading stored data...', step: 1, total: 2 });
+
+    const audit = await db.getAudit(id);
+    if (!audit) { send('error', { message: 'Report not found' }); return res.end(); }
+
+    const rawData = audit.raw_data;
+    if (!rawData || !rawData.pages) {
+      send('error', { message: 'This report was audited before re-analyse was available. Please run a new audit.' });
+      return res.end();
+    }
+
+    send('status', { message: 'Running fresh AI analysis...', step: 2, total: 2 });
+
+    let userContext = null;
+    if (audit.user_id) {
+      const owner = await db.getUserById(audit.user_id);
+      if (owner) userContext = {
+        businessType: owner.business_type,
+        region: owner.region,
+        companyName: owner.company_name,
+      };
+    }
+
+    const newReport = await scoreWebsite(
+      rawData.pages,
+      audit.url,
+      rawData.imageVerification || null,
+      audit.overrides || {},
+      userContext,
+      audit.audience || 'builder'
+    );
+
+    await db.updateAnalysis(id, newReport);
+
+    send('complete', { id, success: true });
+  } catch (err) {
+    console.error('Re-analyse failed:', err);
+    send('error', { message: err.message || 'Re-analyse failed' });
+  }
+  res.end();
+});
+
+/* Override a flagged image OR save fix completions / photo exclusions.
+   Accepts:
+     - { imageSrc, decision }                    → image override (existing)
+     - { fixId, completed: true|false }           → fix completion toggle
+     - { photoId, excluded: true|false }          → photo exclusion toggle */
+app.post('/api/report/:id/override', async (req, res) => {
+  const { id } = req.params;
+  const { imageSrc, decision, fixId, completed, photoId, excluded } = req.body;
+
+  if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
+
+  try {
+    const auditMeta = await db.getAuditMeta(id);
+    if (!auditMeta) return res.status(404).json({ error: 'Report not found' });
+
+    const isOwner = req.user && auditMeta.user_id === req.user.id;
+    const hasUnlockCookie = req.cookies['audit_unlock_' + id] === '1';
+    if (req.user && !auditMeta.user_id && !isOwner) {
+      try { await db.claimAudit(id, req.user.id); } catch (e) {}
+    }
+    const isOwnerAfterClaim = req.user && (isOwner || !auditMeta.user_id);
+    if (!isOwnerAfterClaim && !hasUnlockCookie) {
+      return res.status(403).json({ error: 'Report not unlocked' });
+    }
+
+    /* ── Fix completion ── */
+    if (fixId !== undefined) {
+      const key = 'fix_' + fixId;
+      await db.setImageOverride(id, key, completed ? 'completed' : 'pending');
+      const audit = await db.getAudit(id);
+      const overrides = audit.overrides || {};
+      const report = audit.report_json || {};
+      const actions = report.top_actions || [];
+      const completedPts = actions.reduce((sum, a, i) => {
+        const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i] || 2;
+        return overrides['fix_' + i] === 'completed' ? sum + pts : sum;
+      }, 0);
+      const adjustedScore = Math.min(100, (report.hero?.score || 0) + completedPts);
+      return res.json({ success: true, overrides, adjustedScore });
+    }
+
+    /* ── Photo exclusion ── */
+    if (photoId !== undefined) {
+      const key = 'photo_excluded_' + photoId;
+      await db.setImageOverride(id, key, excluded ? 'excluded' : 'included');
+      const audit = await db.getAudit(id);
+      const overrides = audit.overrides || {};
+      const report = audit.report_json || {};
+      const excludedCount = Object.keys(overrides).filter(k => k.startsWith('photo_excluded_') && overrides[k] === 'excluded').length;
+      const baseScore = report.hero?.score || 0;
+      /* Each excluded flagged photo restores ~5 pts to the "real projects" trust question */
+      const adjustedScore = Math.min(100, baseScore + (excludedCount * 5));
+      return res.json({ success: true, overrides, adjustedScore });
+    }
+
+    /* ── Image override (existing) ── */
+    if (!imageSrc) return res.status(400).json({ error: 'Missing imageSrc, fixId, or photoId' });
+    console.log('Override request:', { id, imageSrc, decision });
+    await db.setImageOverride(id, imageSrc, decision);
+
+    const audit = await db.getAudit(id);
+    if (!audit) return res.status(404).json({ error: 'Not found' });
+    const overrides = audit.overrides || {};
+    const iv = audit.report_json?.imageVerification || {};
+    const stockRemaining = (iv.stockImages || []).filter(img => overrides[img.src] !== 'rejected').length;
+    const dupRemaining = (iv.duplicatedImages || []).filter(img => overrides[img.src] !== 'rejected').length;
+    const flaggedRemaining = stockRemaining + dupRemaining;
+    const baseScore = audit.report_json?.hero?.score || 0;
+    const originalFlagged = (iv.stockImages || []).length + (iv.duplicatedImages || []).length;
+    const removedFlags = originalFlagged - flaggedRemaining;
+    let adjustedScore = baseScore + (removedFlags * 3);
+    if (adjustedScore > 100) adjustedScore = 100;
+    if (adjustedScore < 0) adjustedScore = 0;
+
+    res.json({ success: true, overrides, adjustedScore, stockRemaining, dupRemaining, flaggedRemaining, originalScore: baseScore });
+  } catch (err) {
+    console.error('Override failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* Crawl test endpoint — runs the crawler on a URL and returns the page list.
+   Use to verify that target sites' key pages (about, team, services) are being reached.
+   GET /api/_diag/crawl?url=https://example.com  */
+app.get('/api/_diag/crawl', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl || !/^https?:\/\//.test(targetUrl)) {
+    return res.status(400).json({ error: 'Provide ?url=https://...' });
+  }
+  if (!isScrapFlyAvailable()) {
+    return res.status(503).json({ error: 'SCRAPFLY_API_KEY not configured on the server.' });
+  }
+  console.log(`[crawl-test] Starting ScrapFly crawl of ${targetUrl}`);
+  try {
+    const t0 = Date.now();
+    const result = await crawlWebsiteScrapFly(targetUrl, { debug: true });
+    const engineUsed = 'scrapfly';
+    const pages = result.pages || result;
+    const debugLog = result.debugLog || [];
+    const totalCost = result.totalCost || null;
+    const elapsed = Date.now() - t0;
+
+    /* Classify pages the same way scorer-ai.js does */
+    const pageMap = pages.map(p => {
+      const path = (() => { try { return new URL(p.url).pathname.toLowerCase(); } catch (e) { return p.url.toLowerCase(); } })();
+      let kind = 'other';
+      if (path === '/' || path === '') kind = 'home';
+      else if (/team|staff|people|meet|who-?we-?are/.test(path)) kind = 'team';
+      else if (/about/.test(path)) kind = 'about';
+      else if (/service|what-?we-?do|expertise/.test(path)) kind = 'services';
+      else if (/contact|get-?in-?touch|enquir/.test(path)) kind = 'contact';
+      else if (/portfolio|project|gallery|work|case-?stud/.test(path)) kind = 'portfolio';
+      else if (/testimonial|review|client/.test(path)) kind = 'testimonials';
+      else if (/blog|news|article|insight/.test(path)) kind = 'blog';
+      else if (/faq|help|support/.test(path)) kind = 'faq';
+      else if (/price|pricing|cost|quote/.test(path)) kind = 'pricing';
+      return { url: p.url, kind, textLength: (p.textContent || '').length, imageCount: (p.images || []).length };
+    });
+
+    res.json({
+      target: targetUrl,
+      engine_used: engineUsed,
+      crawler_version: require('./crawler-scrapfly').version || 'unknown',
+      elapsed_ms: elapsed,
+      total_pages_crawled: pages.length,
+      total_cost_credits: totalCost,
+      pages: pageMap,
+      page_kinds_present: [...new Set(pageMap.map(p => p.kind))].filter(k => k !== 'other').sort(),
+      max_pages_cap: MAX_PAGES,
+      hit_cap: pages.length >= MAX_PAGES,
+      debug: debugLog,
+      team_page_text_sample: (() => {
+        const teamPage = pages.find(p => /team|staff|people|meet|who-?we-?are/.test(new URL(p.url).pathname.toLowerCase()));
+        return teamPage ? (teamPage.textContent || '').slice(0, 800) : null;
+      })(),
+    });
+  } catch (err) {
+    console.error('[crawl-test] failed:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
+  }
+});
+
+/* Diagnostic endpoint — shows DB schema + env var visibility.
+   Visit /api/_diag/schema to confirm migrations ran. Safe to leave in prod — no secrets exposed. */
+app.get('/api/_diag/schema', async (req, res) => {
+  /* Compare process.env (which Runtime V2 strips) with config snapshot (captured at boot) */
+  const directDb = process.env.DATABASE_URL;
+  const allKeys = Object.keys(process.env);
+
+  console.log('[_diag] runtime DATABASE_URL=' + (!!directDb) +
+    ' config DATABASE_URL=' + (!!config.DATABASE_URL) +
+    ' isEnabled=' + db.isEnabled());
+
+  const result = {
+    runtime_env: {
+      DATABASE_URL_present: !!directDb,
+      ANTHROPIC_API_KEY_present: !!process.env.ANTHROPIC_API_KEY,
+      total_keys: allKeys.length,
+    },
+    config_snapshot: {
+      DATABASE_URL_present: !!config.DATABASE_URL,
+      DATABASE_URL_length: config.DATABASE_URL ? config.DATABASE_URL.length : 0,
+      ANTHROPIC_API_KEY_present: !!config.ANTHROPIC_API_KEY,
+      JWT_SECRET_present: !!config.JWT_SECRET,
+      RESEND_API_KEY_present: !!config.RESEND_API_KEY,
+      SERPAPI_KEY_present: !!config.SERPAPI_KEY,
+      SCRAPFLY_API_KEY_present: !!config.SCRAPFLY_API_KEY,
+      SCRAPFLY_API_KEY_runtime_present: !!process.env.SCRAPFLY_API_KEY,
+    },
+    db_enabled: db.isEnabled(),
+  };
+
+  if (!db.isEnabled()) {
+    result.error = 'DB not configured — db.isEnabled() returned false. Check config.DATABASE_URL.';
+    return res.json(result);
+  }
+
+  try {
+    const { rows: auditCols } = await db.pool().query(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'audits' ORDER BY ordinal_position`
+    );
+    result.audits = auditCols.map(c => c.column_name);
+
+    const { rows: userCols } = await db.pool().query(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'users' ORDER BY ordinal_position`
+    );
+    result.users = userCols.map(c => c.column_name);
+
+    const { rows: tables } = await db.pool().query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`
+    );
+    result.tables = tables.map(t => t.tablename);
+
+    res.json(result);
+  } catch (err) {
+    result.db_error = err.message;
+    res.json(result);
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));

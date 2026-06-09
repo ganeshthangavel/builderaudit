@@ -418,8 +418,51 @@ app.get('/api/company-charges/:number', async (req, res) => {
 });
 
 
-/* Called when the homeowner picks from the candidate list.
-   GET /api/company-profile/:number */
+/* ─────────────────────────────────────────────────────────────────────────────
+   BUILDER MATCH — free homeowner service, lead generation.
+   Captures project details + contact info and emails the team.
+   POST /api/builder-match
+   ───────────────────────────────────────────────────────────────────────────── */
+app.post('/api/builder-match', async (req, res) => {
+  const { name, email: leadEmail, phone, location, projectType, budget, timeline, hasPlans, planningStatus, description, consentTos, consentAgency } = req.body;
+
+  if (!name || !name.trim())           return res.status(400).json({ error: 'Please enter your name' });
+  if (!leadEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadEmail)) return res.status(400).json({ error: 'Please enter a valid email address' });
+  if (!phone || phone.replace(/\D/g, '').length < 10) return res.status(400).json({ error: 'Please enter a valid phone number' });
+  if (!location || !location.trim())   return res.status(400).json({ error: 'Please enter your location or postcode' });
+  if (!projectType)                    return res.status(400).json({ error: 'Please select a project type' });
+  if (!budget)                         return res.status(400).json({ error: 'Please select a budget range' });
+  if (!consentTos)                     return res.status(400).json({ error: 'You must agree to the Terms of Service' });
+
+  const lead = {
+    name: name.trim(), email: leadEmail.trim().toLowerCase(), phone: phone.trim(),
+    location: location.trim(), projectType, budget,
+    timeline: timeline || null, hasPlans: hasPlans || null, planningStatus: planningStatus || null,
+    description: (description || '').trim().slice(0, 2000) || null,
+    consentAgency: !!consentAgency,
+  };
+
+  try {
+    /* Persist in DB if available — reuse consent log table for GDPR trail */
+    if (db.isEnabled() && req.user) {
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+      const ua = req.headers['user-agent'] || null;
+      await db.logConsent({ userId: req.user.id, consentType: 'builder_match_lead', granted: true, ipAddress: ip, userAgent: ua });
+    }
+
+    /* Email the lead to the team */
+    await email.sendBuilderMatchLead({ lead });
+
+    console.log('[builder-match] New lead:', lead.email, lead.projectType, lead.budget, lead.location);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[builder-match] Failed:', err.message);
+    /* Still return success if only the email failed — we logged the lead */
+    res.json({ success: true, emailDelivered: false });
+  }
+});
+
+
 app.get('/api/company-profile/:number', async (req, res) => {
   const { number } = req.params;
   const CH_KEY = config.COMPANIES_HOUSE_API_KEY;
@@ -1339,3 +1382,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+     

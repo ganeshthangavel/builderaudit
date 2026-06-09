@@ -1620,193 +1620,272 @@ function HoQuestions({ report, domain }) {
 
 /* ── Tab: Company check ─────────────────────────────────────────────────── */
 function HoCompanyCheck({ report, latestAudit }) {
-  const [state, setState] = React.useState('idle'); /* idle | loading | done | error */
-  const [chData, setChData] = React.useState(null);
-  const [errorMsg, setErrorMsg] = React.useState('');
+  const [searchState,   setSearchState]  = React.useState('idle'); /* idle|loading|done|error */
+  const [profileState,  setProfileState] = React.useState('idle'); /* idle|loading|done|error */
+  const [candidates,    setCandidates]   = React.useState([]);
+  const [profile,       setProfile]      = React.useState(null);
+  const [selectedNum,   setSelectedNum]  = React.useState(null);
+  const [searchTerm,    setSearchTerm]   = React.useState('');
+  const [errorMsg,      setErrorMsg]     = React.useState('');
+  const [manualSearch,  setManualSearch] = React.useState('');
 
   const companyName = report?.business_snapshot?.company_name || '';
-  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return '';} })();
-  const siteNumber = report?.business_snapshot?.contact?.company_number || null;
+  const domain      = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return '';} })();
+  const siteNumber  = report?.business_snapshot?.contact?.company_number || null;
+  const siteInfo    = report?.business_snapshot;
 
-  async function runCheck() {
-    setState('loading');
+  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', liquidation:'In liquidation ⚠', administration:'In administration ⚠' };
+  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
+
+  /* ── Step 1: search for candidates ── */
+  async function runSearch(overrideName) {
+    const term = overrideName || companyName || domain.split('.')[0];
+    setSearchTerm(term);
+    setSearchState('loading');
+    setProfile(null);
+    setSelectedNum(null);
+    setProfileState('idle');
     try {
       const params = new URLSearchParams();
-      if (companyName) params.set('name', companyName);
+      params.set('name', term);
       if (domain) params.set('domain', domain);
-      const res = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
+      const res  = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
       const data = await res.json();
-      setChData(data);
-      setState('done');
+      if (!data.available) throw new Error(data.reason || 'Unavailable');
+      setCandidates(data.companies || []);
+      setSearchState('done');
+
+      /* If a company number is on the site, auto-select it */
+      if (siteNumber) {
+        const match = (data.companies||[]).find(c => c.number === siteNumber);
+        if (match) pickCandidate(match.number);
+      }
     } catch(e) {
-      setErrorMsg(e.message || 'Check failed');
-      setState('error');
+      setErrorMsg(e.message || 'Search failed');
+      setSearchState('error');
     }
   }
 
-  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', 'liquidation':'In liquidation ⚠', 'administration':'In administration ⚠' };
-  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
+  /* ── Step 2: fetch full profile for chosen company number ── */
+  async function pickCandidate(number) {
+    setSelectedNum(number);
+    setProfileState('loading');
+    try {
+      const res  = await fetch('/api/company-profile/' + number, { credentials:'include' });
+      const data = await res.json();
+      if (!res.ok || !data.profile) throw new Error(data.error || 'Profile fetch failed');
+      setProfile(data.profile);
+      setProfileState('done');
+    } catch(e) {
+      setErrorMsg(e.message);
+      setProfileState('error');
+    }
+  }
 
-  const siteInfo = report?.business_snapshot;
+  /* ── Profile card ── */
+  const ProfileCard = ({ p }) => (
+    <div style={{ marginTop:20 }}>
+      {/* Status banner */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:p.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${p.status==='active'?P.green:P.red}`, borderRadius:8, marginBottom:16 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, marginBottom:3 }}>{p.name}</div>
+          <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>Company #{p.number} · Incorporated {p.incorporated}</div>
+        </div>
+        <span style={{ padding:'5px 12px', background:statusColor[p.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
+          {statusLabel[p.status] || p.status}
+        </span>
+      </div>
+
+      {/* Alert if not active */}
+      {p.status !== 'active' && (
+        <div style={{ padding:'14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14.5, color:P.red, fontWeight:700, marginBottom:14 }}>
+          🚨 This company's status is "{p.status}" — do NOT pay them any money until you understand what this means.
+        </div>
+      )}
+
+      {/* Details grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+        {[
+          ['Registered address',    p.registeredAddress],
+          ['Last accounts filed',   p.lastAccounts || 'Unknown'],
+          ['Company type',          p.type],
+          ['Next confirmation due', p.nextConfirmation || 'Unknown'],
+        ].map(([label, val], i) => (
+          <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+            <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
+            <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontStyle:val?'normal':'italic' }}>{val||'—'}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Directors */}
+      {p.officers?.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Current directors & officers</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {p.officers.map((o, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
+                <div style={{ width:32, height:32, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:13, flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:P.ink }}>{o.name}</div>
+                  <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SIC codes */}
+      {p.sicCodes?.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Registered business activities</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {p.sicCodes.map((s,i) => <span key={i} style={{ padding:'4px 10px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:12, color:P.ink }}>{s}</span>)}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+        <a href={p.chUrl} target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:14, color:P.ink, textDecoration:'none' }}>
+          View full filing history ↗
+        </a>
+        <button onClick={()=>{ setProfile(null); setSelectedNum(null); setProfileState('idle'); }}
+          style={{ background:'transparent', border:'none', cursor:'pointer', fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'underline', padding:0 }}>
+          ← Pick a different company
+        </button>
+      </div>
+    </div>
+  );
+
+  /* ── Candidate picker ── */
+  const CandidatePicker = () => (
+    <div style={{ marginTop:16 }}>
+      <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55, padding:'10px 14px', background:'rgba(217,119,6,0.07)', border:`1.5px solid #D97706`, borderRadius:6, marginBottom:14 }}>
+        <b>Builder websites often use a trading name, not their registered company name.</b> Here are the closest matches for "<b>{searchTerm}</b>" — pick the one that looks right based on address and incorporation date.
+      </div>
+
+      {candidates.length === 0 ? (
+        <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic', marginBottom:14 }}>
+          No matches found for "{searchTerm}". Try searching by a different name below.
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+          {candidates.map((c, i) => {
+            const color = statusColor[c.status] || P.muted;
+            const isSelected = selectedNum === c.number;
+            return (
+              <button key={i} onClick={()=>pickCandidate(c.number)}
+                style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12,
+                  padding:'14px 16px', background:isSelected?P.fill:'#fff',
+                  border:`2px solid ${isSelected?P.line:P.line}`,
+                  borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%',
+                  boxShadow:isSelected?`3px 3px 0 ${P.line}`:'none',
+                  outline:'none', transition:'background .1s' }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:2 }}>{c.name}</div>
+                  <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>
+                    #{c.number} · Incorporated {c.incorporated || '—'} · {c.address || 'No address'}
+                  </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                  <span style={{ padding:'3px 9px', background:color, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700 }}>{c.status}</span>
+                  {profileState === 'loading' && isSelected
+                    ? <div style={{ width:16, height:16, border:`2.5px solid ${P.surface}`, borderTop:`2.5px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.7s linear infinite', flexShrink:0 }}/>
+                    : <span style={{ fontFamily:F.body, fontSize:12, color:P.accent, fontWeight:700, whiteSpace:'nowrap' }}>Select →</span>
+                  }
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Manual search */}
+      <div style={{ borderTop:`1px solid ${P.line}`, paddingTop:14 }}>
+        <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:8 }}>Not seeing the right company? Search by a different name</div>
+        <div style={{ display:'flex', gap:8 }}>
+          <input value={manualSearch} onChange={e=>setManualSearch(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&manualSearch.trim()&&runSearch(manualSearch.trim())}
+            placeholder={`Try "${companyName} Ltd" or "Create Properties"…`}
+            style={{ flex:1, border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 12px', fontFamily:F.body, fontSize:14, color:P.ink, outline:'none' }}/>
+          <button onClick={()=>manualSearch.trim()&&runSearch(manualSearch.trim())}
+            style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer', whiteSpace:'nowrap' }}>
+            Search →
+          </button>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer"
+            style={{ fontFamily:F.body, fontSize:13, color:P.accent, fontWeight:700, textDecoration:'none' }}>
+            Search Companies House directly ↗
+          </a>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
-      {/* What we extracted from their site */}
+      {/* What their site claims */}
       <Card style={{ marginBottom:20 }}>
         <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>What their site claims</h3>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           {[
-            ['Company name', siteInfo?.company_name],
-            ['Location', siteInfo?.location],
-            ['Founded / trading', siteInfo?.established ? `${siteInfo.established}${siteInfo.years_trading?' ('+siteInfo.years_trading+')':''}` : siteInfo?.years_trading],
-            ['Service area', siteInfo?.service_area],
-            ['Contact phone', siteInfo?.contact?.phone],
-            ['Contact email', siteInfo?.contact?.email],
-            ['Address on site', siteInfo?.contact?.address],
-            ['Company number on site', siteNumber || 'Not displayed'],
+            ['Company name',           siteInfo?.company_name],
+            ['Location',               siteInfo?.location],
+            ['Founded / trading',      siteInfo?.established ? `${siteInfo.established}${siteInfo.years_trading?' ('+siteInfo.years_trading+')':''}` : siteInfo?.years_trading],
+            ['Service area',           siteInfo?.service_area],
+            ['Contact phone',          siteInfo?.contact?.phone],
+            ['Contact email',          siteInfo?.contact?.email],
+            ['Address on site',        siteInfo?.contact?.address],
+            ['Company number on site', siteNumber || null],
           ].map(([label, val], i) => (
             <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
               <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
-              <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.red, fontStyle:val?'normal':'italic' }}>{val || 'Not found on site'}</div>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.red, fontStyle:val?'normal':'italic' }}>
+                {val || (label === 'Company number on site' ? '⚠ Not displayed' : 'Not found on site')}
+              </div>
             </div>
           ))}
         </div>
+        {!siteNumber && (
+          <div style={{ marginTop:12, padding:'9px 12px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+            ⚠ <b>No company number on this site.</b> That makes it harder to verify — we'll search by name below, but you'll need to confirm which company is theirs.
+          </div>
+        )}
       </Card>
 
       {/* Companies House lookup */}
       <Card>
         <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House verification</h3>
         <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>
-          We search the official UK government Companies House register to verify this business is legally registered, active, and who the directors are.
+          We search the official UK register for businesses matching this company's name. Because builders often use a trading name rather than their registered name, we'll show you the closest matches so <b>you can confirm which one is theirs</b>.
         </p>
 
-        {state === 'idle' && (
-          <button onClick={runCheck} style={{ padding:'13px 24px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
-            Run Companies House check →
+        {searchState === 'idle' && (
+          <button onClick={()=>runSearch()} style={{ padding:'13px 24px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
+            Search Companies House →
           </button>
         )}
 
-        {state === 'loading' && (
+        {searchState === 'loading' && (
           <div style={{ display:'flex', alignItems:'center', gap:12, padding:'16px', background:P.surface, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.muted }}>
             <div style={{ width:20, height:20, border:`3px solid ${P.surface}`, borderTop:`3px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-            Searching Companies House register…
+            Searching the Companies House register for "{searchTerm || companyName}"…
           </div>
         )}
 
-        {state === 'error' && (
+        {searchState === 'error' && (
           <div style={{ padding:'14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.red }}>
-            Check failed: {errorMsg}. <button onClick={runCheck} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
+            {errorMsg}. <button onClick={()=>runSearch()} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
           </div>
         )}
 
-        {state === 'done' && chData && !chData.available && (
-          <div style={{ padding:'14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.ink }}>
-            ⚠ {chData.reason || 'Companies House check unavailable.'}
-            <div style={{ marginTop:8 }}>
-              <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer" style={{ color:P.accent, fontWeight:700, textDecoration:'none' }}>
-                Search Companies House manually →
-              </a>
-            </div>
-          </div>
-        )}
-
-        {state === 'done' && chData?.available && (
-          <div>
-            {/* Best match profile */}
-            {chData.profile ? (
-              <div>
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18, padding:'12px 14px', background:chData.profile.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${chData.profile.status==='active'?P.green:P.red}`, borderRadius:8 }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, marginBottom:3 }}>{chData.profile.name}</div>
-                    <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>Company #{chData.profile.number} · Incorporated {chData.profile.incorporated}</div>
-                  </div>
-                  <span style={{ padding:'5px 12px', background:statusColor[chData.profile.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:12, fontWeight:700 }}>
-                    {statusLabel[chData.profile.status] || chData.profile.status}
-                  </span>
-                </div>
-
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:18 }}>
-                  {[
-                    ['Registered address', chData.profile.registeredAddress],
-                    ['Last accounts filed', chData.profile.lastAccounts || 'Unknown'],
-                    ['Company type', chData.profile.type],
-                    ['Next confirmation due', chData.profile.nextConfirmation || 'Unknown'],
-                  ].map(([label, val], i) => (
-                    <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-                      <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
-                      <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontStyle:val?'normal':'italic' }}>{val || '—'}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Directors */}
-                {chData.profile.officers?.length > 0 && (
-                  <div style={{ marginBottom:18 }}>
-                    <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Current directors & officers</div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                      {chData.profile.officers.map((o, i) => (
-                        <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
-                          <div style={{ width:32, height:32, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:12, flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
-                          <div>
-                            <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:P.ink }}>{o.name}</div>
-                            <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* SIC codes */}
-                {chData.profile.sicCodes?.length > 0 && (
-                  <div style={{ marginBottom:18 }}>
-                    <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Registered business activities (SIC codes)</div>
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                      {chData.profile.sicCodes.map((s,i) => <span key={i} style={{ padding:'4px 10px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:12, color:P.ink }}>{s}</span>)}
-                    </div>
-                  </div>
-                )}
-
-                {/* Alerts */}
-                {chData.profile.status !== 'active' && (
-                  <div style={{ padding:'14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14.5, color:P.red, fontWeight:700, marginBottom:14 }}>
-                    🚨 This company's status is "{chData.profile.status}" — do NOT pay them any money until you understand what this means.
-                  </div>
-                )}
-
-                <a href={chData.profile.chUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:14, color:P.ink, textDecoration:'none' }}>
-                  View full filing history on Companies House ↗
-                </a>
-              </div>
-            ) : (
-              <div>
-                <div style={{ padding:'14px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:8, fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:16 }}>
-                  ⚠ No strong match found for "{chData.searchTerm}" in Companies House. This could mean the business trades under a different name, is a sole trader (not required to register), or the company number is not listed on their website.
-                </div>
-                {chData.companies?.length > 0 && (
-                  <div>
-                    <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Possible matches (check manually)</div>
-                    {chData.companies.map((c, i) => (
-                      <a key={i} href={`https://find-and-update.company-information.service.gov.uk/company/${c.number}`} target="_blank" rel="noopener noreferrer"
-                        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6, textDecoration:'none', marginBottom:6 }}>
-                        <div>
-                          <div style={{ fontFamily:F.body, fontSize:14, fontWeight:600, color:P.ink }}>{c.name}</div>
-                          <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>#{c.number} · {c.address||'—'}</div>
-                        </div>
-                        <span style={{ padding:'3px 9px', background:statusColor[c.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700 }}>{c.status}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-                <div style={{ marginTop:14 }}>
-                  <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer" style={{ color:P.accent, fontWeight:700, textDecoration:'none', fontFamily:F.body, fontSize:14 }}>
-                    Search Companies House manually for "{companyName}" →
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
+        {searchState === 'done' && (
+          profileState === 'done' && profile
+            ? <ProfileCard p={profile}/>
+            : <CandidatePicker/>
         )}
       </Card>
     </div>

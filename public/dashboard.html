@@ -1037,191 +1037,651 @@ function BuilderCompetitors({ latestAudit }) {
 // ════════════════════════════════════════════════════════════════
 // HOMEOWNER PAGES
 // ════════════════════════════════════════════════════════════════
-function HomeownerDashboard({ auditData, latestAudit }) {
-  const report = latestAudit?.report_json || null;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HOMEOWNER DASHBOARD — 5 tabs
+// Safety verdict | Red flags | Photo check | Questions | Company check
+// ═══════════════════════════════════════════════════════════════════════════
+
+const HO_TABS = [
+  { k:'verdict',  label:'Safety verdict',    icon:'🛡' },
+  { k:'redflags', label:'Red flags',         icon:'⚠' },
+  { k:'photos',   label:'Photo check',       icon:'📸' },
+  { k:'questions',label:'Questions to ask',  icon:'❓' },
+  { k:'company',  label:'Company check',     icon:'🏢' },
+];
+
+/* Pill colour by impact */
+function impactPill(impact) {
+  const map = { critical:P.red, high:'#E05C00', medium:P.amber||'#D97706', low:P.green };
+  const bg = map[impact] || P.muted;
+  return <span style={{ padding:'2px 8px', background:bg, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{impact}</span>;
+}
+
+/* ── Tab: Safety verdict ─────────────────────────────────────────────────── */
+function HoVerdict({ report, domain }) {
   const score = report?.hero?.score ?? null;
-  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
-
-  /* If we have a real audit result, show the single-builder verdict */
-  if (latestAudit && report) {
-    const headline = report.hero?.headline || 'Audit complete';
-    const subtext = report.hero?.subtext || '';
-    const aiVoice = report.hero?.ai_voice_intro || '';
-    const redFlags = (report.trust_breakpoints || []).filter(t => t.impact === 'critical' || t.impact === 'high');
-    const greenFlags = (report.trust_questions || []).filter(q => q.score >= 75);
-    const questions = (report.top_actions || []).slice(0, 5).map(a => typeof a === 'string' ? a : a.title);
-    const scoreColor = score >= 75 ? P.green : score >= 55 ? P.fill : P.red;
-
-    return (
-      <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
-        <div style={{ marginBottom:28 }}>
-          <Kicker color={P.accent}>Homeowner safety check</Kicker>
-          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{domain}</h1>
-          <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
-        </div>
-
-        {/* Verdict band */}
-        <Card style={{ background:P.ink, color:'#fff', marginBottom:24 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'140px 1fr', gap:24, alignItems:'center' }}>
-            <div style={{ textAlign:'center' }}>
-              <div style={{ fontFamily:F.display, fontWeight:900, fontSize:64, color:scoreColor, lineHeight:1, letterSpacing:'-0.03em' }}>{score}</div>
-              <div style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.6)', marginTop:4, textTransform:'uppercase', letterSpacing:'0.08em' }}>Trust score</div>
-            </div>
-            <div>
-              <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase' }}>{headline}</h2>
-              {subtext && <p style={{ fontFamily:F.body, fontSize:15, color:'rgba(255,255,255,0.78)', margin:'0 0 10px', lineHeight:1.5 }}>{subtext}</p>}
-              {aiVoice && <p style={{ fontFamily:F.body, fontSize:14, fontStyle:'italic', color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.fill}`, paddingLeft:14 }}>{aiVoice}</p>}
-            </div>
-          </div>
-        </Card>
-
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:24 }}>
-          {/* Red flags */}
-          {redFlags.length > 0 && (
-            <Card pad={24} style={{ background:'rgba(217,83,79,0.06)', borderColor:P.red }}>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:14 }}>⚠ Red flags ({redFlags.length})</div>
-              {redFlags.map((f,i) => (
-                <div key={i} style={{ marginBottom:16, paddingBottom:16, borderBottom:i<redFlags.length-1?`1px solid rgba(217,83,79,0.2)`:'none' }}>
-                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.01em' }}>{f.title}</div>
-                  {f.homeowner_reaction && <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, fontStyle:'italic', borderLeft:`3px solid ${P.red}`, paddingLeft:10, marginBottom:6, lineHeight:1.5 }}>{f.homeowner_reaction}</div>}
-                  {f.evidence && <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, lineHeight:1.45 }}>{f.evidence}</div>}
-                </div>
-              ))}
-            </Card>
-          )}
-
-          {/* Green flags */}
-          <Card pad={24} style={{ background:'rgba(31,138,91,0.06)', borderColor:P.green }}>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.good, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:14 }}>✓ What checks out ({greenFlags.length})</div>
-            {greenFlags.length > 0 ? greenFlags.map((q,i) => (
-              <div key={i} style={{ display:'flex', gap:10, marginBottom:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
-                <span style={{ color:P.good, fontWeight:800, flex:'0 0 auto' }}>✓</span>
-                <div><b style={{ fontSize:12, textTransform:'uppercase', letterSpacing:'0.05em', color:P.good, display:'block', marginBottom:2 }}>{q.question.replace('?','')}</b>{q.explanation}</div>
-              </div>
-            )) : <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic' }}>No strong positive signals found.</p>}
-          </Card>
-        </div>
-
-        {/* Questions to ask */}
-        {questions.length > 0 && (
-          <Card style={{ marginBottom:24 }}>
-            <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Questions to ask before signing</h3>
-            <ol style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
-              {questions.map((q,i) => (
-                <li key={i} style={{ display:'flex', gap:14, padding:'12px 14px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
-                  <span style={{ flex:'0 0 auto', width:22, height:22, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:11 }}>{i+1}</span>
-                  {q}
-                </li>
-              ))}
-            </ol>
-          </Card>
-        )}
-
-        {/* Check another builder CTA */}
-        <Card style={{ background:P.fill }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
-            <div>
-              <Kicker color={P.ink}>Got another quote?</Kicker>
-              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check another builder</h3>
-              <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Paste their website — we'll vet them the same way.</p>
-            </div>
-            <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href = `/audit?url=https://${u}&audience=homeowner`; }}/>
-          </div>
-        </Card>
-      </main>
-    );
-  }
-  const builders = auditData?.builders || [
-    { name:'Heartly Builders Ltd',     url:'heartlybuilders.co.uk',    loc:'Bath',    score:64, lastChecked:'2 days ago',  notes:'Stock photos · no accreditations shown', saved:true },
-    { name:'Greenfield Construction',  url:'greenfieldconstruction.co.uk', loc:'Bristol',score:78, lastChecked:'5 days ago',  notes:'FMB accredited · 14 real photos', saved:true },
-    { name:'Pearce & Sons Builders',   url:'pearceandsons.co.uk',      loc:'Bath',    score:41, lastChecked:'1 week ago',   notes:'No insurance shown · all photos look fake', saved:true },
-    { name:'Marlow Renovations',       url:'marlow-renovations.co.uk', loc:'Bath',    score:71, lastChecked:'2 weeks ago',  notes:'Good portfolio · contact form a bit clunky', saved:false },
-  ];
-  const shortlist = builders.filter(b=>b.saved);
-  const latest = builders[0];
-  const avgScore = Math.round(shortlist.reduce((a,b)=>a+b.score,0)/shortlist.length);
+  const scoreColor = score >= 75 ? P.green : score >= 55 ? '#D97706' : P.red;
+  const verdict = score >= 75 ? 'This builder appears trustworthy' : score >= 55 ? 'Proceed carefully — some concerns' : 'Significant red flags — verify before signing';
+  const tq = report?.trust_questions || [];
 
   return (
-    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <Kicker color={P.accent}>Welcome back</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{shortlist.length} builders on your shortlist</h1>
-        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>Average score {avgScore} / 100 · Top pick is scoring {Math.max(...shortlist.map(b=>b.score))}</p>
-      </div>
+    <div>
+      {/* Hero verdict */}
+      <Card style={{ background:P.ink, color:'#fff', marginBottom:24 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:24, alignItems:'center' }}>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:72, color:scoreColor, lineHeight:1, letterSpacing:'-0.04em' }}>{score ?? '?'}</div>
+            <div style={{ fontFamily:F.body, fontSize:11, color:'rgba(255,255,255,0.55)', marginTop:2, textTransform:'uppercase', letterSpacing:'0.08em' }}>/ 100</div>
+          </div>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Overall verdict</div>
+            <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:'#fff', margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase' }}>{report?.hero?.headline || verdict}</h2>
+            {report?.hero?.subtext && <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.78)', margin:'0 0 12px', lineHeight:1.55 }}>{report.hero.subtext}</p>}
+            {report?.hero?.ai_voice_intro && <p style={{ fontFamily:F.body, fontSize:13.5, fontStyle:'italic', color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.fill}`, paddingLeft:12 }}>{report.hero.ai_voice_intro}</p>}
+          </div>
+        </div>
+      </Card>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr', gap:24, marginBottom:24 }}>
-        <Card>
-          <Label>Latest builder checked</Label>
-          <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:24, alignItems:'center', marginTop:10 }}>
-            <Donut score={latest.score} size={160}/>
-            <div>
-              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:24, color:P.ink, marginBottom:4, letterSpacing:'-0.01em' }}>{latest.name}</div>
-              <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, marginBottom:14 }}>{latest.url} · {latest.loc}</div>
-              <div style={{ background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:4, padding:'10px 12px', marginBottom:14, fontFamily:F.body, fontSize:13.5, color:P.ink }}>
-                <b style={{ color:P.red, textTransform:'uppercase', fontSize:11, letterSpacing:'0.06em', marginRight:8 }}>⚠ Watch out</b>{latest.notes}
-              </div>
-              <div style={{ display:'flex', gap:8 }}>
-                <Btn primary>See full audit</Btn>
-                <Btn>Re-check</Btn>
-              </div>
-            </div>
+      {/* 6 trust question scores */}
+      {tq.length > 0 && (
+        <Card style={{ marginBottom:24 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>6 things we checked</h3>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {tq.map((q,i) => {
+              const s = q.score || 0;
+              const c = s>=75?P.green:s>=55?'#D97706':P.red;
+              return (
+                <div key={i}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5 }}>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>{q.question}</div>
+                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:c, marginLeft:10, whiteSpace:'nowrap' }}>{s} / 100</div>
+                  </div>
+                  <div style={{ height:8, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden', marginBottom:4 }}>
+                    <div style={{ width:`${s}%`, height:'100%', background:c }}/>
+                  </div>
+                  {q.explanation && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.4 }}>{q.explanation}</div>}
+                </div>
+              );
+            })}
           </div>
         </Card>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Saved</Label><BigNum n={shortlist.length} sub="builders on shortlist"/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Average score</Label><BigNum n={`${avgScore} / 100`} sub="across your shortlist"/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Total audits</Label><BigNum n={builders.length} sub="builders checked overall"/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}>
-            <Label>Top pick</Label>
-            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, lineHeight:1.1 }}>{[...shortlist].sort((a,b)=>b.score-a.score)[0]?.name?.split(' ')[0]}</div>
-            <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, marginTop:4 }}>scoring {Math.max(...shortlist.map(b=>b.score))} / 100</div>
-          </Card>
+      )}
+
+      {/* Journey through the site */}
+      {report?.homeowner_journey?.length > 0 && (
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>How a homeowner experiences this site</h3>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {report.homeowner_journey.map((j,i) => {
+              const labels = { first_impression:'First impression', scrolling:'Scrolling through', decision_moment:'The decision moment' };
+              return (
+                <div key={i} style={{ display:'flex', gap:14 }}>
+                  <div style={{ flex:'0 0 auto', width:28, height:28, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:11 }}>{i+1}</div>
+                  <div>
+                    <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{labels[j.stage]||j.stage}</div>
+                    <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, fontStyle:'italic', lineHeight:1.55, borderLeft:`3px solid ${P.fill}`, paddingLeft:10 }}>"{j.thought}"</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ── Tab: Red flags deep-dive ────────────────────────────────────────────── */
+function HoRedFlags({ report }) {
+  const [openIdx, setOpenIdx] = React.useState(0);
+  const breakpoints = report?.trust_breakpoints || [];
+  const critical = breakpoints.filter(b => b.impact === 'critical' || b.impact === 'high');
+  const medium   = breakpoints.filter(b => b.impact === 'medium');
+  const low      = breakpoints.filter(b => b.impact === 'low');
+  const groups = [
+    { label:'Critical & high risk', items:critical, borderColor:P.red, bg:'rgba(217,83,79,0.05)' },
+    { label:'Medium risk',          items:medium,   borderColor:'#D97706', bg:'rgba(217,119,6,0.05)' },
+    { label:'Low risk / watch',     items:low,      borderColor:P.green, bg:'rgba(31,138,91,0.05)' },
+  ].filter(g => g.items.length > 0);
+
+  if (breakpoints.length === 0) return (
+    <Card><div style={{ textAlign:'center', padding:'2rem', fontFamily:F.body, fontSize:15, color:P.muted }}>No trust issues identified in this audit.</div></Card>
+  );
+
+  let globalIdx = 0;
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+      {groups.map((g, gi) => (
+        <div key={gi}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>{g.label} ({g.items.length})</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {g.items.map((b, bi) => {
+              const idx = globalIdx++;
+              const isOpen = openIdx === idx;
+              return (
+                <div key={bi} style={{ border:`2px solid ${g.borderColor}`, borderRadius:8, background:isOpen?g.bg:'#fff', overflow:'hidden', transition:'background .15s' }}>
+                  <button onClick={() => setOpenIdx(isOpen ? -1 : idx)}
+                    style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left' }}>
+                    {impactPill(b.impact)}
+                    <div style={{ flex:1, fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'0.01em' }}>{b.title}</div>
+                    <div style={{ flex:'0 0 auto', fontFamily:F.display, fontWeight:800, fontSize:18, color:P.muted, transition:'transform .15s', transform:isOpen?'rotate(45deg)':'rotate(0)' }}>+</div>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding:'0 16px 18px 16px', display:'flex', flexDirection:'column', gap:14 }}>
+                      {/* Homeowner inner monologue */}
+                      {b.homeowner_reaction && (
+                        <div style={{ borderLeft:`3px solid ${g.borderColor}`, paddingLeft:12 }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>What a homeowner thinks</div>
+                          <div style={{ fontFamily:F.body, fontSize:14, fontStyle:'italic', color:P.ink, lineHeight:1.55 }}>"{b.homeowner_reaction}"</div>
+                        </div>
+                      )}
+                      {/* Evidence */}
+                      {b.evidence && (
+                        <div style={{ background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:6, padding:'12px 14px' }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>What we found</div>
+                          <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.55 }}>{b.evidence}</div>
+                        </div>
+                      )}
+                      {/* What it means + what to ask */}
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                        <div style={{ background:'rgba(217,83,79,0.06)', border:`1.5px solid ${P.red}`, borderRadius:6, padding:'12px 14px' }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.red, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>What this means</div>
+                          <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                            {b.impact === 'critical' ? 'This is a serious concern that should be resolved before you sign anything.' :
+                             b.impact === 'high' ? 'This increases your risk significantly. Ask for proof before proceeding.' :
+                             b.impact === 'medium' ? 'Worth investigating — this could indicate a problem or just poor website maintenance.' :
+                             'Minor concern. Good to know but unlikely to indicate a problem on its own.'}
+                          </div>
+                        </div>
+                        <div style={{ background:'rgba(82,71,184,0.06)', border:`1.5px solid ${P.accent}`, borderRadius:6, padding:'12px 14px' }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.accent, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>Ask them this</div>
+                          <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5, fontStyle:'italic' }}>{b.fix || 'Can you provide documentation to verify this?'}</div>
+                        </div>
+                      </div>
+                      {/* Walk away signal */}
+                      {b.impact === 'critical' && (
+                        <div style={{ background:P.red, color:'#fff', borderRadius:6, padding:'10px 14px', fontFamily:F.body, fontSize:13.5, fontWeight:600 }}>
+                          🚨 Walk away if they can't answer this clearly and in writing.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Tab: Photo check ────────────────────────────────────────────────────── */
+function HoPhotoCheck({ report, imageUrls }) {
+  const pa = report?.photo_analysis;
+
+  function findBestUrl(description, usedIndices, urlList) {
+    if (!urlList.length) return null;
+    const descWords = (description || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    let bestIdx = -1, bestScore = 0;
+    urlList.forEach((img, i) => {
+      if (usedIndices.has(i)) return;
+      const combined = [...(img.alt||'').toLowerCase().split(/\W+/), ...img.src.toLowerCase().split(/[\W_]+/)].filter(w => w.length > 3);
+      const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    });
+    if (bestIdx === -1) for (let i = 0; i < urlList.length; i++) { if (!usedIndices.has(i)) { bestIdx = i; break; } }
+    return bestIdx;
+  }
+
+  const usedIndices = new Set();
+  const strong = (pa?.strong_images || []).map((p, i) => {
+    const idx = findBestUrl(p.description, usedIndices, imageUrls);
+    if (idx != null && idx !== -1) usedIndices.add(idx);
+    const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
+    return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Real photo', detail:p.why_it_works||'', verdict:'real' };
+  });
+  const weak = (pa?.weak_images || []).map((p, i) => {
+    const idx = findBestUrl(p.description, usedIndices, imageUrls);
+    if (idx != null && idx !== -1) usedIndices.add(idx);
+    const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
+    return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Flagged photo', detail:p.issue||'', verdict:'stock', confirmed:p.confirmed_stock, source:p.stock_source };
+  });
+
+  const allPhotos = [...strong, ...weak];
+  const realCount = strong.length;
+  const flaggedCount = weak.length;
+
+  if (allPhotos.length === 0) return (
+    <Card><div style={{ textAlign:'center', padding:'2rem', fontFamily:F.body, color:P.muted }}>No photo analysis available for this audit. Re-scan to get a full photo check.</div></Card>
+  );
+
+  return (
+    <div>
+      {pa?.summary && (
+        <Card style={{ background:P.fill, marginBottom:20 }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Overall photo verdict</div>
+          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>{pa.summary}</div>
+        </Card>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
+        <Card pad={18} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green, textAlign:'center' }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:P.green, lineHeight:1 }}>{realCount}</div>
+          <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:4 }}>Real photos confirmed</div>
+        </Card>
+        <Card pad={18} style={{ background:flaggedCount>0?'rgba(217,83,79,0.08)':'rgba(31,138,91,0.08)', borderColor:flaggedCount>0?P.red:P.green, textAlign:'center' }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:flaggedCount>0?P.red:P.green, lineHeight:1 }}>{flaggedCount}</div>
+          <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:flaggedCount>0?P.red:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:4 }}>{flaggedCount>0?'Stock or AI detected':'No stock photos found'}</div>
+        </Card>
       </div>
 
-      <Card style={{ marginBottom:24 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your shortlist</h3>
-          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Sorted by score</span>
+      {/* What to demand */}
+      <Card style={{ marginBottom:20, background:P.surface, borderColor:P.accent }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>What to ask before hiring</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {[
+            'Ask to see the original photos from these jobs — taken on their phone, with EXIF data intact',
+            'Request the address or at least postcode for 2-3 of the projects shown',
+            'Ask if you can speak to a previous client from each project you\'re shown',
+            flaggedCount > 0 ? `${flaggedCount} photo${flaggedCount>1?'s are':' is'} flagged — ask them specifically about these before anything else` : null,
+          ].filter(Boolean).map((q,i) => (
+            <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
+              <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>→</span>{q}
+            </div>
+          ))}
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 90px 1fr auto', gap:16, alignItems:'center', padding:'0 12px 10px', borderBottom:`1.5px solid ${P.line}`, marginBottom:8, fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>
-          <div>Builder</div><div>Location</div><div style={{ textAlign:'center' }}>Score</div><div>Last checked</div><div></div>
-        </div>
-        {[...builders].sort((a,b)=>b.score-a.score).map((b,i)=>{
-          const color = b.score>=75?P.green:b.score>=55?P.fill:P.red;
+      </Card>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))', gap:14 }}>
+        {allPhotos.map((p, i) => {
+          const isReal = p.verdict === 'real';
           return (
-            <div key={i} style={{ display:'grid', gridTemplateColumns:'2fr 1fr 90px 1fr auto', gap:16, alignItems:'center', padding:'14px 12px', borderRadius:6, background:i===0?'rgba(255,210,77,0.22)':'transparent', borderBottom:i<builders.length-1?`1px solid ${P.surface}`:'none' }}>
-              <div>
-                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{b.name} {i===0&&<span style={{ marginLeft:6, padding:'2px 8px', background:P.ink, color:'#fff', borderRadius:999, fontSize:10, letterSpacing:'0.06em' }}>TOP PICK</span>}</div>
-                <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:2 }}>{b.url}</div>
-              </div>
-              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink }}>{b.loc}</div>
-              <div style={{ margin:'0 auto', width:60, padding:'8px 4px', background:color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:18, textAlign:'center' }}>{b.score}</div>
-              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.muted }}>{b.lastChecked}</div>
-              <div style={{ display:'flex', gap:6 }}>
-                <Btn style={{ padding:'6px 12px', fontSize:12, boxShadow:'none' }}>View</Btn>
-                <Btn style={{ padding:'6px 12px', fontSize:12, boxShadow:'none' }}>Re-check</Btn>
+            <div key={i} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden' }}>
+              <a href={p.pageUrl||p.src||'#'} target="_blank" rel="noopener noreferrer"
+                 style={{ display:'block', height:140, background:'#e8e4d8', position:'relative', overflow:'hidden' }}>
+                {p.src && <img src={p.src} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'}/>}
+                <span style={{ position:'absolute', top:8, left:8, padding:'3px 9px', background:isReal?P.green:P.red, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>
+                  {isReal ? 'Real' : p.confirmed ? 'Stock' : 'Flagged'}
+                </span>
+                {p.pageUrl && <span style={{ position:'absolute', bottom:6, right:6, padding:'2px 7px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>↗ View</span>}
+              </a>
+              <div style={{ padding:'12px 14px' }}>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:13, color:P.ink, textTransform:'uppercase', marginBottom:4 }}>{p.label}</div>
+                <div style={{ fontFamily:F.body, fontSize:12.5, color:isReal?P.good:P.red, lineHeight:1.4 }}>{p.detail}</div>
+                {p.source && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, marginTop:4 }}>Found on: {p.source}</div>}
               </div>
             </div>
           );
         })}
-      </Card>
+      </div>
+    </div>
+  );
+}
 
-      <Card style={{ background:P.fill }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+/* ── Tab: Questions to ask ───────────────────────────────────────────────── */
+function HoQuestions({ report, domain }) {
+  const [printed, setPrinted] = React.useState(false);
+  const [checked, setChecked] = React.useState({});
+
+  /* Build the questions from top_actions + trust_breakpoints */
+  const questions = (() => {
+    const fromActions = (report?.top_actions || []).map((a, i) => {
+      const title = typeof a === 'string' ? a : (a.title || '');
+      const why   = typeof a === 'object' ? (a.why || '') : '';
+      return { id:'a'+i, category:'Action required', text: title, context: why };
+    });
+    const fromFlags = (report?.trust_breakpoints || [])
+      .filter(b => b.impact === 'critical' || b.impact === 'high')
+      .map((b, i) => ({
+        id:'f'+i,
+        category: b.impact === 'critical' ? '🚨 Critical' : '⚠ High risk',
+        text: b.fix || ('Can you provide evidence about: ' + b.title + '?'),
+        context: b.evidence || '',
+      }));
+    /* Deduplicate and cap at 10 */
+    return [...fromFlags, ...fromActions].slice(0, 10);
+  })();
+
+  const doneCount = Object.values(checked).filter(Boolean).length;
+
+  return (
+    <div>
+      <Card style={{ background:P.fill, marginBottom:20 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:16, alignItems:'center' }}>
           <div>
-            <Kicker color={P.ink}>Got another quote?</Kicker>
-            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check a new builder</h3>
-            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste their site URL. We'll add them to your shortlist with a fresh audit.</p>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em', marginBottom:4 }}>Your pre-hire checklist</div>
+            <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, opacity:0.75 }}>
+              Specific to {domain}. Tick off each one as you get a satisfactory answer. Don't sign anything until all critical questions are answered.
+            </div>
           </div>
-          <ScanBar placeholder="abuildersite.co.uk" cta="Add & audit"/>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:36, color:P.ink, lineHeight:1 }}>{doneCount}/{questions.length}</div>
+            <div style={{ fontFamily:F.body, fontSize:11, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em' }}>answered</div>
+          </div>
         </div>
       </Card>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+        {questions.map((q, i) => {
+          const isCritical = q.category.includes('Critical');
+          const done = checked[q.id];
+          return (
+            <div key={q.id} onClick={() => setChecked(c => ({...c, [q.id]: !c[q.id]}))}
+              style={{ display:'flex', gap:14, padding:'14px 16px', background:done?P.surface:'#fff', border:`2px solid ${done?P.line:isCritical?P.red:P.line}`, borderRadius:8, cursor:'pointer', opacity:done?0.7:1, transition:'all .15s' }}>
+              <div style={{ flex:'0 0 auto', width:24, height:24, borderRadius:5, background:done?P.green:'#fff', border:`2.5px solid ${done?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13, marginTop:1 }}>{done?'✓':''}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <span style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:isCritical?P.red:P.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>{q.category}</span>
+                </div>
+                <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:done?'line-through':'none', lineHeight:1.4 }}>{q.text}</div>
+                {q.context && !done && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:5, lineHeight:1.4 }}>{q.context}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <Card style={{ background:'rgba(27,26,23,0.04)', borderColor:P.line }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>General rules before signing any builder contract</div>
+        {[
+          'Always get 3 quotes — compare them line by line, not just total price',
+          'Never pay more than 10-15% upfront — stage payments only',
+          'Get everything in writing: spec, timeline, payment schedule, who's responsible for planning',
+          'Check their public liability insurance certificate yourself — don\'t just take their word',
+          'Search their company name + "review" and "complaint" separately from their own site',
+        ].map((tip, i) => (
+          <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'5px 0', lineHeight:1.45, borderBottom:i<4?`1px solid ${P.surface}`:'none' }}>
+            <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>{i+1}.</span>{tip}
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+/* ── Tab: Company check ─────────────────────────────────────────────────── */
+function HoCompanyCheck({ report, latestAudit }) {
+  const [state, setState] = React.useState('idle'); /* idle | loading | done | error */
+  const [chData, setChData] = React.useState(null);
+  const [errorMsg, setErrorMsg] = React.useState('');
+
+  const companyName = report?.business_snapshot?.company_name || '';
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return '';} })();
+  const siteNumber = report?.business_snapshot?.contact?.company_number || null;
+
+  async function runCheck() {
+    setState('loading');
+    try {
+      const params = new URLSearchParams();
+      if (companyName) params.set('name', companyName);
+      if (domain) params.set('domain', domain);
+      const res = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
+      const data = await res.json();
+      setChData(data);
+      setState('done');
+    } catch(e) {
+      setErrorMsg(e.message || 'Check failed');
+      setState('error');
+    }
+  }
+
+  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', 'liquidation':'In liquidation ⚠', 'administration':'In administration ⚠' };
+  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
+
+  const siteInfo = report?.business_snapshot;
+
+  return (
+    <div>
+      {/* What we extracted from their site */}
+      <Card style={{ marginBottom:20 }}>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>What their site claims</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {[
+            ['Company name', siteInfo?.company_name],
+            ['Location', siteInfo?.location],
+            ['Founded / trading', siteInfo?.established ? `${siteInfo.established}${siteInfo.years_trading?' ('+siteInfo.years_trading+')':''}` : siteInfo?.years_trading],
+            ['Service area', siteInfo?.service_area],
+            ['Contact phone', siteInfo?.contact?.phone],
+            ['Contact email', siteInfo?.contact?.email],
+            ['Address on site', siteInfo?.contact?.address],
+            ['Company number on site', siteNumber || 'Not displayed'],
+          ].map(([label, val], i) => (
+            <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+              <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.red, fontStyle:val?'normal':'italic' }}>{val || 'Not found on site'}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Companies House lookup */}
+      <Card>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House verification</h3>
+        <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>
+          We search the official UK government Companies House register to verify this business is legally registered, active, and who the directors are.
+        </p>
+
+        {state === 'idle' && (
+          <button onClick={runCheck} style={{ padding:'13px 24px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
+            Run Companies House check →
+          </button>
+        )}
+
+        {state === 'loading' && (
+          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'16px', background:P.surface, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.muted }}>
+            <div style={{ width:20, height:20, border:`3px solid ${P.surface}`, borderTop:`3px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+            Searching Companies House register…
+          </div>
+        )}
+
+        {state === 'error' && (
+          <div style={{ padding:'14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.red }}>
+            Check failed: {errorMsg}. <button onClick={runCheck} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
+          </div>
+        )}
+
+        {state === 'done' && chData && !chData.available && (
+          <div style={{ padding:'14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.ink }}>
+            ⚠ {chData.reason || 'Companies House check unavailable.'}
+            <div style={{ marginTop:8 }}>
+              <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer" style={{ color:P.accent, fontWeight:700, textDecoration:'none' }}>
+                Search Companies House manually →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {state === 'done' && chData?.available && (
+          <div>
+            {/* Best match profile */}
+            {chData.profile ? (
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18, padding:'12px 14px', background:chData.profile.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${chData.profile.status==='active'?P.green:P.red}`, borderRadius:8 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, marginBottom:3 }}>{chData.profile.name}</div>
+                    <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>Company #{chData.profile.number} · Incorporated {chData.profile.incorporated}</div>
+                  </div>
+                  <span style={{ padding:'5px 12px', background:statusColor[chData.profile.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:12, fontWeight:700 }}>
+                    {statusLabel[chData.profile.status] || chData.profile.status}
+                  </span>
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:18 }}>
+                  {[
+                    ['Registered address', chData.profile.registeredAddress],
+                    ['Last accounts filed', chData.profile.lastAccounts || 'Unknown'],
+                    ['Company type', chData.profile.type],
+                    ['Next confirmation due', chData.profile.nextConfirmation || 'Unknown'],
+                  ].map(([label, val], i) => (
+                    <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+                      <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
+                      <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontStyle:val?'normal':'italic' }}>{val || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Directors */}
+                {chData.profile.officers?.length > 0 && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Current directors & officers</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      {chData.profile.officers.map((o, i) => (
+                        <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
+                          <div style={{ width:32, height:32, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:12, flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
+                          <div>
+                            <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:P.ink }}>{o.name}</div>
+                            <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* SIC codes */}
+                {chData.profile.sicCodes?.length > 0 && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Registered business activities (SIC codes)</div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                      {chData.profile.sicCodes.map((s,i) => <span key={i} style={{ padding:'4px 10px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:12, color:P.ink }}>{s}</span>)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Alerts */}
+                {chData.profile.status !== 'active' && (
+                  <div style={{ padding:'14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14.5, color:P.red, fontWeight:700, marginBottom:14 }}>
+                    🚨 This company's status is "{chData.profile.status}" — do NOT pay them any money until you understand what this means.
+                  </div>
+                )}
+
+                <a href={chData.profile.chUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:14, color:P.ink, textDecoration:'none' }}>
+                  View full filing history on Companies House ↗
+                </a>
+              </div>
+            ) : (
+              <div>
+                <div style={{ padding:'14px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:8, fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:16 }}>
+                  ⚠ No strong match found for "{chData.searchTerm}" in Companies House. This could mean the business trades under a different name, is a sole trader (not required to register), or the company number is not listed on their website.
+                </div>
+                {chData.companies?.length > 0 && (
+                  <div>
+                    <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Possible matches (check manually)</div>
+                    {chData.companies.map((c, i) => (
+                      <a key={i} href={`https://find-and-update.company-information.service.gov.uk/company/${c.number}`} target="_blank" rel="noopener noreferrer"
+                        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6, textDecoration:'none', marginBottom:6 }}>
+                        <div>
+                          <div style={{ fontFamily:F.body, fontSize:14, fontWeight:600, color:P.ink }}>{c.name}</div>
+                          <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>#{c.number} · {c.address||'—'}</div>
+                        </div>
+                        <span style={{ padding:'3px 9px', background:statusColor[c.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700 }}>{c.status}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop:14 }}>
+                  <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer" style={{ color:P.accent, fontWeight:700, textDecoration:'none', fontFamily:F.body, fontSize:14 }}>
+                    Search Companies House manually for "{companyName}" →
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ── Main HomeownerDashboard ─────────────────────────────────────────────── */
+function HomeownerDashboard({ auditData, latestAudit }) {
+  const report = latestAudit?.report_json || null;
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
+  const [tab, setTab] = React.useState('verdict');
+
+  /* Show the 5-tab report if we have real data */
+  if (latestAudit && report) {
+
+    return (
+      <main style={{ padding:'32px 36px 80px', maxWidth:1100, margin:'0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom:24 }}>
+          <Kicker color={P.accent}>Homeowner safety check</Kicker>
+          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:36, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 4px' }}>{domain}</h1>
+          <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
+        </div>
+
+        {/* Tab bar */}
+        <div style={{ display:'flex', gap:0, marginBottom:28, borderBottom:`2px solid ${P.line}`, overflowX:'auto' }}>
+          {HO_TABS.map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)}
+              style={{ padding:'11px 18px', background:tab===t.k?P.fill:'transparent', border:'none', borderBottom:tab===t.k?`3px solid ${P.line}`:'3px solid transparent', cursor:'pointer', fontFamily:F.body, fontWeight:700, fontSize:13.5, color:tab===t.k?P.ink:P.muted, whiteSpace:'nowrap', transition:'all .15s', marginBottom:-2 }}>
+              <span style={{ marginRight:6 }}>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        {tab === 'verdict'   && <HoVerdict     report={report} domain={domain}/>}
+        {tab === 'redflags'  && <HoRedFlags     report={report}/>}
+        {tab === 'photos'    && <HoPhotoCheck   report={report} imageUrls={auditData?.imageUrls||[]}/>}
+        {tab === 'questions' && <HoQuestions    report={report} domain={domain}/>}
+        {tab === 'company'   && <HoCompanyCheck report={report} latestAudit={latestAudit}/>}
+
+        {/* Check another CTA */}
+        <div style={{ marginTop:40, paddingTop:28, borderTop:`2px solid ${P.line}` }}>
+          <Card style={{ background:P.fill }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+              <div>
+                <Kicker color={P.ink}>Got another quote?</Kicker>
+                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check another builder</h3>
+                <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Paste their website — we'll vet them the same way.</p>
+              </div>
+              <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
+            </div>
+          </Card>
+        </div>
+      </main>
+    );
+  }
+
+  /* No audit data — show the landing/empty state */
+
+  const builders = auditData?.builders || [
+    { name:'Heartly Builders Ltd', url:'heartlybuilders.co.uk', loc:'Bath', score:64, lastChecked:'2 days ago', notes:'Stock photos · no accreditations shown', saved:true },
+    { name:'Greenfield Construction', url:'greenfieldconstruction.co.uk', loc:'Bristol', score:78, lastChecked:'5 days ago', notes:'FMB accredited · 14 real photos', saved:true },
+  ];
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:900, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Homeowner safety checks</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Vet a builder before you sign</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 0 24px' }}>Paste any UK builder's website. We'll run a forensic trust audit — photos, accreditations, Companies House, the lot.</p>
+        <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
+      </div>
+      {builders.length > 0 && (
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Recent checks</h3>
+          {builders.map((b,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:16, padding:'12px 0', borderBottom:i<builders.length-1?`1px solid ${P.surface}`:'none' }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{b.name}</div>
+                <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, marginTop:2 }}>{b.url} · {b.loc}</div>
+              </div>
+              <div style={{ padding:'8px 14px', background:b.score>=75?P.green:b.score>=55?P.fill:P.red, color:b.score>=55&&b.score<75?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:20 }}>{b.score}</div>
+              <Btn style={{ padding:'8px 12px', fontSize:12, boxShadow:'none' }} onClick={()=>window.location.href=`/audit?url=https://${b.url}&audience=homeowner`}>Re-check</Btn>
+            </div>
+          ))}
+        </Card>
+      )}
     </main>
   );
 }
 
-// ── Loading skeleton ─────────────────────────────────────────────
 function Loading() {
   return (
     <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', fontFamily:F.body, fontSize:16, color:P.muted }}>
@@ -1318,6 +1778,7 @@ function DashboardApp() {
                 count:   1,
                 company: data.report?.business_snapshot?.company_name || data.url || 'Your company',
                 history: [{ date: 'Latest', score: data.report?.hero?.score || 0 }],
+                imageUrls: data.imageUrls || [],
               });
               setLoading(false);
               return;

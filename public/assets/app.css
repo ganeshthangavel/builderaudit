@@ -23,8 +23,8 @@
   --ba3-warn:      #B8721F;
   --ba3-bad:       #C0392B;
 
-  /* Typography pair — Archivo for display, IBM Plex Sans for body */
-  --ba3-display: "Archivo", "Archivo Black", -apple-system, sans-serif;
+  /* Typography pair — Hanken Grotesk for display, IBM Plex Sans for body */
+  --ba3-display: "Hanken Grotesk", -apple-system, sans-serif;
   --ba3-body:    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Chunky shadows — the 6px offset is iconic to the design */
@@ -2739,3 +2739,4 @@ header .user-menu button {
   .lock-modal { padding: 1.5rem 1.5rem 1.75rem; }
   .lock-modal-h { font-size: 19px; }
 }
+   

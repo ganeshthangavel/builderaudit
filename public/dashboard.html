@@ -181,16 +181,45 @@ function Nav({ role, page, setPage, user }) {
 // ════════════════════════════════════════════════════════════════
 
 // ── Builder Dashboard (main) ────────────────────────────────────
-function BuilderDashboard({ auditData, latestAudit }) {
+function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set() }) {
   const report = latestAudit?.report_json || null;
-  const score = report?.hero?.score ?? 64;
-  const previousScore = 58; // TODO: pull from history
+  const baseScore = report?.hero?.score ?? 64;
+
+  /* Fix list with state so ticking updates the score live */
+  const initialFixes = report?.top_actions?.slice(0,5).map((a,i)=>{
+    const icons = ['hammer','gear','screwdriver','roller','tape'];
+    const text = typeof a === 'string' ? a : (a.title || a.why || JSON.stringify(a));
+    const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i];
+    return { id:i, icon:icons[i%icons.length], text, done:false, pts, impact:`+${pts} pts` };
+  }) || [
+    { id:0, icon:'hammer',     text:'Swap in real before/after shots from your phone',         done:false, pts:8, impact:'+8 pts' },
+    { id:1, icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',  done:false, pts:6, impact:'+6 pts' },
+    { id:2, icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',         done:false, pts:5, impact:'+5 pts' },
+    { id:3, icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',     done:false, pts:3, impact:'+3 pts' },
+    { id:4, icon:'tape',       text:'Add a phone number to the header on mobile',              done:false, pts:2, impact:'+2 pts' },
+  ];
+
+  const [fixes, setFixes] = useState(initialFixes);
+  const toggleFix = (id) => setFixes(fs => fs.map(f => f.id===id ? {...f, done:!f.done} : f));
+
+  /* Live score = base + points from completed fixes, capped at 100 */
+  const completedPts = fixes.filter(f=>f.done).reduce((s,f)=>s+f.pts,0);
+  const score = Math.min(100, baseScore + completedPts);
+
+  const previousScore = baseScore; // base is the "last scan" reference
   const change = score - previousScore;
+
   const domain = (() => { try { return new URL(latestAudit?.url||'https://yoursite.co.uk').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'yoursite.co.uk';} })();
 
   const categories = report?.trust_questions ? report.trust_questions.map((q,i)=>{
     const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
-    return { name: names[i]||q.question.slice(0,20), s: q.score||50, status: q.score>=75?'ok':q.score>=55?'warn':'risk' };
+    /* Boost photo score if some flagged photos were excluded */
+    let s = q.score||50;
+    if (i === 1 && excludedPhotoIds.size > 0) {
+      /* "Do I believe these are real projects?" — each excluded flagged photo boosts this by ~5 pts */
+      s = Math.min(100, s + excludedPhotoIds.size * 5);
+    }
+    return { name: names[i]||q.question.slice(0,20), s, status: s>=75?'ok':s>=55?'warn':'risk' };
   }) : [
     { name:'Photo quality',    s:48, status:'risk' },
     { name:'Trust signals',    s:72, status:'ok' },
@@ -202,22 +231,9 @@ function BuilderDashboard({ auditData, latestAudit }) {
     { name:'Copy & tone',      s:70, status:'ok' },
   ];
 
-  const fixes = report?.top_actions?.slice(0,5).map((a,i)=>{
-    const icons = ['hammer','gear','screwdriver','roller','tape'];
-    const text = typeof a === 'string' ? a : (a.title || a.why || JSON.stringify(a));
-    const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i];
-    return { icon:icons[i%icons.length], text, done:false, impact:`+${pts} pts` };
-  }) || [
-    { icon:'hammer',     text:'Swap in real before/after shots from your phone',          done:false, impact:'+8 pts' },
-    { icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',   done:false, impact:'+6 pts' },
-    { icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',          done:false, impact:'+5 pts' },
-    { icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',      done:true,  impact:'+3 pts' },
-    { icon:'tape',       text:'Add a phone number to the header on mobile',               done:true,  impact:'+2 pts' },
-  ];
-
   const history = auditData?.history || [
     { date:'Feb 14', score:42 }, { date:'Feb 28', score:51 },
-    { date:'Mar 18', score:58 }, { date:'Apr 02', score:score },
+    { date:'Mar 18', score:58 }, { date:'Apr 02', score:baseScore },
   ];
 
   const auditsRun = auditData?.count || history.length;
@@ -239,15 +255,21 @@ function BuilderDashboard({ auditData, latestAudit }) {
           <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:28, alignItems:'center' }}>
             <Donut score={score} size={170}/>
             <div>
-              <Label>Latest audit</Label>
+              <Label>Latest audit {completedPts > 0 && <span style={{ marginLeft:6, padding:'2px 8px', background:P.green, color:'#fff', borderRadius:999, fontSize:10, fontWeight:700 }}>+{completedPts} pts from fixes</span>}</Label>
               <div style={{ fontFamily:F.display, fontWeight:800, fontSize:22, color:P.ink, marginBottom:6 }}>
                 {score>=80?'Looking solid':score>=60?'Could be better — climbing fast':'Needs work'}
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontFamily:F.body, fontSize:14, fontWeight:600 }}>
-                <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:change>=0?P.green:P.red, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
-                  {change>=0?'↑':'↓'} {change>=0?'+':''}{change} since last scan
-                </span>
-                <span style={{ color:P.muted }}>· best score yet</span>
+                {completedPts > 0 ? (
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.green, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
+                    ↑ +{completedPts} pts from {fixesDone} fix{fixesDone>1?'es':''}
+                  </span>
+                ) : (
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.muted, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
+                    Score from last audit
+                  </span>
+                )}
+                <span style={{ color:P.muted }}>· tick fixes below to see score climb</span>
               </div>
               <Btn primary onClick={rescan}>Re-scan now</Btn>
             </div>
@@ -255,10 +277,10 @@ function BuilderDashboard({ auditData, latestAudit }) {
         </Card>
 
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Best ever</Label><BigNum n={score} sub="out of 100"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audit score</Label><BigNum n={score} sub="out of 100"/></Card>
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audits run</Label><BigNum n={auditsRun} sub="total"/></Card>
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixes.length-fixesDone} still outstanding`}/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Next milestone</Label><BigNum n="75+" sub={`"Solid" tier — ${Math.max(0,75-score)} pts away`} yellow/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${fixes.filter(f=>!f.done).reduce((s,f)=>s+f.pts,0)}`} sub="still on the table" yellow/></Card>
         </div>
       </div>
 
@@ -309,15 +331,19 @@ function BuilderDashboard({ auditData, latestAudit }) {
         </div>
         <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
           {fixes.map((f,i)=>(
-            <li key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:f.done?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:f.done?0.55:1 }}>
-              <div style={{ flex:'0 0 auto', width:40, height:40, display:'grid', placeItems:'center' }}>
-                <img src={`/assets/icons/${f.icon}.png`} alt="" width={40} height={40} style={{ width:40, height:40, objectFit:'contain' }}/>
+            <li key={i} onClick={()=>toggleFix(f.id)} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:f.done?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:f.done?0.55:1, cursor:'pointer', transition:'opacity .2s, background .2s' }}>
+              <div style={{ flex:'0 0 auto', width:22, height:22, borderRadius:5, background:f.done?P.green:'#fff', border:`2.4px solid ${f.done?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13 }}>{f.done?'✓':''}</div>
+              <div style={{ flex:'0 0 auto', width:36, height:36, display:'grid', placeItems:'center' }}>
+                <img src={`/assets/icons/${f.icon}.png`} alt="" width={36} height={36} style={{ width:36, height:36, objectFit:'contain' }}/>
               </div>
               <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:f.done?'line-through':'none' }}>{f.text}</div>
               <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:f.done?P.muted:P.green, background:f.done?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
             </li>
           ))}
         </ul>
+        {fixesDone > 0 && <div style={{ marginTop:14, padding:'10px 14px', background:'rgba(31,138,91,0.08)', border:`1.5px solid ${P.green}`, borderRadius:6, fontFamily:F.body, fontSize:13.5, color:P.green, fontWeight:600 }}>
+          ↑ Your projected score with these fixes applied: <b style={{ fontFamily:F.display, fontSize:16 }}>{score}</b> / 100. Re-scan to make it official.
+        </div>}
       </Card>
 
       {/* New scan CTA */}
@@ -570,10 +596,11 @@ function BuilderReview({ latestAudit }) {
 }
 
 // ── Builder: Photo Review ────────────────────────────────────────
-function BuilderPhotos({ latestAudit, imageUrls = [] }) {
+function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{} }) {
   const report = latestAudit?.report_json;
   const pa = report?.photo_analysis;
-  const [excluded, setExcluded] = React.useState({});
+  const excludePhoto = (id) => setExcludedPhotoIds(ex => new Set([...ex, id]));
+  const includePhoto = (id) => setExcludedPhotoIds(ex => { const n = new Set(ex); n.delete(id); return n; });
 
   /* Smart pairing — match AI descriptions to image URLs using keyword overlap.
      The AI analyses images in the order it sees them in page text; the crawler
@@ -657,10 +684,10 @@ function BuilderPhotos({ latestAudit, imageUrls = [] }) {
     ];
   })();
 
-  const visible = photos.filter(p => !excluded[p.id]);
+  const visible = photos.filter(p => !excludedPhotoIds.has(p.id));
   const realCount = visible.filter(p => p.verdict === 'real').length;
   const stockCount = visible.filter(p => p.verdict === 'stock').length;
-  const excludedCount = Object.values(excluded).filter(Boolean).length;
+  const excludedCount = excludedPhotoIds.size;
 
   const verdictMap = {
     real:    { label:'Real',        color:P.green },
@@ -725,7 +752,7 @@ function BuilderPhotos({ latestAudit, imageUrls = [] }) {
                   )}
                   {/* Exclude button — lets builder mark award badges, logos etc as "not a project photo" */}
                   <button
-                    onClick={() => setExcluded(ex => ({ ...ex, [p.id]: true }))}
+                    onClick={() => excludePhoto(p.id)}
                     style={{ marginTop:8, padding:'7px 12px', background:'transparent', border:`1.5px solid ${P.muted}`, borderRadius:4, fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted, cursor:'pointer', textAlign:'left' }}
                   >✕ Not a project photo — exclude from scoring</button>
                 </div>
@@ -738,10 +765,10 @@ function BuilderPhotos({ latestAudit, imageUrls = [] }) {
             <div style={{ gridColumn:'1/-1', marginTop:8, padding:'14px 18px', background:P.surface, border:`1.5px dashed ${P.muted}`, borderRadius:8 }}>
               <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, marginBottom:10, textTransform:'uppercase', letterSpacing:'0.06em' }}>{excludedCount} photo{excludedCount>1?'s':''} excluded from scoring</div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                {photos.filter(p => excluded[p.id]).map(p => (
+                {photos.filter(p => excludedPhotoIds.has(p.id)).map(p => (
                   <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontSize:13 }}>
                     <span style={{ color:P.muted }}>{p.label}</span>
-                    <button onClick={() => setExcluded(ex => { const n={...ex}; delete n[p.id]; return n; })}
+                    <button onClick={() => includePhoto(p.id)}
                       style={{ background:'transparent', border:'none', cursor:'pointer', color:P.accent, fontFamily:F.body, fontSize:11, fontWeight:700, padding:0 }}>Undo</button>
                   </div>
                 ))}
@@ -1141,6 +1168,7 @@ function DashboardApp() {
   const [latestAudit, setLatestAudit] = useState(null);
   const [auditData, setAuditData] = useState(null);
   const [imageUrls, setImageUrls] = useState([]);
+  const [excludedPhotoIds, setExcludedPhotoIds] = useState(new Set());
 
   // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
@@ -1208,10 +1236,10 @@ function DashboardApp() {
   if (loading) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
 
   const pages = role==='builder' ? {
-    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit}/>,
+    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} excludedPhotoIds={excludedPhotoIds}/>,
     about:       <BuilderAbout       latestAudit={latestAudit}/>,
     review:      <BuilderReview      latestAudit={latestAudit}/>,
-    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls}/>,
+    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds}/>,
     fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
     competitors: <BuilderCompetitors latestAudit={latestAudit}/>,
   } : {

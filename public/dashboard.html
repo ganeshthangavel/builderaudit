@@ -2213,6 +2213,309 @@ function HomeownerCompare({ user }) {
   );
 }
 
+// ── Homeowner: Advice & FAQs ─────────────────────────────────────
+function HomeownerAdvice() {
+  const [open, setOpen] = useState(0);
+
+  const faqs = [
+    { q: 'How do I know if a builder is legitimate?',
+      a: 'Check three things: (1) their Companies House registration — every UK limited company must be registered and display their company number; (2) trade body membership like FMB (Federation of Master Builders) or TrustMark — these vet members before accepting them; (3) public liability insurance — ask to see the certificate, a legitimate builder will show it without hesitation. Use our Company Check tab to verify their registration in seconds.' },
+    { q: 'How many quotes should I get?',
+      a: 'At least three. Compare them line by line, not just the bottom number. A quote that\'s 30% cheaper than the others usually means something\'s been left out — materials quality, waste removal, VAT, or contingency. Ask each builder to break their quote down the same way so you\'re comparing like for like.' },
+    { q: 'What deposit is reasonable?',
+      a: 'For most domestic work, 10–25% up front is normal — enough to cover initial materials. Be very cautious of anyone asking for 50% or more before starting, or anyone who wants cash. For larger projects, agree staged payments tied to completed milestones (e.g. foundations done, walls up, roof on), and never pay ahead of the work.' },
+    { q: 'Do I need planning permission?',
+      a: 'It depends on the project. Many extensions and loft conversions fall under "permitted development" and don\'t need full planning permission — but they still need building regulations approval, which is separate. Larger extensions, anything in a conservation area, and most front-facing changes need planning permission. Check with your local council before signing anything — a good builder will know, but it\'s your legal responsibility as the homeowner.' },
+    { q: 'What should be in the contract?',
+      a: 'A written contract is essential for anything over a few thousand pounds. It should cover: the full scope of work, a fixed price or clear day rate, payment schedule tied to milestones, start and completion dates, who handles building regs sign-off, how changes ("variations") are priced, and what happens if either side wants out. The FMB and JCT publish standard home-improvement contracts you can use for free or cheaply.' },
+    { q: 'What are the biggest red flags?',
+      a: 'Cash-only payment. No fixed address or company number. Quotes given on the spot without measuring up. Pressure to "sign today for a discount". No insurance documents. A website full of stock photos instead of their real work. Reviews that only exist on their own website. And the classic: "we\'re doing a job around the corner so we can do yours cheap" — that\'s a doorstep scam script.' },
+    { q: 'Should I pay in cash to avoid VAT?',
+      a: 'No. Paying cash-in-hand to dodge VAT means there\'s no paper trail — if the work goes wrong, you have almost no consumer protection, no proof of what was agreed, and you may even be participating in tax evasion. Pay by bank transfer or card, get everything in writing, and treat a builder who insists on cash as a serious red flag.' },
+    { q: 'What if the work goes wrong?',
+      a: 'First, raise it directly with the builder in writing — give them a chance to fix it. If they\'re a member of a trade body (FMB, TrustMark), use their dispute resolution scheme — it\'s free and they take complaints seriously. Beyond that you have rights under the Consumer Rights Act 2015: work must be done with reasonable care and skill. Keep records of everything: photos, messages, invoices. For amounts under £10,000, small claims court is a realistic option that doesn\'t need a solicitor.' },
+    { q: 'How far in advance should I book a builder?',
+      a: 'Good builders are typically booked 2–6 months ahead — sometimes longer for big projects. A builder who can "start Monday" should prompt the question: why are they free? That said, gaps do open up through cancellations and project delays, which is exactly what our free builder-matching service taps into — we work directly with vetted builders to fill diary gaps.' },
+    { q: 'What\'s the difference between a quote and an estimate?',
+      a: 'A quote is a fixed price for defined work — once accepted, the builder can\'t change it unless you change the scope. An estimate is a rough guess and can move significantly. Always push for a written quote for the core work, with any uncertain items (e.g. "we won\'t know about the joists until we open the floor") clearly listed as provisional sums.' },
+  ];
+
+  const tips = [
+    { icon:'📋', t:'Verify before you call',  d:'Run their website through BuilderAudit and check Companies House. Two minutes of checking beats two months of regret.' },
+    { icon:'🧾', t:'Everything in writing',   d:'Quotes, changes, timelines, payments. If it\'s not written down, it didn\'t happen.' },
+    { icon:'💷', t:'Never pay ahead of work', d:'Stage payments to completed milestones. The money is your only leverage.' },
+    { icon:'🏗', t:'Visit a current job',     d:'A proud builder will happily show you a live site. A tidy site is a tidy job.' },
+  ];
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Homeowner advice</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Finding a builder, without the horror stories</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:700 }}>Straight answers to the questions every homeowner should ask before hiring. No jargon, no scare tactics — just what to check and why.</p>
+      </div>
+
+      {/* Quick tips */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(230px, 1fr))', gap:14, marginBottom:28 }}>
+        {tips.map((t,i) => (
+          <Card key={i} pad={18}>
+            <div style={{ fontSize:24, marginBottom:8 }}>{t.icon}</div>
+            <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em', marginBottom:4 }}>{t.t}</div>
+            <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, lineHeight:1.5 }}>{t.d}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* FAQ accordion */}
+      <Card style={{ marginBottom:24 }}>
+        <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Frequently asked questions</h2>
+        <div style={{ display:'flex', flexDirection:'column' }}>
+          {faqs.map((f, i) => {
+            const isOpen = open === i;
+            return (
+              <div key={i} style={{ borderBottom: i < faqs.length-1 ? `1.5px solid ${P.surface}` : 'none' }}>
+                <button onClick={()=>setOpen(isOpen ? -1 : i)}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, width:'100%', padding:'16px 4px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left', outline:'none' }}>
+                  <span style={{ fontFamily:F.body, fontWeight:700, fontSize:15.5, color:P.ink }}>{f.q}</span>
+                  <span style={{ flex:'0 0 auto', width:26, height:26, borderRadius:'50%', border:`2px solid ${P.line}`, background:isOpen?P.ink:'transparent', color:isOpen?'#fff':P.ink, display:'grid', placeItems:'center', fontFamily:F.body, fontWeight:800, fontSize:15, transition:'background .15s' }}>{isOpen?'−':'+'}</span>
+                </button>
+                {isOpen && (
+                  <div style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, lineHeight:1.65, padding:'0 4px 18px', maxWidth:820 }}>{f.a}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* CTA into match service */}
+      <Card style={{ background:P.ink }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:22, alignItems:'center' }}>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.fill, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Free service</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Want us to find you a trusted builder?</h3>
+            <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.75)', margin:0, lineHeight:1.55, maxWidth:560 }}>Our team works directly with heavily accredited builders who run the highest-scoring websites we audit. Tell us about your project and we'll put you in touch — free.</p>
+          </div>
+          <button onClick={()=>{ const u=new URL(window.location.href); u.searchParams.set('page','match'); window.location.href=u.toString(); }}
+            style={{ background:P.fill, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'14px 22px', fontFamily:F.display, fontWeight:900, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 rgba(255,255,255,0.25)`, textTransform:'uppercase', whiteSpace:'nowrap' }}>
+            Find me a builder →
+          </button>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Homeowner: Find a Trusted Builder (lead-gen) ─────────────────
+function HomeownerMatch({ user }) {
+  const [form, setForm] = useState({
+    name: user?.name || '', email: user?.email || '', phone: user?.phone || '',
+    location: '', projectType: '', budget: '', timeline: '',
+    hasPlans: '', planningStatus: '', description: '',
+    consentTos: false, consentAgency: true,
+  });
+  const [state, setState]     = useState('idle'); /* idle | submitting | done */
+  const [errMsg, setErrMsg]   = useState('');
+  const setF = (k,v) => setForm(f => ({...f, [k]: v}));
+
+  const PROJECT_TYPES = ['Extension', 'Loft conversion', 'Full renovation', 'New build', 'Kitchen', 'Bathroom', 'Garage conversion', 'Garden / landscaping', 'Roofing', 'Other'];
+  const BUDGETS   = ['Under £10k', '£10k – £30k', '£30k – £75k', '£75k – £150k', '£150k – £300k', 'Over £300k'];
+  const TIMELINES = ['As soon as possible', 'Within 3 months', '3 – 6 months', '6 – 12 months', 'Just planning ahead'];
+  const PLANS     = ['Yes — drawings ready', 'In progress with architect', 'No — need help with design'];
+  const PLANNING  = ['Approved', 'Applied — awaiting decision', 'Not applied yet', 'Not needed / permitted development', 'Not sure'];
+
+  async function submit() {
+    if (!form.name.trim())        return setErrMsg('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setErrMsg('Please enter a valid email address.');
+    if (!form.phone.trim())       return setErrMsg('Please enter your phone number.');
+    if (!form.location.trim())    return setErrMsg('Please enter your location or postcode.');
+    if (!form.projectType)        return setErrMsg('Please select a project type.');
+    if (!form.budget)             return setErrMsg('Please select a budget range.');
+    if (!form.consentTos)         return setErrMsg('Please agree to the Terms of Service.');
+    setErrMsg(''); setState('submitting');
+    try {
+      const res = await fetch('/api/builder-match', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Submission failed');
+      setState('done');
+    } catch(e) { setErrMsg(e.message); setState('idle'); }
+  }
+
+  /* Shared field styles */
+  const labelSt = { fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:6 };
+  const inputSt = { width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'11px 12px', fontFamily:F.body, fontSize:14.5, color:P.ink, boxSizing:'border-box', outline:'none', background:'#fff' };
+
+  const PillGroup = ({ options, value, onPick }) => (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+      {options.map((o,i) => {
+        const on = value === o;
+        return (
+          <button key={i} onClick={()=>onPick(o)}
+            style={{ padding:'9px 14px', background:on?P.ink:'#fff', color:on?'#fff':P.ink, border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontWeight:600, fontSize:13.5, cursor:'pointer', boxShadow:on?`2px 2px 0 ${P.line}`:'none', transition:'background .1s' }}>
+            {o}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  if (state === 'done') return (
+    <main style={{ padding:'40px 36px', maxWidth:760, margin:'0 auto' }}>
+      <Card style={{ textAlign:'center', padding:48 }}>
+        <div style={{ fontSize:52, marginBottom:14 }}>🤝</div>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>You're in safe hands</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 auto 8px', lineHeight:1.6, maxWidth:520 }}>
+          Thanks {form.name.split(' ')[0]} — we've got your project details. One of our team will be in touch within <b style={{ color:P.ink }}>1 working day</b> to match you with accredited builders who have availability for a <b style={{ color:P.ink }}>{form.projectType.toLowerCase()}</b> in <b style={{ color:P.ink }}>{form.location}</b>.
+        </p>
+        <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:'14px auto 0', maxWidth:480 }}>
+          In the meantime, run any builders you're already talking to through the <b>Compare builders</b> tab — it's free.
+        </p>
+      </Card>
+    </main>
+  );
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 380px', gap:28, alignItems:'start' }}>
+
+        {/* ── Left: the form ── */}
+        <Card>
+          <Kicker color={P.accent}>Free matching service</Kicker>
+          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, lineHeight:1.05, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'12px 0 8px' }}>Find a trusted builder</h1>
+          <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 24px', lineHeight:1.6 }}>
+            Tell us about your project and one of our team will personally match you with reputable, heavily accredited builders — the ones whose websites score highest in our audits.
+          </p>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            {/* Contact */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              <div>
+                <label style={labelSt}>Your name *</label>
+                <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="Jane Smith" style={inputSt}/>
+              </div>
+              <div>
+                <label style={labelSt}>Phone *</label>
+                <input value={form.phone} onChange={e=>setF('phone',e.target.value)} type="tel" placeholder="07700 900000" style={inputSt}/>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              <div>
+                <label style={labelSt}>Email *</label>
+                <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="jane@example.co.uk" style={inputSt}/>
+              </div>
+              <div>
+                <label style={labelSt}>Location / postcode *</label>
+                <input value={form.location} onChange={e=>setF('location',e.target.value)} placeholder="Doncaster / DN1" style={inputSt}/>
+              </div>
+            </div>
+
+            {/* Project type */}
+            <div>
+              <label style={labelSt}>Project type *</label>
+              <PillGroup options={PROJECT_TYPES} value={form.projectType} onPick={v=>setF('projectType',v)}/>
+            </div>
+
+            {/* Budget */}
+            <div>
+              <label style={labelSt}>Budget *</label>
+              <PillGroup options={BUDGETS} value={form.budget} onPick={v=>setF('budget',v)}/>
+            </div>
+
+            {/* Timeline */}
+            <div>
+              <label style={labelSt}>When do you want to start?</label>
+              <PillGroup options={TIMELINES} value={form.timeline} onPick={v=>setF('timeline',v)}/>
+            </div>
+
+            {/* Plans */}
+            <div>
+              <label style={labelSt}>Do you have drawings / plans?</label>
+              <PillGroup options={PLANS} value={form.hasPlans} onPick={v=>setF('hasPlans',v)}/>
+            </div>
+
+            {/* Planning permission */}
+            <div>
+              <label style={labelSt}>Planning permission status</label>
+              <PillGroup options={PLANNING} value={form.planningStatus} onPick={v=>setF('planningStatus',v)}/>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label style={labelSt}>Tell us about the project <span style={{ color:P.muted, fontWeight:500, textTransform:'none' }}>(optional)</span></label>
+              <textarea value={form.description} onChange={e=>setF('description',e.target.value)} rows={4}
+                placeholder="e.g. Single-storey rear extension, around 4m x 6m, want bifold doors onto the garden. House is a 1930s semi…"
+                style={{ ...inputSt, resize:'vertical', fontFamily:F.body, lineHeight:1.5 }}/>
+            </div>
+
+            {/* Consents */}
+            <div style={{ borderTop:`1.5px solid ${P.line}`, paddingTop:18, display:'flex', flexDirection:'column', gap:12 }}>
+              <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer' }}>
+                <input type="checkbox" checked={form.consentTos} onChange={e=>setF('consentTos',e.target.checked)}
+                  style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
+                <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+                  I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>, and I'm happy for the BuilderAudit team to contact me about my project. <span style={{ color:P.red, fontWeight:700 }}>*</span>
+                </span>
+              </label>
+              <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer', padding:'12px 14px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+                <input type="checkbox" checked={form.consentAgency} onChange={e=>setF('consentAgency',e.target.checked)}
+                  style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
+                <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+                  <b style={{ display:'block', marginBottom:2 }}>Connect me with recommended builders</b>
+                  Share my project details with vetted, accredited builders so they can get in touch about my project. <span style={{ color:P.muted }}>(You can opt out any time.)</span>
+                </span>
+              </label>
+            </div>
+
+            {errMsg && <div style={{ fontFamily:F.body, fontSize:13.5, color:P.red, padding:'10px 14px', background:'rgba(217,83,79,0.08)', borderRadius:6, border:`1.5px solid ${P.red}` }}>{errMsg}</div>}
+
+            <button onClick={submit} disabled={state==='submitting'}
+              style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'16px 24px', fontFamily:F.display, fontWeight:900, fontSize:17, cursor:state==='submitting'?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:state==='submitting'?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
+              {state==='submitting' ? 'Sending your details…' : 'Match me with trusted builders →'}
+            </button>
+            <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, textAlign:'center' }}>100% free. No obligation. We never sell your data.</div>
+          </div>
+        </Card>
+
+        {/* ── Right: why this works ── */}
+        <div style={{ display:'flex', flexDirection:'column', gap:18, position:'sticky', top:96 }}>
+          <Card pad={22} style={{ background:P.fill }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10, opacity:0.7 }}>Why this beats enquiry pools</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:19, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.01em', lineHeight:1.15 }}>We bypass the general enquiry scramble</h3>
+            <p style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, margin:0, lineHeight:1.6, opacity:0.85 }}>
+              Lead websites blast your details to anyone who pays. We work <b>directly</b> with a small pool of accredited builders to plug gaps in their diaries — so you get a builder who actually has time for your project, not five voicemails from whoever bought your number.
+            </p>
+          </Card>
+
+          <Card pad={22}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Every builder we recommend</div>
+            {[
+              ['🏛','Companies House verified — active, accounts up to date'],
+              ['🛡','Heavily accredited — FMB, TrustMark, CHAS or equivalent'],
+              ['🏆','Top-scoring website audits — real photos, real reviews'],
+              ['📅','Genuine availability — we match to diary gaps'],
+            ].map(([icon, text], i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:i<3?`1px solid ${P.surface}`:'none' }}>
+                <span style={{ fontSize:17, flex:'0 0 auto' }}>{icon}</span>
+                <span style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>{text}</span>
+              </div>
+            ))}
+          </Card>
+
+          <Card pad={22} style={{ background:P.ink }}>
+            <div style={{ fontFamily:F.body, fontSize:13.5, color:'rgba(255,255,255,0.85)', lineHeight:1.6, fontStyle:'italic' }}>
+              "We had three quotes within a week, all from builders who could actually start when we needed. Night and day compared to the lead sites."
+            </div>
+            <div style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.5)', marginTop:10 }}>— Homeowner, South Yorkshire</div>
+          </Card>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 /* ── Main HomeownerDashboard ─────────────────────────────────────────────── */
 function HomeownerDashboard({ auditData, latestAudit }) {
   const report = latestAudit?.report_json || null;
@@ -2462,7 +2765,8 @@ function DashboardApp() {
   } : {
     dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
     compare:   <HomeownerCompare user={user}/>,
-    shortlist: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
+    advice:    <HomeownerAdvice/>,
+    match:     <HomeownerMatch user={user}/>,
     account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
   };
 

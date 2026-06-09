@@ -747,15 +747,15 @@ body {
     </div>
 
     <div class="what-grid">
-      <div class="what-card"><img src="/assets/icons/drill.png" alt=""><div><div class="what-title">Site speed</div><div class="what-desc">How fast pages load on a homeowner's phone.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/tape.png" alt=""><div><div class="what-title">Mobile friendly</div><div class="what-desc">Does it actually work on a 6-inch screen?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/hardhat.png" alt=""><div><div class="what-title">Photo quality</div><div class="what-desc">Sharp, real photos of finished work — or grainy stock.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/gear.png" alt=""><div><div class="what-title">Trust signals</div><div class="what-desc">Reviews, FMB / TrustMark, public liability insurance.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/toolbox.png" alt=""><div><div class="what-title">Services clarity</div><div class="what-desc">Can a homeowner tell what you actually do?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/screwdriver.png" alt=""><div><div class="what-title">Quote flow</div><div class="what-desc">How easy is it to actually ask you for a price?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/ladder.png" alt=""><div><div class="what-title">SEO &amp; Google</div><div class="what-desc">Will anyone find you when they're searching?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/roller.png" alt=""><div><div class="what-title">Copy &amp; tone</div><div class="what-desc">Does it sound like a builder or a robot?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/cone.png" alt=""><div><div class="what-title">Real vs AI photos</div><div class="what-desc">We flag stock and AI-generated job photos.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/drill.png" alt=""><div><div class="what-title">Site speed</div><div class="what-desc" data-what="speed">How fast pages load on a homeowner's phone.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/tape.png" alt=""><div><div class="what-title">Mobile friendly</div><div class="what-desc" data-what="mobile">Does it actually work on a 6-inch screen?</div></div></div>
+      <div class="what-card"><img src="/assets/icons/hardhat.png" alt=""><div><div class="what-title">Photo quality</div><div class="what-desc" data-what="photos">Sharp, real photos of finished work — or grainy stock.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/gear.png" alt=""><div><div class="what-title">Trust signals</div><div class="what-desc" data-what="trust">Reviews, FMB / TrustMark, public liability insurance.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/toolbox.png" alt=""><div><div class="what-title">Services clarity</div><div class="what-desc" data-what="services">Can a homeowner tell what you actually do?</div></div></div>
+      <div class="what-card"><img src="/assets/icons/screwdriver.png" alt=""><div><div class="what-title">Quote flow</div><div class="what-desc" data-what="quote">How easy is it to actually ask you for a price?</div></div></div>
+      <div class="what-card"><img src="/assets/icons/ladder.png" alt=""><div><div class="what-title">SEO &amp; Google</div><div class="what-desc" data-what="seo">Will anyone find you when they're searching?</div></div></div>
+      <div class="what-card"><img src="/assets/icons/roller.png" alt=""><div><div class="what-title">Copy &amp; tone</div><div class="what-desc" data-what="copy">Does it sound like a builder or a robot?</div></div></div>
+      <div class="what-card"><img src="/assets/icons/cone.png" alt=""><div><div class="what-title">Real vs AI photos</div><div class="what-desc" data-what="ai">We flag stock and AI-generated job photos.</div></div></div>
     </div>
   </section>
 
@@ -974,6 +974,17 @@ var COPY = {
 
     whatH2: "We look at the same stuff a homeowner does — just faster",
     whatSub: "Nine things that decide whether someone trusts you enough to ask for a quote, or scrolls on.",
+    whatCards: {
+      speed:    "How fast your pages load on a homeowner's phone.",
+      mobile:   "Does your site actually work on a 6-inch screen?",
+      photos:   "Are your job photos real and sharp — or grainy stock?",
+      trust:    "Do you show reviews, FMB / TrustMark, public liability?",
+      services: "Can a homeowner tell exactly what you do and where?",
+      quote:    "How easy is it for someone to ask you for a price?",
+      seo:      "Will homeowners in your area actually find you on Google?",
+      copy:     "Does your site sound like a real person or a robot?",
+      ai:       "We reverse-image-search your job photos to catch fakes.",
+    },
 
     sampleH2: "A score out of 100, with the bits that need work",
     sampleSub: "This is a real example. Yours arrives within a minute of pasting your URL.",
@@ -1000,6 +1011,17 @@ var COPY = {
 
     whatH2: "Nine things a good builder gets right on their website",
     whatSub: "If their site falls down on these, ask yourself if their work will hold up too.",
+    whatCards: {
+      speed:    "Slow sites suggest the business isn't properly looked after.",
+      mobile:   "If it's broken on your phone, that's already a red flag.",
+      photos:   "Are the job photos genuinely theirs — or lifted from the internet?",
+      trust:    "Do they show trade accreditations, reviews, and insurance proof?",
+      services: "Is it clear they actually do the type of work you need?",
+      quote:    "A 10-field quote form is a sign of a disorganised business.",
+      seo:      "Do they show up when you search for builders in your area?",
+      copy:     "Does the site sound like a real, confident company you'd trust?",
+      ai:       "We run every job photo through a reverse-image search for fakes.",
+    },
 
     sampleH2: "A score out of 100, with the bits to worry about",
     sampleSub: "Same audit, every builder. Run your shortlist before you start ringing round.",
@@ -1037,6 +1059,10 @@ function setMode(next) {
 
   document.getElementById('whatH2').textContent = c.whatH2;
   document.getElementById('whatSub').textContent = c.whatSub;
+  Object.keys(c.whatCards).forEach(function(key) {
+    var el = document.querySelector('[data-what="' + key + '"]');
+    if (el) el.textContent = c.whatCards[key];
+  });
   document.getElementById('sampleH2').textContent = c.sampleH2;
   document.getElementById('sampleSub').textContent = c.sampleSub;
   document.getElementById('howH2').textContent = c.howH2;

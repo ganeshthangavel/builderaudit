@@ -906,66 +906,81 @@ app.post('/api/report/:id/reanalyze', async (req, res) => {
   res.end();
 });
 
-/* Override a flagged image — user says "this is actually mine" */
+/* Override a flagged image OR save fix completions / photo exclusions.
+   Accepts:
+     - { imageSrc, decision }                    → image override (existing)
+     - { fixId, completed: true|false }           → fix completion toggle
+     - { photoId, excluded: true|false }          → photo exclusion toggle */
 app.post('/api/report/:id/override', async (req, res) => {
   const { id } = req.params;
-  const { imageSrc, decision } = req.body;
+  const { imageSrc, decision, fixId, completed, photoId, excluded } = req.body;
 
   if (!db.isEnabled()) return res.status(500).json({ error: 'Database not configured' });
-  if (!imageSrc) return res.status(400).json({ error: 'Missing imageSrc' });
 
-  /* Authorisation: allow if the user is the audit's owner OR has the legacy unlock cookie */
   try {
     const auditMeta = await db.getAuditMeta(id);
     if (!auditMeta) return res.status(404).json({ error: 'Report not found' });
 
     const isOwner = req.user && auditMeta.user_id === req.user.id;
     const hasUnlockCookie = req.cookies['audit_unlock_' + id] === '1';
-    /* Auto-claim the audit if logged-in user visits an unowned report */
     if (req.user && !auditMeta.user_id && !isOwner) {
-      try {
-        await db.claimAudit(id, req.user.id);
-        console.log('Auto-claimed during override:', id, 'by', req.user.id);
-      } catch (e) { console.warn('Override auto-claim failed:', e.message); }
+      try { await db.claimAudit(id, req.user.id); } catch (e) {}
     }
     const isOwnerAfterClaim = req.user && (isOwner || !auditMeta.user_id);
-
     if (!isOwnerAfterClaim && !hasUnlockCookie) {
       return res.status(403).json({ error: 'Report not unlocked' });
     }
 
+    /* ── Fix completion ── */
+    if (fixId !== undefined) {
+      const key = 'fix_' + fixId;
+      await db.setImageOverride(id, key, completed ? 'completed' : 'pending');
+      const audit = await db.getAudit(id);
+      const overrides = audit.overrides || {};
+      const report = audit.report_json || {};
+      const actions = report.top_actions || [];
+      const completedPts = actions.reduce((sum, a, i) => {
+        const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i] || 2;
+        return overrides['fix_' + i] === 'completed' ? sum + pts : sum;
+      }, 0);
+      const adjustedScore = Math.min(100, (report.hero?.score || 0) + completedPts);
+      return res.json({ success: true, overrides, adjustedScore });
+    }
+
+    /* ── Photo exclusion ── */
+    if (photoId !== undefined) {
+      const key = 'photo_excluded_' + photoId;
+      await db.setImageOverride(id, key, excluded ? 'excluded' : 'included');
+      const audit = await db.getAudit(id);
+      const overrides = audit.overrides || {};
+      const report = audit.report_json || {};
+      const excludedCount = Object.keys(overrides).filter(k => k.startsWith('photo_excluded_') && overrides[k] === 'excluded').length;
+      const baseScore = report.hero?.score || 0;
+      /* Each excluded flagged photo restores ~5 pts to the "real projects" trust question */
+      const adjustedScore = Math.min(100, baseScore + (excludedCount * 5));
+      return res.json({ success: true, overrides, adjustedScore });
+    }
+
+    /* ── Image override (existing) ── */
+    if (!imageSrc) return res.status(400).json({ error: 'Missing imageSrc, fixId, or photoId' });
     console.log('Override request:', { id, imageSrc, decision });
     await db.setImageOverride(id, imageSrc, decision);
 
-    /* Recalculate score based on remaining (non-overridden) flags */
     const audit = await db.getAudit(id);
     if (!audit) return res.status(404).json({ error: 'Not found' });
-
     const overrides = audit.overrides || {};
     const iv = audit.report_json?.imageVerification || {};
     const stockRemaining = (iv.stockImages || []).filter(img => overrides[img.src] !== 'rejected').length;
     const dupRemaining = (iv.duplicatedImages || []).filter(img => overrides[img.src] !== 'rejected').length;
     const flaggedRemaining = stockRemaining + dupRemaining;
-
-    /* Score bump: each removed flag restores some trust.
-       Stock photo is the most damaging (weight 4), duplicate less so (weight 2).
-       Original score was based on AI's view of the flags; removing flags should increase the score. */
     const baseScore = audit.report_json?.hero?.score || 0;
     const originalFlagged = (iv.stockImages || []).length + (iv.duplicatedImages || []).length;
     const removedFlags = originalFlagged - flaggedRemaining;
-    let adjustedScore = baseScore + (removedFlags * 3); /* 3 points per removed flag */
+    let adjustedScore = baseScore + (removedFlags * 3);
     if (adjustedScore > 100) adjustedScore = 100;
     if (adjustedScore < 0) adjustedScore = 0;
 
-    res.json({
-      success: true,
-      overrides,
-      adjustedScore,
-      stockRemaining,
-      dupRemaining,
-      flaggedRemaining,
-      originalScore: baseScore,
-    });
+    res.json({ success: true, overrides, adjustedScore, stockRemaining, dupRemaining, flaggedRemaining, originalScore: baseScore });
   } catch (err) {
     console.error('Override failed:', err);
     res.status(500).json({ error: err.message });

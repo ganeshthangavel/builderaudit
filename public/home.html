@@ -762,7 +762,7 @@ body {
   <!-- ═══════════ SAMPLE REPORT ═══════════ -->
   <section class="section fill">
     <div class="section-head">
-      <div class="kicker">Here's what you get</div>
+      <div class="kicker" id="sampleKicker">Here's what you get</div>
       <h2 class="section-h2" id="sampleH2">A score out of 100, with the bits that need work</h2>
       <p class="section-sub" id="sampleSub">This is a real example. Yours arrives within a minute of pasting your URL.</p>
     </div>
@@ -844,16 +844,16 @@ body {
 
       <div class="findings-grid">
         <div class="findings-card">
-          <div class="lbl risk">⚠ Top 3 risks a homeowner sees</div>
-          <ol>
-            <li><b>1.</b> 6 of 9 “past jobs” are stock photos. Looks fake.</li>
+          <div class="lbl risk" id="findingsLabel1">⚠ Top 3 risks a homeowner sees</div>
+          <ol id="findingsList1">
+            <li><b>1.</b> 6 of 9 "past jobs" are stock photos. Looks fake.</li>
             <li><b>2.</b> No trade accreditations on display.</li>
             <li><b>3.</b> Quote form asks for 11 things — most quit.</li>
           </ol>
         </div>
         <div class="findings-card">
-          <div class="lbl fix">✓ Top 3 fixes (do these first)</div>
-          <ol>
+          <div class="lbl fix" id="findingsLabel2">✓ Top 3 fixes (do these first)</div>
+          <ol id="findingsList2">
             <li><b>1.</b> Swap in real before/after shots from your phone.</li>
             <li><b>2.</b> Add your FMB / TrustMark badges near the top.</li>
             <li><b>3.</b> Cut the quote form to: name, postcode, job.</li>
@@ -986,8 +986,21 @@ var COPY = {
       ai:       "We reverse-image-search your job photos to catch fakes.",
     },
 
+    sampleKicker: "Here's what you get",
     sampleH2: "A score out of 100, with the bits that need work",
     sampleSub: "This is a real example. Yours arrives within a minute of pasting your URL.",
+    findingsLabel1: "⚠ Top 3 risks a homeowner sees",
+    findingsList1: [
+      "6 of 9 \"past jobs\" are stock photos. Looks fake.",
+      "No trade accreditations on display.",
+      "Quote form asks for 11 things — most quit.",
+    ],
+    findingsLabel2: "✓ Top 3 fixes (do these first)",
+    findingsList2: [
+      "Swap in real before/after shots from your phone.",
+      "Add your FMB / TrustMark badges near the top.",
+      "Cut the quote form to: name, postcode, job.",
+    ],
 
     howH2: "Three minutes from URL to action list",
     howSteps: [
@@ -1023,8 +1036,21 @@ var COPY = {
       ai:       "We run every job photo through a reverse-image search for fakes.",
     },
 
+    sampleKicker: "Here's what you'll see",
     sampleH2: "A score out of 100, with the bits to worry about",
     sampleSub: "Same audit, every builder. Run your shortlist before you start ringing round.",
+    findingsLabel1: "⚠ Red flags to raise with them",
+    findingsList1: [
+      "6 of 9 \"job photos\" are stock images — not their own work.",
+      "No trade body membership (FMB, TrustMark) anywhere on site.",
+      "No mention of public liability insurance.",
+    ],
+    findingsLabel2: "✓ Questions to ask before hiring",
+    findingsList2: [
+      "Can you show me the original photos from these jobs?",
+      "Are you FMB or TrustMark accredited — can I see proof?",
+      "Can I see your public liability insurance certificate?",
+    ],
 
     howH2: "Three minutes from URL to peace of mind",
     howSteps: [
@@ -1063,8 +1089,19 @@ function setMode(next) {
     var el = document.querySelector('[data-what="' + key + '"]');
     if (el) el.textContent = c.whatCards[key];
   });
+  document.getElementById('sampleKicker').textContent = c.sampleKicker;
   document.getElementById('sampleH2').textContent = c.sampleH2;
   document.getElementById('sampleSub').textContent = c.sampleSub;
+
+  /* Swap findings labels */
+  document.getElementById('findingsLabel1').textContent = c.findingsLabel1;
+  document.getElementById('findingsLabel2').textContent = c.findingsLabel2;
+  /* Swap findings list items */
+  ['findingsList1','findingsList2'].forEach(function(id) {
+    var el = document.getElementById(id);
+    var items = c[id];
+    el.innerHTML = items.map(function(t, i) { return '<li><b>' + (i+1) + '.</b> ' + t + '</li>'; }).join('');
+  });
   document.getElementById('howH2').textContent = c.howH2;
 
   c.howSteps.forEach(function(s, i){

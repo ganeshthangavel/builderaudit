@@ -334,6 +334,66 @@ app.get('/api/health', (req, res) => res.json({
 }));
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   COMPETITOR CHECK — full-quality audit, gated behind account sign-up.
+   Logged-in users get the full crawl + Sonnet scoring (same as a normal audit).
+   Anonymous users get { locked: true } — they must create a free account.
+   This is the lead-generation gate: free access in exchange for contact details
+   + consent for builder marketing/recommendation services.
+   POST /api/competitor-check  { url: "https://theirsite.co.uk" }
+   ───────────────────────────────────────────────────────────────────────────── */
+app.post('/api/competitor-check', async (req, res) => {
+  /* Gate: must be logged in */
+  if (!req.user) {
+    return res.status(401).json({ locked: true, reason: 'account_required' });
+  }
+
+  const { url } = req.body;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'Provide a full URL starting with https://' });
+  }
+  if (!isScrapFlyAvailable()) {
+    return res.status(503).json({ error: 'Crawler not configured' });
+  }
+
+  try {
+    console.log('[competitor-check] Full crawl for', url, 'by user', req.user.id);
+    const { pages, imageVerification } = await crawlWebsiteScrapFly(url);
+
+    if (!pages || pages.length === 0) {
+      return res.status(422).json({ error: 'Could not crawl that site — it may be blocking automated requests.' });
+    }
+
+    const userContext = {
+      businessType: req.user.business_type,
+      region:       req.user.region,
+      companyName:  req.user.company_name,
+    };
+
+    /* Full Sonnet scoring — same quality as a normal audit */
+    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext, 'builder');
+
+    const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e){ return url; } })();
+    res.json({
+      url,
+      domain,
+      score:       report.hero?.score || 0,
+      company_name: report.business_snapshot?.company_name || domain,
+      verdict:     report.hero?.headline || '',
+      subtext:     report.hero?.subtext || '',
+      categories:  (report.trust_questions || []).map(q => ({
+        name:  q.question.replace('?','').replace('Can I verify this is a legitimate registered business','Legitimacy').replace('Do I believe these are real projects by this company','Real projects').replace('Do other homeowners trust and recommend this company','Reviews').replace('Do they have credentials to handle my project safely','Credentials').replace('Will they be easy to contact and communicate with','Contactability').replace('Is this business actively trading right now','Trading'),
+        score: q.score || 50,
+        note:  q.explanation || '',
+      })),
+      top_actions: (report.top_actions || []).slice(0, 3).map(a => typeof a === 'string' ? a : a.title),
+    });
+  } catch (err) {
+    console.error('[competitor-check] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Competitor check failed' });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
    COMPANIES HOUSE PROXY
    Proxies requests to the free UK Companies House API so the key never
    reaches the browser. Returns structured data for the homeowner company check.
@@ -1211,4 +1271,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-     
+       

@@ -333,6 +333,107 @@ app.get('/api/health', (req, res) => res.json({
   database: db.isEnabled(),
 }));
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   COMPANIES HOUSE PROXY
+   Proxies requests to the free UK Companies House API so the key never
+   reaches the browser. Returns structured data for the homeowner company check.
+   GET /api/company-check?name=Create+Builders&domain=create-builders.co.uk
+   ───────────────────────────────────────────────────────────────────────────── */
+app.get('/api/company-check', async (req, res) => {
+  const { name, domain } = req.query;
+  if (!name && !domain) return res.status(400).json({ error: 'Provide ?name= or ?domain=' });
+
+  const CH_KEY = config.COMPANIES_HOUSE_API_KEY;
+  if (!CH_KEY) {
+    return res.json({ available: false, reason: 'Companies House API key not configured' });
+  }
+
+  const searchTerm = name || (domain || '').replace(/^www\./, '').replace(/\.[a-z]+$/, '').replace(/-/g, ' ');
+
+  try {
+    /* Search for companies matching the name */
+    const searchRes = await fetch(
+      `https://api.company-information.service.gov.uk/search/companies?q=${encodeURIComponent(searchTerm)}&items_per_page=5`,
+      { headers: { Authorization: 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64') } }
+    );
+
+    if (!searchRes.ok) {
+      console.warn('[ch] Search failed:', searchRes.status, await searchRes.text().catch(()=>''));
+      return res.json({ available: false, reason: 'Companies House search failed (' + searchRes.status + ')' });
+    }
+
+    const searchData = await searchRes.json();
+    const companies = (searchData.items || []).map(c => ({
+      name: c.title,
+      number: c.company_number,
+      status: c.company_status,
+      type: c.company_type,
+      incorporated: c.date_of_creation,
+      address: c.registered_office_address
+        ? [c.registered_office_address.address_line_1, c.registered_office_address.locality, c.registered_office_address.postal_code].filter(Boolean).join(', ')
+        : null,
+      matchScore: (() => {
+        const s = (c.title || '').toLowerCase();
+        const q = searchTerm.toLowerCase();
+        const words = q.split(/\s+/);
+        return words.filter(w => s.includes(w)).length / words.length;
+      })(),
+    })).sort((a, b) => b.matchScore - a.matchScore);
+
+    /* If we have a strong match, fetch full profile for the top result */
+    let profile = null;
+    const topMatch = companies[0];
+    if (topMatch && topMatch.matchScore >= 0.5) {
+      try {
+        const profileRes = await fetch(
+          `https://api.company-information.service.gov.uk/company/${topMatch.number}`,
+          { headers: { Authorization: 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64') } }
+        );
+        if (profileRes.ok) {
+          const pd = await profileRes.json();
+          /* Also fetch officers (directors) */
+          const officersRes = await fetch(
+            `https://api.company-information.service.gov.uk/company/${topMatch.number}/officers?items_per_page=10`,
+            { headers: { Authorization: 'Basic ' + Buffer.from(CH_KEY + ':').toString('base64') } }
+          );
+          const officers = officersRes.ok ? await officersRes.json() : {};
+          profile = {
+            number: pd.company_number,
+            name: pd.company_name,
+            status: pd.company_status,          /* active | dissolved | liquidation | etc */
+            type: pd.type,
+            incorporated: pd.date_of_creation,
+            lastAccounts: pd.accounts?.last_accounts?.made_up_to || null,
+            nextConfirmation: pd.confirmation_statement?.next_due || null,
+            registeredAddress: pd.registered_office_address
+              ? [pd.registered_office_address.address_line_1, pd.registered_office_address.address_line_2, pd.registered_office_address.locality, pd.registered_office_address.postal_code].filter(Boolean).join(', ')
+              : null,
+            sicCodes: pd.sic_codes || [],
+            officers: (officers.items || []).filter(o => o.resigned_on == null).map(o => ({
+              name: o.name,
+              role: o.officer_role,
+              appointed: o.appointed_on,
+            })),
+            chUrl: `https://find-and-update.company-information.service.gov.uk/company/${pd.company_number}`,
+          };
+        }
+      } catch (e) {
+        console.warn('[ch] Profile fetch failed:', e.message);
+      }
+    }
+
+    res.json({
+      available: true,
+      searchTerm,
+      companies: companies.slice(0, 5),
+      profile,   /* full profile for best match, or null */
+    });
+  } catch (err) {
+    console.error('[ch] Error:', err.message);
+    res.json({ available: false, reason: err.message });
+  }
+});
+
 /* In-memory map of audit-ID → { email, audience }.
  * When a user opts in to "email me when ready" mid-audit, we store their
  * email here. When the audit completes, we look it up and fire the email.
@@ -1110,3 +1211,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+     

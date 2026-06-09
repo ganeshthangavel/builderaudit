@@ -369,6 +369,298 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
 }
 
 // ── Builder: About your business ────────────────────────────────
+// ── Shared: Companies House Lookup ──────────────────────────────
+// Used by both BuilderAbout (builder links their own company) and
+// HoVerdict / HoCompanyCheck (homeowner verifies a builder).
+// Props:
+//   companyName  — search seed from site
+//   domain       — fallback search seed
+//   audience     — 'builder' | 'homeowner'  (controls copy)
+//   onLinked     — optional callback(profile) when a company is confirmed
+function CompaniesHouseLookup({ companyName, domain, audience = 'builder', onLinked }) {
+  const isBuilder = audience === 'builder';
+  const [searchState,  setSearchState]  = useState('idle');
+  const [profileState, setProfileState] = useState('idle');
+  const [candidates,   setCandidates]   = useState([]);
+  const [profile,      setProfile]      = useState(null);
+  const [charges,      setCharges]      = useState(null);
+  const [selectedNum,  setSelectedNum]  = useState(null);
+  const [searchTerm,   setSearchTerm]   = useState('');
+  const [manualSearch, setManualSearch] = useState('');
+  const [errorMsg,     setErrorMsg]     = useState('');
+
+  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', liquidation:'In liquidation ⚠', administration:'In administration ⚠' };
+  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
+
+  async function runSearch(overrideName) {
+    const term = (overrideName || companyName || domain?.split('.')[0] || '').trim();
+    if (!term) return;
+    setSearchTerm(term);
+    setSearchState('loading');
+    setProfile(null); setCharges(null); setSelectedNum(null); setProfileState('idle');
+    try {
+      const params = new URLSearchParams({ name: term });
+      if (domain) params.set('domain', domain);
+      const res  = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
+      const data = await res.json();
+      if (!data.available) throw new Error(data.reason || 'Unavailable');
+      setCandidates(data.companies || []);
+      setSearchState('done');
+    } catch(e) { setErrorMsg(e.message); setSearchState('error'); }
+  }
+
+  async function pickCandidate(number) {
+    setSelectedNum(number);
+    setProfileState('loading');
+    try {
+      const [profRes, chargesRes] = await Promise.all([
+        fetch('/api/company-profile/' + number, { credentials:'include' }),
+        fetch('/api/company-charges/' + number, { credentials:'include' }),
+      ]);
+      const profData    = await profRes.json();
+      const chargesData = chargesRes.ok ? await chargesRes.json() : null;
+      if (!profRes.ok || !profData.profile) throw new Error(profData.error || 'Profile fetch failed');
+      setProfile(profData.profile);
+      setCharges(chargesData);
+      setProfileState('done');
+      if (onLinked) onLinked(profData.profile);
+    } catch(e) { setErrorMsg(e.message); setProfileState('error'); }
+  }
+
+  /* ── Filing health verdict ── */
+  const FilingHealth = ({ p, ch }) => {
+    const today = new Date();
+    const checks = [];
+
+    /* Active status */
+    checks.push({ ok: p.status === 'active', label: 'Company status', detail: p.status === 'active' ? 'Active and trading' : `Status: ${p.status}` });
+
+    /* Accounts filed within 18 months */
+    if (p.lastAccounts) {
+      const accountsAge = (today - new Date(p.lastAccounts)) / (1000*60*60*24*365);
+      checks.push({ ok: accountsAge < 1.5, label: 'Accounts filed', detail: accountsAge < 1.5 ? `Last filed ${p.lastAccounts} — up to date` : `Last filed ${p.lastAccounts} — overdue` });
+    } else {
+      checks.push({ ok: false, label: 'Accounts filed', detail: 'No accounts on record' });
+    }
+
+    /* Confirmation statement not overdue */
+    if (p.nextConfirmation) {
+      const overdue = new Date(p.nextConfirmation) < today;
+      checks.push({ ok: !overdue, label: 'Confirmation statement', detail: overdue ? `Overdue (was due ${p.nextConfirmation})` : `Next due ${p.nextConfirmation}` });
+    }
+
+    /* Charges */
+    if (ch?.available) {
+      const hasOutstanding = ch.outstanding > 0;
+      checks.push({ ok: !hasOutstanding, label: 'Registered charges', detail: ch.outstanding === 0 ? 'No outstanding charges' : `${ch.outstanding} outstanding charge${ch.outstanding>1?'s':''} registered` });
+    }
+
+    const allClear = checks.every(c => c.ok);
+    const warnings = checks.filter(c => !c.ok);
+
+    return (
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>
+          Filing health check
+        </div>
+
+        {/* Overall verdict pill */}
+        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 14px', background:allClear?'rgba(31,138,91,0.1)':'rgba(217,119,6,0.1)', border:`2px solid ${allClear?P.green:'#D97706'}`, borderRadius:6, marginBottom:14 }}>
+          <span style={{ fontSize:16 }}>{allClear ? '✅' : '⚠️'}</span>
+          <span style={{ fontFamily:F.body, fontWeight:700, fontSize:13.5, color:allClear?P.green:'#92400E' }}>
+            {allClear
+              ? isBuilder ? 'All clear — your filings are up to date' : 'All clear — filings are up to date'
+              : isBuilder ? `${warnings.length} filing issue${warnings.length>1?'s':''} need your attention` : `${warnings.length} filing issue${warnings.length>1?'s':''} worth raising`}
+          </span>
+        </div>
+
+        {/* Individual checks */}
+        <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+          {checks.map((c,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 12px', background:c.ok?'rgba(31,138,91,0.05)':'rgba(217,83,79,0.05)', border:`1.5px solid ${c.ok?P.green:P.red}`, borderRadius:6 }}>
+              <span style={{ fontFamily:F.body, fontSize:14, fontWeight:800, color:c.ok?P.green:P.red, flex:'0 0 auto', marginTop:1 }}>{c.ok?'✓':'!'}</span>
+              <div>
+                <div style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.ink }}>{c.label}</div>
+                <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:1 }}>{c.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Homeowner action prompt on warnings */}
+        {!isBuilder && warnings.length > 0 && (
+          <div style={{ marginTop:12, padding:'10px 14px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+            <b>Ask them about this before signing anything.</b> Filing issues don't necessarily mean a problem, but a legitimate company should be able to explain them.
+          </div>
+        )}
+        {isBuilder && warnings.length > 0 && (
+          <div style={{ marginTop:12, padding:'10px 14px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+            <b>Sort these out with your accountant.</b> Overdue filings and outstanding charges are visible to any homeowner who checks you on Companies House.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /* ── Profile display ── */
+  const ProfileDisplay = ({ p }) => (
+    <div>
+      <FilingHealth p={p} ch={charges}/>
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:p.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${p.status==='active'?P.green:P.red}`, borderRadius:8, marginBottom:14 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:17, color:P.ink, marginBottom:2 }}>{p.name}</div>
+          <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>#{p.number} · Incorporated {p.incorporated}</div>
+        </div>
+        <span style={{ padding:'4px 11px', background:statusColor[p.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, whiteSpace:'nowrap' }}>
+          {statusLabel[p.status] || p.status}
+        </span>
+      </div>
+
+      {p.status !== 'active' && (
+        <div style={{ padding:'12px 14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14, color:P.red, fontWeight:700, marginBottom:14 }}>
+          🚨 {isBuilder ? 'Your company status is not "active" — contact your accountant immediately.' : `This company's status is "${p.status}" — do NOT pay them anything until you understand what this means.`}
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+        {[
+          ['Registered address',    p.registeredAddress],
+          ['Last accounts filed',   p.lastAccounts || 'Not found'],
+          ['Company type',          p.type],
+          ['Next confirmation due', p.nextConfirmation || 'Unknown'],
+        ].map(([label,val],i) => (
+          <div key={i} style={{ padding:'9px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+            <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>{label}</div>
+            <div style={{ fontFamily:F.body, fontSize:13, color:val?P.ink:P.muted }}>{val||'—'}</div>
+          </div>
+        ))}
+      </div>
+
+      {p.officers?.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Current directors & officers</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            {p.officers.map((o,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
+                <div style={{ width:30,height:30,borderRadius:'50%',background:P.fill,border:`2px solid ${P.line}`,display:'grid',placeItems:'center',fontFamily:F.display,fontWeight:800,fontSize:12,flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:700, color:P.ink }}>{o.name}</div>
+                  <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {p.sicCodes?.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Registered business activities</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+            {p.sicCodes.map((s,i) => <span key={i} style={{ padding:'3px 9px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11.5, color:P.ink }}>{s}</span>)}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+        <a href={p.chUrl} target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'9px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:13.5, color:P.ink, textDecoration:'none' }}>
+          View on Companies House ↗
+        </a>
+        <button onClick={()=>{ setProfile(null); setSelectedNum(null); setProfileState('idle'); setCharges(null); }}
+          style={{ background:'transparent', border:'none', cursor:'pointer', fontFamily:F.body, fontSize:12.5, color:P.muted, textDecoration:'underline', padding:0 }}>
+          ← {isBuilder ? 'Search again' : 'Pick a different company'}
+        </button>
+      </div>
+    </div>
+  );
+
+  /* ── Candidate list ── */
+  const CandidateList = () => (
+    <div style={{ marginTop:14 }}>
+      <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55, padding:'9px 12px', background:'rgba(217,119,6,0.07)', border:`1.5px solid #D97706`, borderRadius:6, marginBottom:12 }}>
+        {isBuilder
+          ? <><b>Builder websites often use a trading name, not the registered company name.</b> Pick the one that matches your company.</>
+          : <><b>Builder websites often use a trading name, not their registered name.</b> Pick the one that looks right based on address and incorporation date.</>}
+      </div>
+
+      {candidates.length === 0
+        ? <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic', marginBottom:12 }}>No matches found for "{searchTerm}".</div>
+        : <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:14 }}>
+            {candidates.map((c,i) => {
+              const isSelected = selectedNum === c.number;
+              return (
+                <button key={i} onClick={()=>pickCandidate(c.number)}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'12px 14px', background:isSelected?P.fill:'#fff', border:`2px solid ${P.line}`, borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%', boxShadow:isSelected?`3px 3px 0 ${P.line}`:'none', outline:'none' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14.5, color:P.ink }}>{c.name}</div>
+                    <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:2 }}>#{c.number} · Incorporated {c.incorporated||'—'} · {c.address||'No address'}</div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
+                    <span style={{ padding:'3px 8px', background:statusColor[c.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:10.5, fontWeight:700 }}>{c.status}</span>
+                    {profileState==='loading'&&isSelected
+                      ? <div style={{ width:14,height:14,border:`2.5px solid ${P.surface}`,borderTop:`2.5px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.7s linear infinite' }}/>
+                      : <span style={{ fontFamily:F.body, fontSize:12, color:P.accent, fontWeight:700 }}>Select →</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>}
+
+      {/* Manual search */}
+      <div style={{ borderTop:`1px solid ${P.line}`, paddingTop:12, marginTop:4 }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:7 }}>
+          {isBuilder ? 'Not your company? Try a different name' : 'Not seeing the right company? Search by another name'}
+        </div>
+        <div style={{ display:'flex', gap:7 }}>
+          <input value={manualSearch} onChange={e=>setManualSearch(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&manualSearch.trim()&&runSearch(manualSearch.trim())}
+            placeholder={isBuilder ? 'Try your registered company name…' : `Try "${companyName} Ltd" or a trading name…`}
+            style={{ flex:1, border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 12px', fontFamily:F.body, fontSize:14, color:P.ink, outline:'none' }}/>
+          <button onClick={()=>manualSearch.trim()&&runSearch(manualSearch.trim())}
+            style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>
+            Search →
+          </button>
+        </div>
+        <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(searchTerm||companyName||'')}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-block', marginTop:9, fontFamily:F.body, fontSize:12.5, color:P.accent, fontWeight:700, textDecoration:'none' }}>
+          Search Companies House directly ↗
+        </a>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {searchState === 'idle' && (
+        <button onClick={()=>runSearch()}
+          style={{ padding:'12px 22px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
+          {isBuilder ? 'Link my company on Companies House →' : 'Search Companies House →'}
+        </button>
+      )}
+
+      {searchState === 'loading' && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px', background:P.surface, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.muted }}>
+          <div style={{ width:18,height:18,border:`3px solid ${P.surface}`,borderTop:`3px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
+          Searching for "{searchTerm}"…
+        </div>
+      )}
+
+      {searchState === 'error' && (
+        <div style={{ padding:'12px 14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.red }}>
+          {errorMsg}. <button onClick={()=>runSearch()} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
+        </div>
+      )}
+
+      {searchState === 'done' && (
+        profileState === 'done' && profile ? <ProfileDisplay p={profile}/> : <CandidateList/>
+      )}
+    </div>
+  );
+}
+
 function BuilderAbout({ latestAudit }) {
   const report = latestAudit?.report_json;
   const facts = report?.business_snapshot || {};
@@ -472,6 +764,24 @@ function BuilderAbout({ latestAudit }) {
           )}
         </div>
       </div>
+
+
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, marginBottom:18 }}>
+          <div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House</h3>
+            <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5, maxWidth:560 }}>
+              Link your registered company. This confirms you're a legitimate registered business and shows homeowners your filing health — accounts up to date, no outstanding charges.
+            </p>
+          </div>
+          <span style={{ flex:'0 0 auto', padding:'4px 10px', background:'rgba(31,138,91,0.1)', border:`1.5px solid ${P.green}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, color:P.green, whiteSpace:'nowrap' }}>+Trust score</span>
+        </div>
+        <CompaniesHouseLookup
+          companyName={facts.company_name}
+          domain={domain}
+          audience="builder"
+        />
+      </Card>
 
       <Card style={{ background:P.fill }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:22, alignItems:'center' }}>
@@ -1620,210 +1930,10 @@ function HoQuestions({ report, domain }) {
 
 /* ── Tab: Company check ─────────────────────────────────────────────────── */
 function HoCompanyCheck({ report, latestAudit }) {
-  const [searchState,   setSearchState]  = React.useState('idle'); /* idle|loading|done|error */
-  const [profileState,  setProfileState] = React.useState('idle'); /* idle|loading|done|error */
-  const [candidates,    setCandidates]   = React.useState([]);
-  const [profile,       setProfile]      = React.useState(null);
-  const [selectedNum,   setSelectedNum]  = React.useState(null);
-  const [searchTerm,    setSearchTerm]   = React.useState('');
-  const [errorMsg,      setErrorMsg]     = React.useState('');
-  const [manualSearch,  setManualSearch] = React.useState('');
-
   const companyName = report?.business_snapshot?.company_name || '';
   const domain      = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return '';} })();
   const siteNumber  = report?.business_snapshot?.contact?.company_number || null;
   const siteInfo    = report?.business_snapshot;
-
-  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', liquidation:'In liquidation ⚠', administration:'In administration ⚠' };
-  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
-
-  /* ── Step 1: search for candidates ── */
-  async function runSearch(overrideName) {
-    const term = overrideName || companyName || domain.split('.')[0];
-    setSearchTerm(term);
-    setSearchState('loading');
-    setProfile(null);
-    setSelectedNum(null);
-    setProfileState('idle');
-    try {
-      const params = new URLSearchParams();
-      params.set('name', term);
-      if (domain) params.set('domain', domain);
-      const res  = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
-      const data = await res.json();
-      if (!data.available) throw new Error(data.reason || 'Unavailable');
-      setCandidates(data.companies || []);
-      setSearchState('done');
-
-      /* If a company number is on the site, auto-select it */
-      if (siteNumber) {
-        const match = (data.companies||[]).find(c => c.number === siteNumber);
-        if (match) pickCandidate(match.number);
-      }
-    } catch(e) {
-      setErrorMsg(e.message || 'Search failed');
-      setSearchState('error');
-    }
-  }
-
-  /* ── Step 2: fetch full profile for chosen company number ── */
-  async function pickCandidate(number) {
-    setSelectedNum(number);
-    setProfileState('loading');
-    try {
-      const res  = await fetch('/api/company-profile/' + number, { credentials:'include' });
-      const data = await res.json();
-      if (!res.ok || !data.profile) throw new Error(data.error || 'Profile fetch failed');
-      setProfile(data.profile);
-      setProfileState('done');
-    } catch(e) {
-      setErrorMsg(e.message);
-      setProfileState('error');
-    }
-  }
-
-  /* ── Profile card ── */
-  const ProfileCard = ({ p }) => (
-    <div style={{ marginTop:20 }}>
-      {/* Status banner */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:p.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${p.status==='active'?P.green:P.red}`, borderRadius:8, marginBottom:16 }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, marginBottom:3 }}>{p.name}</div>
-          <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>Company #{p.number} · Incorporated {p.incorporated}</div>
-        </div>
-        <span style={{ padding:'5px 12px', background:statusColor[p.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
-          {statusLabel[p.status] || p.status}
-        </span>
-      </div>
-
-      {/* Alert if not active */}
-      {p.status !== 'active' && (
-        <div style={{ padding:'14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14.5, color:P.red, fontWeight:700, marginBottom:14 }}>
-          🚨 This company's status is "{p.status}" — do NOT pay them any money until you understand what this means.
-        </div>
-      )}
-
-      {/* Details grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-        {[
-          ['Registered address',    p.registeredAddress],
-          ['Last accounts filed',   p.lastAccounts || 'Unknown'],
-          ['Company type',          p.type],
-          ['Next confirmation due', p.nextConfirmation || 'Unknown'],
-        ].map(([label, val], i) => (
-          <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-            <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
-            <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontStyle:val?'normal':'italic' }}>{val||'—'}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Directors */}
-      {p.officers?.length > 0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Current directors & officers</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {p.officers.map((o, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
-                <div style={{ width:32, height:32, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:13, flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
-                <div>
-                  <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:P.ink }}>{o.name}</div>
-                  <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SIC codes */}
-      {p.sicCodes?.length > 0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Registered business activities</div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-            {p.sicCodes.map((s,i) => <span key={i} style={{ padding:'4px 10px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:12, color:P.ink }}>{s}</span>)}
-          </div>
-        </div>
-      )}
-
-      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
-        <a href={p.chUrl} target="_blank" rel="noopener noreferrer"
-          style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:14, color:P.ink, textDecoration:'none' }}>
-          View full filing history ↗
-        </a>
-        <button onClick={()=>{ setProfile(null); setSelectedNum(null); setProfileState('idle'); }}
-          style={{ background:'transparent', border:'none', cursor:'pointer', fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'underline', padding:0 }}>
-          ← Pick a different company
-        </button>
-      </div>
-    </div>
-  );
-
-  /* ── Candidate picker ── */
-  const CandidatePicker = () => (
-    <div style={{ marginTop:16 }}>
-      <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55, padding:'10px 14px', background:'rgba(217,119,6,0.07)', border:`1.5px solid #D97706`, borderRadius:6, marginBottom:14 }}>
-        <b>Builder websites often use a trading name, not their registered company name.</b> Here are the closest matches for "<b>{searchTerm}</b>" — pick the one that looks right based on address and incorporation date.
-      </div>
-
-      {candidates.length === 0 ? (
-        <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic', marginBottom:14 }}>
-          No matches found for "{searchTerm}". Try searching by a different name below.
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-          {candidates.map((c, i) => {
-            const color = statusColor[c.status] || P.muted;
-            const isSelected = selectedNum === c.number;
-            return (
-              <button key={i} onClick={()=>pickCandidate(c.number)}
-                style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12,
-                  padding:'14px 16px', background:isSelected?P.fill:'#fff',
-                  border:`2px solid ${isSelected?P.line:P.line}`,
-                  borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%',
-                  boxShadow:isSelected?`3px 3px 0 ${P.line}`:'none',
-                  outline:'none', transition:'background .1s' }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:2 }}>{c.name}</div>
-                  <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted }}>
-                    #{c.number} · Incorporated {c.incorporated || '—'} · {c.address || 'No address'}
-                  </div>
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                  <span style={{ padding:'3px 9px', background:color, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700 }}>{c.status}</span>
-                  {profileState === 'loading' && isSelected
-                    ? <div style={{ width:16, height:16, border:`2.5px solid ${P.surface}`, borderTop:`2.5px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.7s linear infinite', flexShrink:0 }}/>
-                    : <span style={{ fontFamily:F.body, fontSize:12, color:P.accent, fontWeight:700, whiteSpace:'nowrap' }}>Select →</span>
-                  }
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Manual search */}
-      <div style={{ borderTop:`1px solid ${P.line}`, paddingTop:14 }}>
-        <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:8 }}>Not seeing the right company? Search by a different name</div>
-        <div style={{ display:'flex', gap:8 }}>
-          <input value={manualSearch} onChange={e=>setManualSearch(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&manualSearch.trim()&&runSearch(manualSearch.trim())}
-            placeholder={`Try "${companyName} Ltd" or "Create Properties"…`}
-            style={{ flex:1, border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 12px', fontFamily:F.body, fontSize:14, color:P.ink, outline:'none' }}/>
-          <button onClick={()=>manualSearch.trim()&&runSearch(manualSearch.trim())}
-            style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer', whiteSpace:'nowrap' }}>
-            Search →
-          </button>
-        </div>
-        <div style={{ marginTop:10 }}>
-          <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(companyName)}`} target="_blank" rel="noopener noreferrer"
-            style={{ fontFamily:F.body, fontSize:13, color:P.accent, fontWeight:700, textDecoration:'none' }}>
-            Search Companies House directly ↗
-          </a>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div>
@@ -1851,42 +1961,22 @@ function HoCompanyCheck({ report, latestAudit }) {
         </div>
         {!siteNumber && (
           <div style={{ marginTop:12, padding:'9px 12px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-            ⚠ <b>No company number on this site.</b> That makes it harder to verify — we'll search by name below, but you'll need to confirm which company is theirs.
+            ⚠ <b>No company number on this site.</b> We'll search by name below — but you'll need to confirm which company is actually theirs.
           </div>
         )}
       </Card>
 
-      {/* Companies House lookup */}
+      {/* Companies House verification — uses shared component */}
       <Card>
         <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House verification</h3>
         <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>
-          We search the official UK register for businesses matching this company's name. Because builders often use a trading name rather than their registered name, we'll show you the closest matches so <b>you can confirm which one is theirs</b>.
+          We search the official UK register for businesses matching this company's name. Because builders often use a trading name, we'll show you the closest matches so <b>you can confirm which one is theirs</b>.
         </p>
-
-        {searchState === 'idle' && (
-          <button onClick={()=>runSearch()} style={{ padding:'13px 24px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
-            Search Companies House →
-          </button>
-        )}
-
-        {searchState === 'loading' && (
-          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'16px', background:P.surface, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.muted }}>
-            <div style={{ width:20, height:20, border:`3px solid ${P.surface}`, borderTop:`3px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-            Searching the Companies House register for "{searchTerm || companyName}"…
-          </div>
-        )}
-
-        {searchState === 'error' && (
-          <div style={{ padding:'14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.red }}>
-            {errorMsg}. <button onClick={()=>runSearch()} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
-          </div>
-        )}
-
-        {searchState === 'done' && (
-          profileState === 'done' && profile
-            ? <ProfileCard p={profile}/>
-            : <CandidatePicker/>
-        )}
+        <CompaniesHouseLookup
+          companyName={companyName}
+          domain={domain}
+          audience="homeowner"
+        />
       </Card>
     </div>
   );

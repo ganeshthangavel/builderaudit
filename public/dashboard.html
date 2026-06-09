@@ -180,30 +180,35 @@ function Nav({ role, page, setPage, user }) {
 // ════════════════════════════════════════════════════════════════
 
 // ── Builder Dashboard (main) ────────────────────────────────────
-function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set() }) {
+function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
   const report = latestAudit?.report_json || null;
   const baseScore = report?.hero?.score ?? 64;
 
-  /* Fix list with state so ticking updates the score live */
-  const initialFixes = report?.top_actions?.slice(0,5).map((a,i)=>{
+  const fixDefs = report?.top_actions?.slice(0,5).map((a,i)=>{
     const icons = ['hammer','gear','screwdriver','roller','tape'];
     const text = typeof a === 'string' ? a : (a.title || a.why || JSON.stringify(a));
     const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i];
-    return { id:i, icon:icons[i%icons.length], text, done:false, pts, impact:`+${pts} pts` };
+    return { id:i, icon:icons[i%icons.length], text, pts, impact:`+${pts} pts` };
   }) || [
-    { id:0, icon:'hammer',     text:'Swap in real before/after shots from your phone',         done:false, pts:8, impact:'+8 pts' },
-    { id:1, icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',  done:false, pts:6, impact:'+6 pts' },
-    { id:2, icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',         done:false, pts:5, impact:'+5 pts' },
-    { id:3, icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',     done:false, pts:3, impact:'+3 pts' },
-    { id:4, icon:'tape',       text:'Add a phone number to the header on mobile',              done:false, pts:2, impact:'+2 pts' },
+    { id:0, icon:'hammer',     text:'Swap in real before/after shots from your phone',         pts:8, impact:'+8 pts' },
+    { id:1, icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',  pts:6, impact:'+6 pts' },
+    { id:2, icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',         pts:5, impact:'+5 pts' },
+    { id:3, icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',     pts:3, impact:'+3 pts' },
+    { id:4, icon:'tape',       text:'Add a phone number to the header on mobile',              pts:2, impact:'+2 pts' },
   ];
 
-  const [fixes, setFixes] = useState(initialFixes);
-  const toggleFix = (id) => setFixes(fs => fs.map(f => f.id===id ? {...f, done:!f.done} : f));
+  const toggleFix = (id) => {
+    const nowDone = !completedFixIds.has(id);
+    const next = new Set(completedFixIds);
+    if (nowDone) next.add(id); else next.delete(id);
+    setCompletedFixIds(next);
+    saveOverride({ fixId: id, completed: nowDone });
+  };
 
-  /* Live score = base + points from completed fixes, capped at 100 */
-  const completedPts = fixes.filter(f=>f.done).reduce((s,f)=>s+f.pts,0);
-  const score = Math.min(100, baseScore + completedPts);
+  /* Score: use server-adjusted score if available, else calculate locally */
+  const completedPts = fixDefs.filter(f => completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0);
+  const photoBoost = excludedPhotoIds.size * 5;
+  const score = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts + photoBoost);
 
   const previousScore = baseScore; // base is the "last scan" reference
   const change = score - previousScore;
@@ -236,7 +241,7 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
   ];
 
   const auditsRun = auditData?.count || history.length;
-  const fixesDone = fixes.filter(f=>f.done).length;
+  const fixesDone = completedFixIds.size;
 
   function rescan() { window.location.href = `/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`; }
 
@@ -245,7 +250,7 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
       <div style={{ marginBottom:28 }}>
         <Kicker color={P.accent}>Welcome back</Kicker>
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{auditData?.company||'Your company'}</h1>
-        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>{domain} · Last scanned {latestAudit?'recently':'never'} · {fixes.filter(f=>!f.done).length} fixes outstanding</p>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>{domain} · Last scanned {latestAudit?'recently':'never'} · {fixDefs.length - completedFixIds.size} fixes outstanding</p>
       </div>
 
       {/* Top row: score + stats */}
@@ -278,8 +283,8 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audit score</Label><BigNum n={score} sub="out of 100"/></Card>
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audits run</Label><BigNum n={auditsRun} sub="total"/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixes.length-fixesDone} still outstanding`}/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${fixes.filter(f=>!f.done).reduce((s,f)=>s+f.pts,0)}`} sub="still on the table" yellow/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixDefs.length - fixesDone} still outstanding`}/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${fixDefs.filter(f=>!completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0)}`} sub="still on the table" yellow/></Card>
         </div>
       </div>
 
@@ -326,17 +331,17 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
       <Card style={{ marginBottom:24 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
           <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your fix-it list</h3>
-          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{fixes.filter(f=>!f.done).length} outstanding · {fixesDone} done</span>
+          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{fixDefs.length - completedFixIds.size} outstanding · {fixesDone} done</span>
         </div>
         <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
-          {fixes.map((f,i)=>(
-            <li key={i} onClick={()=>toggleFix(f.id)} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:f.done?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:f.done?0.55:1, cursor:'pointer', transition:'opacity .2s, background .2s' }}>
-              <div style={{ flex:'0 0 auto', width:22, height:22, borderRadius:5, background:f.done?P.green:'#fff', border:`2.4px solid ${f.done?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13 }}>{f.done?'✓':''}</div>
+          {fixDefs.map((f,i)=>(
+            <li key={i} onClick={()=>toggleFix(f.id)} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:completedFixIds.has(f.id)?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:completedFixIds.has(f.id)?0.55:1, cursor:'pointer', transition:'opacity .2s, background .2s' }}>
+              <div style={{ flex:'0 0 auto', width:22, height:22, borderRadius:5, background:completedFixIds.has(f.id)?P.green:'#fff', border:`2.4px solid ${completedFixIds.has(f.id)?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13 }}>{completedFixIds.has(f.id)?'✓':''}</div>
               <div style={{ flex:'0 0 auto', width:36, height:36, display:'grid', placeItems:'center' }}>
                 <img src={`/assets/icons/${f.icon}.png`} alt="" width={36} height={36} style={{ width:36, height:36, objectFit:'contain' }}/>
               </div>
               <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:f.done?'line-through':'none' }}>{f.text}</div>
-              <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:f.done?P.muted:P.green, background:f.done?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
+              <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:completedFixIds.has(f.id)?P.muted:P.green, background:completedFixIds.has(f.id)?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
             </li>
           ))}
         </ul>
@@ -595,11 +600,11 @@ function BuilderReview({ latestAudit }) {
 }
 
 // ── Builder: Photo Review ────────────────────────────────────────
-function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{} }) {
+function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{}, saveOverride = ()=>{} }) {
   const report = latestAudit?.report_json;
   const pa = report?.photo_analysis;
-  const excludePhoto = (id) => setExcludedPhotoIds(ex => new Set([...ex, id]));
-  const includePhoto = (id) => setExcludedPhotoIds(ex => { const n = new Set(ex); n.delete(id); return n; });
+  const excludePhoto = (id) => { setExcludedPhotoIds(ex => new Set([...ex, id])); saveOverride({ photoId: id, excluded: true }); };
+  const includePhoto = (id) => { setExcludedPhotoIds(ex => { const n = new Set(ex); n.delete(id); return n; }); saveOverride({ photoId: id, excluded: false }); };
 
   /* Smart pairing — match AI descriptions to image URLs using keyword overlap.
      The AI analyses images in the order it sees them in page text; the crawler
@@ -1261,6 +1266,25 @@ function DashboardApp() {
   const [auditData, setAuditData] = useState(null);
   const [imageUrls, setImageUrls] = useState([]);
   const [excludedPhotoIds, setExcludedPhotoIds] = useState(new Set());
+  const [completedFixIds, setCompletedFixIds] = useState(new Set());
+  const [adjustedScore, setAdjustedScore] = useState(null);
+
+  /* Save an override to the server and update the adjusted score */
+  const saveOverride = useCallback(async (payload) => {
+    if (!auditIdFromUrl) return;
+    try {
+      const res = await fetch('/api/report/' + auditIdFromUrl + '/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(()=>null);
+        if (data?.adjustedScore != null) setAdjustedScore(data.adjustedScore);
+      }
+    } catch(e) { /* silent — state still updates locally */ }
+  }, [auditIdFromUrl]);
 
   // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
@@ -1284,6 +1308,12 @@ function DashboardApp() {
             if (data && !data.locked && data.report) {
               setLatestAudit({ id: auditIdFromUrl, url: data.url, report_json: data.report, created_at: data.scannedAt });
               setImageUrls(data.imageUrls || []);
+              /* Restore saved fix completions + photo exclusions from overrides */
+              const ov = data.overrides || {};
+              const savedFixes = new Set(Object.keys(ov).filter(k => k.startsWith('fix_') && ov[k] === 'completed').map(k => parseInt(k.replace('fix_',''))));
+              const savedPhotos = new Set(Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').map(k => parseInt(k.replace('photo_excluded_',''))));
+              setCompletedFixIds(savedFixes);
+              setExcludedPhotoIds(savedPhotos);
               setAuditData({
                 count:   1,
                 company: data.report?.business_snapshot?.company_name || data.url || 'Your company',
@@ -1328,10 +1358,10 @@ function DashboardApp() {
   if (loading) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
 
   const pages = role==='builder' ? {
-    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} excludedPhotoIds={excludedPhotoIds}/>,
+    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
     about:       <BuilderAbout       latestAudit={latestAudit}/>,
     review:      <BuilderReview      latestAudit={latestAudit}/>,
-    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds}/>,
+    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride}/>,
     fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
     competitors: <BuilderCompetitors latestAudit={latestAudit}/>,
   } : {

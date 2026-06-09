@@ -168,10 +168,110 @@ body {
   z-index: 5;
 }
 
-/* Hero scene — SVG composition */
+/* Hero scene — report preview wrapper */
 .hero-scene {
   display: grid; place-items: center;
+  padding: 36px 28px; /* breathing room for the floating chips */
 }
+
+/* ── Report Preview (hero right col) ── */
+.report-preview {
+  position: relative;
+  width: 100%; max-width: 420px;
+  margin: 0 auto;
+}
+
+/* floating score chip — top-left, tilted */
+.rp-score-chip {
+  position: absolute; top: -22px; left: -18px; z-index: 3;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--line); border-radius: 6px;
+  padding: 10px 14px; box-shadow: 4px 4px 0 var(--line);
+}
+.rp-rotate-neg { transform: rotate(-5deg); }
+.rp-chip-label { font-family: var(--body); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; white-space: nowrap; }
+.rp-chip-num   { font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 1; }
+.rp-chip-denom { font-size: 14px; opacity: 0.8; }
+
+/* floating verified badge — bottom-right, tilted */
+.rp-badge {
+  position: absolute; bottom: -18px; right: -14px; z-index: 3;
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--line); border-radius: 6px;
+  padding: 8px 12px; box-shadow: 4px 4px 0 var(--line);
+  display: flex; align-items: center; gap: 8px;
+}
+.rp-rotate-pos { transform: rotate(4deg); }
+.rp-badge-check {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #1F8A5B; color: #fff;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 800; flex-shrink: 0;
+}
+.rp-badge-text { font-family: var(--body); font-size: 12px; font-weight: 700; line-height: 1.2; }
+.rp-badge-sub  { color: var(--muted); font-weight: 600; }
+
+/* report card */
+.rp-card {
+  background: #fff;
+  border: 2.5px solid var(--line); border-radius: 10px;
+  box-shadow: 10px 12px 0 var(--line);
+  overflow: hidden;
+  transform: rotate(1.5deg);
+}
+
+/* browser chrome */
+.rp-chrome {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 2px solid var(--line);
+  background: var(--surface);
+}
+.rp-dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--line); flex-shrink: 0; }
+.rp-dot-r { background: #D9534F; }
+.rp-dot-a { background: #FFD24D; }
+.rp-dot-g { background: #1F8A5B; }
+.rp-url {
+  flex: 1; margin-left: 8px; background: #fff;
+  border: 1.5px solid var(--line); border-radius: 999px;
+  padding: 4px 12px; font-family: var(--body);
+  font-size: 11px; color: var(--muted); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* report header */
+.rp-header {
+  padding: 20px 22px; display: flex; gap: 18px; align-items: center;
+  border-bottom: 1px dashed var(--line);
+}
+.rp-donut { flex: 0 0 auto; }
+.rp-summary { min-width: 0; }
+.rp-eyebrow { font-family: var(--body); font-size: 10.5px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-headline { font-family: var(--display); font-weight: 800; font-size: 17px; color: var(--ink); line-height: 1.2; letter-spacing: -0.01em; }
+.rp-status-chip {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 7px;
+  padding: 3px 9px; background: #1F8A5B; color: #fff;
+  border-radius: 999px; font-family: var(--body); font-weight: 700; font-size: 11px;
+}
+.rp-status-green { background: #1F8A5B; }
+
+/* category bars */
+.rp-cats { padding: 16px 22px 8px; }
+.rp-cats-head { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 10px; }
+.rp-cat-row { display: grid; grid-template-columns: 92px 1fr 24px; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rp-cat-name { font-family: var(--body); font-weight: 600; font-size: 11.5px; color: var(--ink); }
+.rp-bar { height: 9px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 5px; overflow: hidden; }
+.rp-bar div { height: 100%; }
+.rp-cat-num { font-family: var(--body); font-weight: 700; font-size: 11px; color: var(--ink); text-align: right; }
+
+/* findings */
+.rp-findings { padding: 12px 22px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rp-finding { border-radius: 8px; padding: 9px 11px; }
+.rp-finding-risk { background: rgba(217,83,79,0.08); border: 1.5px solid #D9534F; }
+.rp-finding-ok   { background: rgba(31,138,91,0.08);  border: 1.5px solid #1F8A5B; }
+.rp-finding-label { font-family: var(--body); font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 3px; }
+.rp-lbl-risk { color: #D9534F; }
+.rp-lbl-ok   { color: #1F8A5B; }
+.rp-finding-text { font-family: var(--body); font-size: 11.5px; color: var(--ink); line-height: 1.35; }
 
 /* ── SECTION TITLE BLOCK ── */
 .section { padding: 88px 80px; border-bottom: 3px solid var(--line); }
@@ -449,7 +549,8 @@ body {
 /* ── RESPONSIVE ── */
 @media (max-width: 1100px) {
   .hero-grid { grid-template-columns: 1fr; }
-  .hero-scene { order: -1; }
+  .hero-scene { order: -1; padding: 48px 24px 24px; } /* extra top padding for floating chip */
+  .report-preview { max-width: 340px; }
   .h1 { font-size: 56px; }
   .what-grid, .how-grid { grid-template-columns: repeat(2, 1fr); }
   .two-grid, .findings-grid, .report-body { grid-template-columns: 1fr; }
@@ -507,60 +608,132 @@ body {
         </div>
       </div>
 
-      <div class="hero-scene">
-        <!-- HeroScene SVG — house + ladder + toolbox + hammer + tape + hardhat + clipboard + magnifying glass -->
-        <svg width="540" height="311" viewBox="0 0 620 356" style="overflow:visible" aria-hidden="true">
-          <!-- ground line -->
-          <path d="M6 312 H614" stroke="#1B1A17" stroke-width="3.4" stroke-linecap="round"/>
+      <div class="hero-scene" id="heroScene">
+        <!-- Report preview — switches between builder and homeowner versions -->
 
-          <!-- ladder leaning on the house -->
-          <image href="/assets/icons/ladder.png" x="74" y="92" width="120" height="220" preserveAspectRatio="xMidYMax meet" transform="rotate(-10 134 222)"/>
+        <!-- BUILDER preview (score 64, risks visible) -->
+        <div id="heroPreviewBuilder" class="report-preview">
+          <!-- floating score chip -->
+          <div class="rp-score-chip rp-rotate-neg">
+            <div class="rp-chip-label">Your score</div>
+            <div class="rp-chip-num">64<span class="rp-chip-denom">/100</span></div>
+          </div>
+          <!-- floating verified badge -->
+          <div class="rp-badge rp-rotate-pos">
+            <span class="rp-badge-check">✓</span>
+            <div class="rp-badge-text">14 reviews<br><span class="rp-badge-sub">verified</span></div>
+          </div>
+          <!-- report card -->
+          <div class="rp-card">
+            <!-- browser chrome -->
+            <div class="rp-chrome">
+              <span class="rp-dot rp-dot-r"></span>
+              <span class="rp-dot rp-dot-a"></span>
+              <span class="rp-dot rp-dot-g"></span>
+              <div class="rp-url">builderaudit.co.uk/report</div>
+            </div>
+            <!-- header: donut + summary -->
+            <div class="rp-header">
+              <svg width="92" height="92" viewBox="0 0 92 92" class="rp-donut" aria-hidden="true">
+                <circle cx="46" cy="46" r="34" fill="none" stroke="#1B1A17" stroke-width="11" opacity="0.12"/>
+                <circle cx="46" cy="46" r="34" fill="none" stroke="#FFD24D" stroke-width="11"
+                  stroke-dasharray="136.4 213.6" stroke-dashoffset="53.4"
+                  transform="rotate(-90 46 46)" stroke-linecap="round"/>
+                <text x="46" y="44" text-anchor="middle" dominant-baseline="middle"
+                  style="font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;fill:#1B1A17">64</text>
+                <text x="46" y="62" text-anchor="middle"
+                  style="font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:8px;fill:#5C5851;letter-spacing:0.1em">/ 100</text>
+              </svg>
+              <div class="rp-summary">
+                <div class="rp-eyebrow">Audit · heartlybuilders.co.uk</div>
+                <div class="rp-headline">Could be better — climbing fast</div>
+                <div class="rp-status-chip">↑ +6 since last scan</div>
+              </div>
+            </div>
+            <!-- category bars -->
+            <div class="rp-cats">
+              <div class="rp-cats-head">Score by category</div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Photo quality</span><div class="rp-bar"><div style="width:48%;background:#D9534F"></div></div><span class="rp-cat-num">48</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Trust signals</span><div class="rp-bar"><div style="width:72%;background:#1F8A5B"></div></div><span class="rp-cat-num">72</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Mobile friendly</span><div class="rp-bar"><div style="width:86%;background:#1F8A5B"></div></div><span class="rp-cat-num">86</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Site speed</span><div class="rp-bar"><div style="width:54%;background:#D9534F"></div></div><span class="rp-cat-num">54</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Quote flow</span><div class="rp-bar"><div style="width:68%;background:#FFD24D"></div></div><span class="rp-cat-num">68</span></div>
+            </div>
+            <!-- risk + fix -->
+            <div class="rp-findings">
+              <div class="rp-finding rp-finding-risk">
+                <div class="rp-finding-label rp-lbl-risk">⚠ Risk</div>
+                <div class="rp-finding-text">6 of 9 photos look like stock</div>
+              </div>
+              <div class="rp-finding rp-finding-ok">
+                <div class="rp-finding-label rp-lbl-ok">✓ Fix</div>
+                <div class="rp-finding-text">Swap in real job photos</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-          <!-- central house -->
-          <g transform="translate(178 100)">
-            <rect x="18" y="78" width="148" height="134" fill="#fff" stroke="#1B1A17" stroke-width="3.2"/>
-            <path d="M4 82 L92 18 L180 82 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="3.2" stroke-linejoin="round"/>
-            <rect x="132" y="34" width="12" height="22" fill="#fff" stroke="#1B1A17" stroke-width="2.4"/>
-            <rect x="76" y="138" width="32" height="74" fill="#5247B8" stroke="#1B1A17" stroke-width="2.6"/>
-            <circle cx="102" cy="178" r="2" fill="#1B1A17"/>
-            <rect x="34" y="100" width="24" height="22" fill="#fff" stroke="#1B1A17" stroke-width="2.2"/>
-            <path d="M46 100 V122 M34 111 H58" stroke="#1B1A17" stroke-width="1.6"/>
-            <rect x="126" y="100" width="24" height="22" fill="#fff" stroke="#1B1A17" stroke-width="2.2"/>
-            <path d="M138 100 V122 M126 111 H150" stroke="#1B1A17" stroke-width="1.6"/>
-          </g>
-
-          <!-- foreground plank -->
-          <g transform="translate(14 298)">
-            <rect x="0" y="0" width="572" height="18" rx="2" fill="#E2B574" stroke="#1B1A17" stroke-width="2.6"/>
-            <path d="M16 4 H554 M16 14 H554" stroke="#1B1A17" stroke-width="1.2" opacity="0.4"/>
-          </g>
-
-          <!-- toolbox (far left) -->
-          <image href="/assets/icons/toolbox.png" x="14" y="218" width="124" height="100" preserveAspectRatio="xMidYMax meet"/>
-          <!-- hammer (floats above toolbox, tilted) -->
-          <image href="/assets/icons/hammer.png" x="106" y="76" width="120" height="120" preserveAspectRatio="xMidYMid meet" transform="rotate(-22 166 136)"/>
-          <!-- tape measure (on top of toolbox so it doesn't block the door) -->
-          <image href="/assets/icons/tape.png" x="24" y="172" width="76" height="76" preserveAspectRatio="xMidYMax meet"/>
-          <!-- hard hat (in front of door) -->
-          <image href="/assets/icons/hardhat.png" x="338" y="232" width="96" height="86" preserveAspectRatio="xMidYMax meet"/>
-          <!-- clipboard (propped, tilted) -->
-          <image href="/assets/icons/clipboard.png" x="424" y="210" width="92" height="108" preserveAspectRatio="xMidYMax meet" transform="rotate(6 470 264)"/>
-
-          <!-- magnifying glass (lens upright, handle at 45°) -->
-          <g transform="translate(330 70)">
-            <g transform="rotate(45 80 80)">
-              <rect x="142" y="68" width="120" height="24" rx="11" fill="#5247B8" stroke="#1B1A17" stroke-width="3.6"/>
-              <path d="M168 76 V84 M186 76 V84 M204 76 V84 M222 76 V84 M240 76 V84" stroke="#1B1A17" stroke-width="1.8" stroke-linecap="round" opacity="0.55"/>
-              <circle cx="146" cy="80" r="16" fill="#5247B8" stroke="#1B1A17" stroke-width="3.6"/>
-            </g>
-            <circle cx="80" cy="80" r="74" fill="#5247B8" stroke="#1B1A17" stroke-width="3.6"/>
-            <circle cx="80" cy="80" r="60" fill="#cfe6f5" stroke="#1B1A17" stroke-width="2.4"/>
-            <circle cx="80" cy="80" r="60" fill="#fff" opacity="0.3"/>
-            <path d="M40 56 Q26 90 48 124" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" opacity="0.95"/>
-            <path d="M52 48 Q44 60 50 72" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.85"/>
-            <path d="M50 86 L72 108 L114 60" fill="none" stroke="#5247B8" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-          </g>
-        </svg>
+        <!-- HOMEOWNER preview (score 78, positive signals) -->
+        <div id="heroPreviewHomeowner" class="report-preview" style="display:none">
+          <!-- floating score chip -->
+          <div class="rp-score-chip rp-rotate-neg">
+            <div class="rp-chip-label">Their score</div>
+            <div class="rp-chip-num">78<span class="rp-chip-denom">/100</span></div>
+          </div>
+          <!-- floating verified badge -->
+          <div class="rp-badge rp-rotate-pos">
+            <span class="rp-badge-check">✓</span>
+            <div class="rp-badge-text">14 reviews<br><span class="rp-badge-sub">verified</span></div>
+          </div>
+          <!-- report card -->
+          <div class="rp-card">
+            <!-- browser chrome -->
+            <div class="rp-chrome">
+              <span class="rp-dot rp-dot-r"></span>
+              <span class="rp-dot rp-dot-a"></span>
+              <span class="rp-dot rp-dot-g"></span>
+              <div class="rp-url">builderaudit.co.uk/check</div>
+            </div>
+            <!-- header: donut + summary -->
+            <div class="rp-header">
+              <svg width="92" height="92" viewBox="0 0 92 92" class="rp-donut" aria-hidden="true">
+                <circle cx="46" cy="46" r="34" fill="none" stroke="#1B1A17" stroke-width="11" opacity="0.12"/>
+                <circle cx="46" cy="46" r="34" fill="none" stroke="#1F8A5B" stroke-width="11"
+                  stroke-dasharray="166.3 213.6" stroke-dashoffset="53.4"
+                  transform="rotate(-90 46 46)" stroke-linecap="round"/>
+                <text x="46" y="44" text-anchor="middle" dominant-baseline="middle"
+                  style="font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;fill:#1B1A17">78</text>
+                <text x="46" y="62" text-anchor="middle"
+                  style="font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:8px;fill:#5C5851;letter-spacing:0.1em">/ 100</text>
+              </svg>
+              <div class="rp-summary">
+                <div class="rp-eyebrow">Check · theirbuilding.co.uk</div>
+                <div class="rp-headline">Looks a safe pair of hands</div>
+                <div class="rp-status-chip rp-status-green">Above the local average</div>
+              </div>
+            </div>
+            <!-- category bars -->
+            <div class="rp-cats">
+              <div class="rp-cats-head">Score by category</div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Photo quality</span><div class="rp-bar"><div style="width:82%;background:#1F8A5B"></div></div><span class="rp-cat-num">82</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Trust signals</span><div class="rp-bar"><div style="width:88%;background:#1F8A5B"></div></div><span class="rp-cat-num">88</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Mobile friendly</span><div class="rp-bar"><div style="width:74%;background:#1F8A5B"></div></div><span class="rp-cat-num">74</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Site speed</span><div class="rp-bar"><div style="width:66%;background:#FFD24D"></div></div><span class="rp-cat-num">66</span></div>
+              <div class="rp-cat-row"><span class="rp-cat-name">Quote flow</span><div class="rp-bar"><div style="width:58%;background:#FFD24D"></div></div><span class="rp-cat-num">58</span></div>
+            </div>
+            <!-- watch out + good sign -->
+            <div class="rp-findings">
+              <div class="rp-finding rp-finding-risk">
+                <div class="rp-finding-label rp-lbl-risk">⚠ Watch out</div>
+                <div class="rp-finding-text">Quote form is a bit long-winded</div>
+              </div>
+              <div class="rp-finding rp-finding-ok">
+                <div class="rp-finding-label rp-lbl-ok">✓ Good sign</div>
+                <div class="rp-finding-text">Insurance &amp; reviews verified</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -886,6 +1059,10 @@ function setMode(next) {
   grid.innerHTML = '';
   if (mode === 'builder') { grid.appendChild(builderCard); grid.appendChild(homeownerCard); }
   else { grid.appendChild(homeownerCard); grid.appendChild(builderCard); }
+
+  /* Swap hero preview graphic */
+  document.getElementById('heroPreviewBuilder').style.display  = mode === 'builder'   ? 'block' : 'none';
+  document.getElementById('heroPreviewHomeowner').style.display = mode === 'homeowner' ? 'block' : 'none';
 
   try { sessionStorage.setItem('ba_audience', mode); } catch(e) {}
 }

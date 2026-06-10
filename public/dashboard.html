@@ -800,7 +800,7 @@ function CompaniesHouseLookup({ companyName, domain, audience = 'builder', onLin
       )}
 
       {searchState === 'done' && (
-        profileState === 'done' && profile ? <ProfileDisplay p={profile}/> : <CandidateList/>
+        profileState === 'done' && profile ? ProfileDisplay({ p: profile }) : CandidateList()
       )}
     </div>
   );
@@ -1677,7 +1677,7 @@ function BuilderCompetitors({ latestAudit, user }) {
   /* ── Main render ── */
   return (
     <main style={{ padding:'40px 36px', maxWidth:1300, margin:'0 auto', position:'relative' }}>
-      {showModal && <Modal/>}
+      {showModal && Modal()}
 
       <div style={{ marginBottom:28 }}>
         <Kicker color={P.accent}>Competitor audits</Kicker>
@@ -1703,7 +1703,7 @@ function BuilderCompetitors({ latestAudit, user }) {
         {slots.map((slot, i) =>
           slot.loading  ? <LoadingSlot key={i}/> :
           slot.audited  ? <ScoreCard key={i} b={slot.data} label="Competitor" onEdit={()=>editAgain(i)}/> :
-                          <EmptySlot key={i} slot={slot} i={i}/>
+                          <React.Fragment key={i}>{EmptySlot({ slot, i })}</React.Fragment>
         )}
       </div>
 
@@ -2345,7 +2345,7 @@ function HomeownerCompare({ user }) {
 
   return (
     <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto', position:'relative' }}>
-      {showModal && <Modal/>}
+      {showModal && Modal()}
       <div style={{ marginBottom:28 }}>
         <Kicker color={P.accent}>Compare builders</Kicker>
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Up to 5 builders, side by side</h1>

@@ -319,7 +319,11 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
 3. If aboutPageContent is non-null, use it to identify the company story, year founded, and key milestones.
 4. Before claiming the site lacks any page, CHECK pagesCrawled. If a relevant URL exists, the page DOES exist.
 5. siteFacts is AUTHORITATIVE — the truncated text below is just for tone and missed nuance.
-6. DO NOT contradict siteFacts. If siteFacts says the team has named members, do NOT call the business "anonymous".`;
+6. DO NOT contradict siteFacts. If siteFacts says the team has named members, do NOT call the business "anonymous".
+7. ANIMATED COUNTER WARNING: Many builder sites use JavaScript count-up animations for stats ("5.0 Google Rating", "1,500+ Happy Clients", "56 Years Experience"). The scraped HTML often captures these counters at their PRE-ANIMATION value of "0" or "0.0". Therefore:
+   - NEVER claim a review rating, client count, or years figure is "0", "0.0", or "broken" based on scraped text alone. A zero next to a stats label is almost always an animation artifact, not the real value.
+   - If you see "0.0" or "0" beside labels like "Google Rating", "Reviews", "Happy Clients", "Years", treat the real value as UNVERIFIED — say "the rating shown on the site could not be captured by our scan; verify it directly on Google" rather than asserting it is zero or broken.
+   - Only treat a low review score as real if it comes from an external review link or explicit written text (e.g. "rated 2 stars"), never from a bare number that could be a counter.`;
 
   const imageVerifSection = (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0))
     ? 'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n'

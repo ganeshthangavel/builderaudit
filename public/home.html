@@ -523,10 +523,10 @@ body {
 .ho-tile-empty { border-style: dashed; box-shadow: none; display: flex; flex-direction: column; gap: 8px; padding: 20px 16px; justify-content: center; min-height: 200px; }
 .ho-tile-empty-label { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
 .ho-tile-empty-h { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink); text-transform: uppercase; }
-.ho-tile-empty-bar { display: flex; align-items: center; background: var(--surface); border: 2px solid var(--line); border-radius: 4px; padding: 3px; box-shadow: 2px 2px 0 var(--line); font-family: var(--body); font-size: 11px; gap: 4px; }
-.ho-tile-empty-bar span:first-child { color: var(--muted); font-weight: 600; padding: 0 4px; flex-shrink: 0; }
-.ho-tile-empty-ph { flex: 1; color: var(--muted); font-style: italic; padding: 6px 2px; }
-.ho-tile-empty-btn { background: var(--accent); color: #fff; border: 1.5px solid var(--line); border-radius: 3px; padding: 6px 9px; font-weight: 700; white-space: nowrap; flex-shrink: 0; font-size: 11px; }
+.ho-tile-empty-bar { display: flex; align-items: center; background: var(--surface); border: 2px solid var(--line); border-radius: 6px; padding: 4px; box-shadow: 2px 2px 0 var(--line); font-family: var(--body); font-size: 12px; gap: 4px; min-width: 0; }
+.ho-tile-empty-bar span:first-child { color: var(--muted); font-weight: 600; padding: 0 6px; flex-shrink: 0; }
+.ho-tile-empty-ph { flex: 1; color: var(--muted); font-style: italic; padding: 7px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ho-tile-empty-btn { display: block; width: 100%; box-sizing: border-box; text-align: center; background: var(--accent); color: #fff; border: 2px solid var(--line); border-radius: 6px; padding: 9px 12px; font-family: var(--body); font-weight: 700; font-size: 12.5px; box-shadow: 2px 2px 0 var(--line); }
 
 @media (max-width: 700px) { .ho-comp-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 480px) { .ho-comp-grid { grid-template-columns: 1fr; } }
@@ -1122,16 +1122,18 @@ body {
         <div class="ho-tile-empty-label">Builder 4</div>
         <div class="ho-tile-empty-h">Add a builder</div>
         <div class="ho-tile-empty-bar">
-          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span><span class="ho-tile-empty-btn">Check →</span>
+          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span>
         </div>
+        <span class="ho-tile-empty-btn">Run free check →</span>
       </div>
       <!-- Tile 5 — empty -->
       <div class="ho-tile ho-tile-empty">
         <div class="ho-tile-empty-label">Builder 5</div>
         <div class="ho-tile-empty-h">Add a builder</div>
         <div class="ho-tile-empty-bar">
-          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span><span class="ho-tile-empty-btn">Check →</span>
+          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span>
         </div>
+        <span class="ho-tile-empty-btn">Run free check →</span>
       </div>
     </div>
 

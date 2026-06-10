@@ -2479,7 +2479,7 @@ function HomeownerAdvice() {
           <div>
             <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.fill, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Free service</div>
             <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Want us to find you a trusted builder?</h3>
-            <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.75)', margin:0, lineHeight:1.55, maxWidth:560 }}>Entirely free for homeowners. We only put you in touch with accredited, reputable, actively trading builders who are fully insured and offer backed guarantees — the ones whose websites score highest in our audits.</p>
+            <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.75)', margin:0, lineHeight:1.55, maxWidth:560 }}>Entirely free for homeowners. We work with accredited, reputable, actively trading builders across the UK — fully insured and offering backed guarantees — and match you with the best local team for your project.</p>
           </div>
           <button onClick={()=>{ const u=new URL(window.location.href); u.searchParams.set('page','match'); window.location.href=u.toString(); }}
             style={{ background:P.fill, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'14px 22px', fontFamily:F.display, fontWeight:900, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 rgba(255,255,255,0.25)`, textTransform:'uppercase', whiteSpace:'nowrap' }}>
@@ -2553,7 +2553,7 @@ function HomeownerMatch({ user }) {
         <div style={{ fontSize:52, marginBottom:14 }}>🤝</div>
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>You're in safe hands</h1>
         <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 auto 8px', lineHeight:1.6, maxWidth:520 }}>
-          Thanks {form.name.split(' ')[0]} — we've got your project details. One of the BuilderAudit team will call you within <b style={{ color:P.ink }}>1 working day</b> to talk through your <b style={{ color:P.ink }}>{form.projectType.toLowerCase()}</b> in <b style={{ color:P.ink }}>{form.location}</b>, then put you in touch with the <b style={{ color:P.ink }}>3 best builders in your area</b>. Prefer to contact them yourself first? Just say — we'll share the directors' details and you reach out when you're ready.
+          Thanks {form.name.split(' ')[0]} — we've got your project details. One of the BuilderAudit team will call you within <b style={{ color:P.ink }}>1 working day</b> to talk through your <b style={{ color:P.ink }}>{form.projectType.toLowerCase()}</b> in <b style={{ color:P.ink }}>{form.location}</b>, then put you in touch with the <b style={{ color:P.ink }}>3 best builders in your area</b>. We work with vetted builders right across the UK, so we'll find the right local team. Prefer to contact them yourself first? Just say — we'll share the directors' details and you reach out when you're ready.
         </p>
         <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:'14px auto 0', maxWidth:480 }}>
           In the meantime, run any builders you're already talking to through the <b>Compare builders</b> tab — it's free.
@@ -2575,7 +2575,7 @@ function HomeownerMatch({ user }) {
             <span style={{ fontFamily:F.body, fontWeight:700, fontSize:13.5, color:P.green }}>Entirely free for homeowners — no fees, no commission, no catch. Ever.</span>
           </div>
           <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 24px', lineHeight:1.6 }}>
-            Tell us about your project and one of our team will personally match you with builders who pass every check we run: accredited, reputable, actively trading, fully insured, and offering backed guarantees on their work.
+            Tell us about your project and one of our team will personally match you with builders who pass every check we run: accredited, reputable, actively trading, fully insured, and offering backed guarantees on their work. <b>We work with trusted builders right across the UK</b>, so wherever you are, we'll find the right local team.
           </p>
 
           <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -2674,13 +2674,14 @@ function HomeownerMatch({ user }) {
             <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10, opacity:0.7 }}>Why this beats enquiry pools</div>
             <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:19, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.01em', lineHeight:1.15 }}>We bypass the general enquiry scramble</h3>
             <p style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, margin:0, lineHeight:1.6, opacity:0.85 }}>
-              Lead websites blast your details to anyone who pays. We work <b>directly</b> with a small pool of accredited builders to plug gaps in their diaries — so you get a builder who actually has time for your project, not five voicemails from whoever bought your number.
+              Lead websites blast your details to anyone who pays. We work <b>directly</b> with accredited builders across the UK to plug gaps in their diaries — so you get a local builder who actually has time for your project, not five voicemails from whoever bought your number.
             </p>
           </Card>
 
           <Card pad={22}>
             <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Every builder we recommend is</div>
             {[
+              ['🇬🇧','Local to you — we work with vetted builders across the whole UK'],
               ['🛡','Accredited — FMB, TrustMark, CHAS or equivalent trade body'],
               ['⭐','Reputable — verified reviews and top-scoring website audits'],
               ['🏛','Active — Companies House verified, accounts up to date, no red flags'],
@@ -2688,7 +2689,7 @@ function HomeownerMatch({ user }) {
               ['✅','Guarantee-backed — work covered by insurance-backed guarantees'],
               ['📅','Genuinely available — we match to real diary gaps'],
             ].map(([icon, text], i) => (
-              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:i<5?`1px solid ${P.surface}`:'none' }}>
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:i<6?`1px solid ${P.surface}`:'none' }}>
                 <span style={{ fontSize:17, flex:'0 0 auto' }}>{icon}</span>
                 <span style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>{text}</span>
               </div>

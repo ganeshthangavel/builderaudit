@@ -86,10 +86,14 @@ async function scrapflyFetch(url, { withScreenshot = false, debug = false, mode 
        outer level — `data.result.content` contains the raw HTML. */
   });
 
-  /* Stubborn mode adds auto-scroll to trigger lazy-loaded content */
-  if (mode === 'stubborn' || mode === 'fortress') {
-    params.set('auto_scroll', 'true');
-  }
+  /* Auto-scroll in ALL modes. Two reasons:
+     1. Triggers lazy-loaded content (images, sections)
+     2. Fires scroll-triggered count-up animations (e.g. "5.0 Google Rating"
+        stat counters that sit at "0" in the initial DOM and only animate to
+        their real value when scrolled into view). Without this we scrape "0.0"
+        and the AI wrongly concludes review widgets are broken.
+     No extra credit cost — it's part of the JS render. */
+  params.set('auto_scroll', 'true');
 
   /* Fortress mode switches to residential proxies (much harder for sites to block) */
   if (mode === 'fortress') {
@@ -535,5 +539,5 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
-  version: '2026-06-08-speed-tuned',
+  version: '2026-06-09-autoscroll-counters',
 };

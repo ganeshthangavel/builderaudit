@@ -344,8 +344,17 @@ function extractExternalReviews(pages) {
     hasGoogle: platforms.includes('Google Reviews'),
     hasCheckatrade: platforms.includes('Checkatrade'),
     hasTrustpilot: platforms.includes('Trustpilot'),
-    /* Sites often display "Google Rating 0.0" when the widget is broken — flag it */
-    hasBrokenGoogleWidget: /google\s*rating\s*[:=]?\s*0(?:\.0)?\s*\b/i.test(fullText),
+    /* A "0.0" next to a rating label is almost always a JS count-up animation
+       captured pre-animation (counters sit at 0 in the DOM and animate on
+       scroll). It is NOT evidence of a broken widget. We record it as an
+       unverified rating so the AI knows the real value couldn't be captured —
+       never as a red flag. */
+    ratingCapturedAsZero: /google\s*rating\s*[:=]?\s*0(?:\.0)?\b/i.test(fullText) || /(?<![\d.])0(?:\.0)?\s*\/?\s*(?:5\s*)?google\s*rating/i.test(fullText),
+    /* Capture a non-zero displayed rating if one survived rendering (e.g. "5.0 Google Rating") */
+    displayedGoogleRating: (() => {
+      const m = fullText.match(/([1-5](?:\.\d)?)\s*\/?\s*(?:5)?\s*google\s*rating/i) || fullText.match(/google\s*rating\s*[:=]?\s*([1-5](?:\.\d)?)/i);
+      return m ? m[1] : null;
+    })(),
   };
 }
 
@@ -392,12 +401,13 @@ function detectFlags(pages, extracted) {
     });
   }
 
-  /* Broken Google review widget */
-  if (extracted.externalReviews.hasBrokenGoogleWidget) {
+  /* Rating captured as zero — animation artifact, NOT a red flag.
+     Surface as informational so the AI says "couldn't verify" instead of "broken". */
+  if (extracted.externalReviews.ratingCapturedAsZero && !extracted.externalReviews.displayedGoogleRating) {
     flags.push({
-      type: 'broken_google_widget',
-      severity: 'high',
-      detail: 'Site displays "Google Rating 0.0" — likely a broken or unconfigured Google review widget.',
+      type: 'rating_not_captured',
+      severity: 'info',
+      detail: 'The site shows a Google rating stat, but our scan captured it as "0.0" — this is almost certainly a count-up animation our crawler caught before it ran, NOT a broken widget. The real rating could not be verified from the site; recommend the reader checks the business directly on Google. Do not describe the widget as broken or the rating as zero.',
     });
   }
 

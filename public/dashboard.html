@@ -2294,7 +2294,7 @@ function HomeownerAdvice() {
           <div>
             <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.fill, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Free service</div>
             <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Want us to find you a trusted builder?</h3>
-            <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.75)', margin:0, lineHeight:1.55, maxWidth:560 }}>Our team works directly with heavily accredited builders who run the highest-scoring websites we audit. Tell us about your project and we'll put you in touch — free.</p>
+            <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.75)', margin:0, lineHeight:1.55, maxWidth:560 }}>Entirely free for homeowners. We only put you in touch with accredited, reputable, actively trading builders who are fully insured and offer backed guarantees — the ones whose websites score highest in our audits.</p>
           </div>
           <button onClick={()=>{ const u=new URL(window.location.href); u.searchParams.set('page','match'); window.location.href=u.toString(); }}
             style={{ background:P.fill, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'14px 22px', fontFamily:F.display, fontWeight:900, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 rgba(255,255,255,0.25)`, textTransform:'uppercase', whiteSpace:'nowrap' }}>
@@ -2385,8 +2385,12 @@ function HomeownerMatch({ user }) {
         <Card>
           <Kicker color={P.accent}>Free matching service</Kicker>
           <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, lineHeight:1.05, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'12px 0 8px' }}>Find a trusted builder</h1>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 14px', background:'rgba(31,138,91,0.1)', border:`2px solid ${P.green}`, borderRadius:6, marginBottom:12 }}>
+            <span style={{ fontSize:15 }}>✓</span>
+            <span style={{ fontFamily:F.body, fontWeight:700, fontSize:13.5, color:P.green }}>Entirely free for homeowners — no fees, no commission, no catch. Ever.</span>
+          </div>
           <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 24px', lineHeight:1.6 }}>
-            Tell us about your project and one of our team will personally match you with reputable, heavily accredited builders — the ones whose websites score highest in our audits.
+            Tell us about your project and one of our team will personally match you with builders who pass every check we run: accredited, reputable, actively trading, fully insured, and offering backed guarantees on their work.
           </p>
 
           <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -2475,7 +2479,7 @@ function HomeownerMatch({ user }) {
               style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'16px 24px', fontFamily:F.display, fontWeight:900, fontSize:17, cursor:state==='submitting'?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:state==='submitting'?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
               {state==='submitting' ? 'Sending your details…' : 'Match me with trusted builders →'}
             </button>
-            <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, textAlign:'center' }}>100% free. No obligation. We never sell your data.</div>
+            <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, textAlign:'center' }}>Entirely free for homeowners — no fees, no commission, no obligation. We never sell your data.</div>
           </div>
         </Card>
 
@@ -2490,14 +2494,16 @@ function HomeownerMatch({ user }) {
           </Card>
 
           <Card pad={22}>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Every builder we recommend</div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Every builder we recommend is</div>
             {[
-              ['🏛','Companies House verified — active, accounts up to date'],
-              ['🛡','Heavily accredited — FMB, TrustMark, CHAS or equivalent'],
-              ['🏆','Top-scoring website audits — real photos, real reviews'],
-              ['📅','Genuine availability — we match to diary gaps'],
+              ['🛡','Accredited — FMB, TrustMark, CHAS or equivalent trade body'],
+              ['⭐','Reputable — verified reviews and top-scoring website audits'],
+              ['🏛','Active — Companies House verified, accounts up to date, no red flags'],
+              ['📄','Insured — public liability insurance confirmed'],
+              ['✅','Guarantee-backed — work covered by insurance-backed guarantees'],
+              ['📅','Genuinely available — we match to real diary gaps'],
             ].map(([icon, text], i) => (
-              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:i<3?`1px solid ${P.surface}`:'none' }}>
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:i<5?`1px solid ${P.surface}`:'none' }}>
                 <span style={{ fontSize:17, flex:'0 0 auto' }}>{icon}</span>
                 <span style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>{text}</span>
               </div>

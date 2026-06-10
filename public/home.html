@@ -8,7 +8,50 @@
 <link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
 <title>BuilderAudit — UK builders' free AI website audit</title>
 <meta name="description" content="The first AI-powered website audit built for UK building companies. Paste your URL, get a score out of 100 and a fix-list in 60 seconds. Free, forever.">
+<link rel="canonical" href="https://builderaudit.co.uk/">
 
+<!-- Open Graph / social -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="BuilderAudit">
+<meta property="og:title" content="BuilderAudit — free AI website audit for UK builders">
+<meta property="og:description" content="Paste a builder's URL and get a forensic trust score out of 100 in 60 seconds. Free for builders to fix their site, free for homeowners to vet one.">
+<meta property="og:url" content="https://builderaudit.co.uk/">
+<meta property="og:image" content="https://builderaudit.co.uk/assets/logo/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<!-- Structured data: Organization + the product, for SEO and AI answer engines -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://builderaudit.co.uk/#org",
+      "name": "BuilderAudit",
+      "url": "https://builderaudit.co.uk/",
+      "logo": "https://builderaudit.co.uk/assets/logo/builderaudit-mark.svg",
+      "description": "BuilderAudit is a free AI-powered website audit tool for UK building companies. It forensically scores a builder's website out of 100 across trust signals, photo authenticity, mobile experience, site speed and quote flow, and verifies the business against Companies House.",
+      "areaServed": "GB",
+      "knowsAbout": ["builder website audits", "construction marketing", "hiring a builder", "Companies House verification", "tradesperson trust signals"]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://builderaudit.co.uk/#website",
+      "url": "https://builderaudit.co.uk/",
+      "name": "BuilderAudit",
+      "publisher": { "@id": "https://builderaudit.co.uk/#org" }
+    },
+    {
+      "@type": "Service",
+      "name": "AI builder website audit",
+      "provider": { "@id": "https://builderaudit.co.uk/#org" },
+      "areaServed": "GB",
+      "description": "Paste a UK builder's website URL and receive a trust score out of 100 with a prioritised fix-list in about 60 seconds. Builders use it to improve their site; homeowners use it to vet a builder before hiring. Free.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" }
+    }
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -710,7 +753,10 @@ body {
         <button type="button" role="tab" data-mode="homeowner" onclick="setMode('homeowner')">I'm a homeowner</button>
       </div>
 
-      <a href="/login" class="signin">Sign in</a>
+      <div style="display:flex;align-items:center;gap:18px">
+        <a href="/insights" class="signin">Insights</a>
+        <a href="/login" class="signin">Sign in</a>
+      </div>
     </div>
 
     <div class="stamp" id="heroStamp">UK builders · free tool</div>
@@ -861,6 +907,14 @@ body {
           </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ ANSWER-FIRST INTRO (GEO) ═══════════ -->
+  <section class="section surface" style="padding-top:48px;padding-bottom:8px">
+    <div style="max-width:760px;margin:0 auto">
+      <h2 class="section-h2" id="geoH2" style="text-align:left;font-size:30px;margin-bottom:14px">What is BuilderAudit?</h2>
+      <p id="geoAnswer" style="font-family:var(--body);font-size:18px;line-height:1.6;color:var(--ink);margin:0">BuilderAudit is a free AI-powered website audit for UK building companies. Paste any builder's URL and, in about 60 seconds, it returns a trust score out of 100 across photo authenticity, trust signals, mobile experience, site speed and quote flow — plus a Companies House check. Builders use it to fix their site; homeowners use it to vet a builder before hiring.</p>
     </div>
   </section>
 
@@ -1250,6 +1304,8 @@ var COPY = {
   builder: {
     heroH1: "How good is your building company's website, really?",
     heroSub: "Paste your URL. We'll poke around like a homeowner would — photos, reviews, the lot — and grade your site out of 100. With actual things to fix, in plain English.",
+    geoH2: "What is BuilderAudit?",
+    geoAnswer: "BuilderAudit is a free AI-powered website audit for UK building companies. Paste your URL and, in about 60 seconds, it returns a trust score out of 100 across photo authenticity, trust signals, mobile experience, site speed and quote flow — plus a Companies House check. You get a prioritised, plain-English fix-list so you can win more enquiries from your website.",
     heroCta: "Run my free audit",
     heroPlaceholder: "heartlybuilders.co.uk",
     heroStamp: "UK builders · free tool",
@@ -1300,6 +1356,8 @@ var COPY = {
   homeowner: {
     heroH1: "Vet a builder's website before you ring them up",
     heroSub: "Paste their URL. We'll check the photos, the reviews and the trade badges — everything a careful homeowner should look at — and grade the site out of 100. In plain English.",
+    geoH2: "How do I check if a builder is trustworthy?",
+    geoAnswer: "Paste the builder's website into BuilderAudit and, in about 60 seconds, you'll get a trust score out of 100 — covering whether their photos are real, whether reviews are verifiable, and whether they show insurance and trade accreditation. It also checks them against the official Companies House register so you can confirm the business is genuinely registered, active and who's behind it before you hire.",
     heroCta: "Check this builder",
     heroPlaceholder: "thatbuilderyou'vebeentoldabout.co.uk",
     heroStamp: "UK homeowners · free check",
@@ -1360,6 +1418,8 @@ function setMode(next) {
   var c = COPY[mode];
   document.getElementById('heroH1').textContent = c.heroH1;
   document.getElementById('heroSub').textContent = c.heroSub;
+  var geoH2 = document.getElementById('geoH2'); if (geoH2) geoH2.textContent = c.geoH2;
+  var geoA  = document.getElementById('geoAnswer'); if (geoA) geoA.textContent = c.geoAnswer;
   document.getElementById('auditLabel').textContent = c.heroCta;
   document.getElementById('urlInput').placeholder = c.heroPlaceholder;
   document.getElementById('heroStamp').textContent = c.heroStamp;

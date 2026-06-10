@@ -150,6 +150,45 @@ const HOMEOWNER_PAGES = [
 function Nav({ role, page, setPage, user }) {
   const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
   const initials = user?.name ? user.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase() : role==='builder'?'HB':'AT';
+
+  /* ── Account settings dropdown ── */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [prefs, setPrefs]       = useState({ consentAgency:false, weeklyEmailOptIn:false });
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsSaved,  setPrefsSaved]  = useState(false);
+  useEffect(() => {
+    if (user) setPrefs({ consentAgency: !!user.consentAgency, weeklyEmailOptIn: !!user.weeklyEmailOptIn });
+  }, [user]);
+  /* Close on outside click */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e) => { if (!e.target.closest('[data-account-menu]')) setMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const savePref = async (key, value) => {
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    setPrefsSaving(true); setPrefsSaved(false);
+    try {
+      await fetch('/api/auth/settings', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({ [key]: value }),
+      });
+      setPrefsSaved(true);
+      setTimeout(()=>setPrefsSaved(false), 2000);
+    } catch(e) { /* revert on failure */ setPrefs(prefs); }
+    finally { setPrefsSaving(false); }
+  };
+
+  const Toggle = ({ on, onChange }) => (
+    <button onClick={()=>onChange(!on)}
+      style={{ flex:'0 0 auto', width:42, height:24, borderRadius:999, border:`2px solid ${P.line}`, background:on?P.green:P.surface, position:'relative', cursor:'pointer', padding:0, transition:'background .15s', outline:'none' }}>
+      <span style={{ position:'absolute', top:1, left:on?19:1, width:18, height:18, borderRadius:'50%', background:'#fff', border:`1.5px solid ${P.line}`, transition:'left .15s' }}/>
+    </button>
+  );
+
   return (
     <header style={{ background:'#fff', borderBottom:`3px solid ${P.line}`, padding:'16px 36px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, position:'sticky', top:0, zIndex:100 }}>
       <a href="/" style={{ display:'flex', alignItems:'center', gap:12, textDecoration:'none', flexShrink:0 }}>
@@ -172,7 +211,60 @@ function Nav({ role, page, setPage, user }) {
           <span style={{ width:7, height:7, borderRadius:'50%', background:role==='builder'?P.accent:P.green, display:'inline-block' }}/>
           {role==='builder'?'Builder account':'Homeowner account'}
         </div>
-        <div style={{ width:36, height:36, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink }}>{initials}</div>
+
+        {/* Avatar → settings dropdown */}
+        <div data-account-menu style={{ position:'relative' }}>
+          <button onClick={()=>setMenuOpen(o=>!o)}
+            style={{ width:36, height:36, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, cursor:'pointer', outline:'none', boxShadow:menuOpen?`2px 2px 0 ${P.line}`:'none' }}>
+            {initials}
+          </button>
+
+          {menuOpen && (
+            <div style={{ position:'absolute', top:'calc(100% + 10px)', right:0, width:320, background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`6px 6px 0 ${P.line}`, zIndex:200, overflow:'hidden' }}>
+              {/* Header */}
+              <div style={{ padding:'14px 18px', background:P.surface, borderBottom:`2px solid ${P.line}` }}>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Account settings</div>
+                <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:700, color:P.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email || 'Not signed in'}</div>
+              </div>
+
+              {user ? (
+                <div style={{ padding:'14px 18px', display:'flex', flexDirection:'column', gap:14 }}>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Contact preferences</div>
+
+                  <div style={{ display:'flex', gap:12, alignItems:'flex-start', justifyContent:'space-between' }}>
+                    <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45 }}>
+                      <b style={{ display:'block' }}>{role==='builder' ? 'Recommendations & marketing help' : 'Builder recommendations & help'}</b>
+                      <span style={{ color:P.muted, fontSize:12 }}>{role==='builder' ? 'BuilderAudit can contact me about recommendations and marketing services.' : 'BuilderAudit can contact me with trusted builder recommendations and help.'}</span>
+                    </div>
+                    <Toggle on={prefs.consentAgency} onChange={v=>savePref('consentAgency', v)}/>
+                  </div>
+
+                  <div style={{ display:'flex', gap:12, alignItems:'flex-start', justifyContent:'space-between' }}>
+                    <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45 }}>
+                      <b style={{ display:'block' }}>Weekly email check-ins</b>
+                      <span style={{ color:P.muted, fontSize:12 }}>Score updates and progress by email.</span>
+                    </div>
+                    <Toggle on={prefs.weeklyEmailOptIn} onChange={v=>savePref('weeklyEmailOptIn', v)}/>
+                  </div>
+
+                  <div style={{ minHeight:16, fontFamily:F.body, fontSize:11.5, color:prefsSaved?P.green:P.muted }}>
+                    {prefsSaving ? 'Saving…' : prefsSaved ? '✓ Preferences saved' : ''}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding:'16px 18px' }}>
+                  <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, lineHeight:1.5, marginBottom:12 }}>Sign in to manage your contact preferences.</div>
+                  <a href="/login" style={{ display:'inline-block', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13, textDecoration:'none' }}>Sign in →</a>
+                </div>
+              )}
+
+              <div style={{ borderTop:`1.5px solid ${P.line}`, padding:'10px 18px' }}>
+                <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
+              </div>
+            </div>
+          )}
+        </div>
+
         <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
       </div>
     </header>
@@ -1292,7 +1384,7 @@ function BuilderCompetitors({ latestAudit, user }) {
           region:       'other',
           consentTos:   true,
           consentAuth:  true,
-          consentAgency: !!form.consentAgency,
+          consentAgency: true,
           consentWeekly: false,
         }),
       });
@@ -1505,14 +1597,13 @@ function BuilderCompetitors({ latestAudit, user }) {
           </label>
 
           {/* Consent marketing — optional */}
-          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer', padding:'12px 14px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-            <input type="checkbox" checked={form.consentAgency} onChange={e=>setF('consentAgency',e.target.checked)}
-              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
-            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-              <b style={{ display:'block', marginBottom:2 }}>I'm open to builder recommendations & marketing help</b>
-              I'm happy to be contacted about builder recommendations, website improvement services, and online marketing opportunities from BuilderAudit and trusted partners. <span style={{ color:P.muted }}>(Optional — you can opt out any time.)</span>
+          <div style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'12px 14px', background:'rgba(31,138,91,0.07)', borderRadius:6, border:`1.5px solid ${P.green}` }}>
+            <span style={{ fontSize:16, flex:'0 0 auto', marginTop:1 }}>🤝</span>
+            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55 }}>
+              <b style={{ display:'block', marginBottom:2 }}>What you get when you sign up</b>
+              Unlimited competitor audits, and BuilderAudit can contact you to help with recommendations, website improvements, and online marketing. <span style={{ color:P.muted }}>You can change your contact preferences anytime from your account menu (top right).</span>
             </span>
-          </label>
+          </div>
 
           {/* Error */}
           {formErr && <div style={{ fontFamily:F.body, fontSize:13, color:P.red, padding:'8px 12px', background:'rgba(217,83,79,0.08)', borderRadius:4, border:`1px solid ${P.red}` }}>{formErr}</div>}
@@ -2029,7 +2120,7 @@ function HomeownerCompare({ user }) {
           phone: form.phone.trim(), companyName: form.name.trim() + ' (homeowner)',
           name: form.name.trim(), businessType:'other', region:'other',
           consentTos:true, consentAuth:true,
-          consentAgency:!!form.consentAgency, consentWeekly:false,
+          consentAgency:true, consentWeekly:false,
         }),
       });
       const data = await res.json();
@@ -2180,14 +2271,13 @@ function HomeownerCompare({ user }) {
               I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>. <span style={{ color:P.red, fontWeight:700 }}>*</span>
             </span>
           </label>
-          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer', padding:'12px 14px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
-            <input type="checkbox" checked={form.consentAgency} onChange={e=>setF('consentAgency',e.target.checked)}
-              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
-            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
-              <b style={{ display:'block', marginBottom:2 }}>I'd like builder recommendations &amp; advice</b>
-              I'm happy to be contacted about trusted builder recommendations and home improvement services from BuilderAudit and partners. <span style={{ color:P.muted }}>(Optional — opt out any time.)</span>
+          <div style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'12px 14px', background:'rgba(31,138,91,0.07)', borderRadius:6, border:`1.5px solid ${P.green}` }}>
+            <span style={{ fontSize:16, flex:'0 0 auto', marginTop:1 }}>🤝</span>
+            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55 }}>
+              <b style={{ display:'block', marginBottom:2 }}>What you get when you sign up</b>
+              We'll give you a list of the best and currently available builders in your area, and BuilderAudit can contact you to help too. <span style={{ color:P.muted }}>You can change your contact preferences anytime from your account menu (top right).</span>
             </span>
-          </label>
+          </div>
           {formErr && <div style={{ fontFamily:F.body, fontSize:13, color:P.red, padding:'8px 12px', background:'rgba(217,83,79,0.08)', borderRadius:4, border:`1px solid ${P.red}` }}>{formErr}</div>}
           <button onClick={submitSignup} disabled={submitting}
             style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'14px 20px', fontFamily:F.display, fontWeight:900, fontSize:16, cursor:submitting?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:submitting?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
@@ -2749,6 +2839,13 @@ function DashboardApp() {
 
   // Fetch data — priority: specific audit by ?id= > user's latest audit > demo mode
   useEffect(() => {
+    /* Always load the signed-in user (for the nav settings menu),
+       independent of the report-loading flow below which may return early */
+    fetch('/api/auth/me', { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.user) setUser(d.user); })
+      .catch(()=>{});
+
     async function loadData() {
       setLoading(true);
       setError(null);
@@ -2779,25 +2876,20 @@ function DashboardApp() {
           }
         }
 
-        // 2. Try to fetch user's own data (logged-in user)
-        const [profileRes, auditsRes] = await Promise.all([
-          fetch('/api/user/profile', { credentials:'include' }).catch(()=>null),
-          fetch('/api/user/audits',  { credentials:'include' }).catch(()=>null),
-        ]);
-
-        if (profileRes?.ok) {
-          const profile = await profileRes.json().catch(()=>null);
-          if (profile) setUser(profile);
-        }
+        // 2. Load the user's audit list (logged-in users without a ?id= URL).
+        //    Note: rows contain {id,url,score,created_at} — no report_json.
+        const auditsRes = await fetch('/api/my/audits', { credentials:'include' }).catch(()=>null);
 
         if (auditsRes?.ok) {
-          const audits = await auditsRes.json().catch(()=>null);
-          if (audits?.latest) setLatestAudit(audits.latest);
-          if (audits) setAuditData({
-            count:   audits.total_count || 1,
-            company: audits.latest?.report_json?.business_snapshot?.company_name || audits.latest?.url || 'Your company',
-            history: audits.history || [],
-          });
+          const data = await auditsRes.json().catch(()=>null);
+          const list = data?.audits || [];
+          if (list.length > 0) {
+            setAuditData({
+              count:   list.length,
+              company: list[0]?.url || 'Your company',
+              history: list.slice(0,8).map(a => ({ date:(a.created_at||'').slice(0,10), score:a.score||0 })),
+            });
+          }
         }
       } catch(e) {
         // Silent — fall through to demo mode

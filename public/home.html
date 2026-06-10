@@ -493,6 +493,44 @@ body {
   .comp-cta-row { flex-direction: column; text-align: center; }
 }
 
+/* ── HOMEOWNER COMPARE TILES ── */
+.ho-comp-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px; max-width: 1100px; margin: 0 auto 32px;
+}
+.ho-tile {
+  border: 2px solid var(--line); border-radius: 8px; background: #fff;
+  overflow: hidden; box-shadow: 4px 4px 0 var(--line);
+}
+.ho-tile-top { border-color: #1F8A5B; box-shadow: 4px 4px 0 #1F8A5B; background: rgba(31,138,91,0.03); }
+.ho-tile-top-badge { background: #1F8A5B; color: #fff; font-family: var(--body); font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 4px 10px; text-align: center; }
+.ho-tile-body { padding: 14px; }
+.ho-tile-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.ho-tile-name { font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink); letter-spacing: -0.01em; }
+.ho-tile-url { font-family: var(--body); font-size: 11px; color: var(--muted); margin-top: 1px; }
+.ho-tile-score { color: #fff; border: 2px solid var(--line); border-radius: 4px; padding: 4px 9px; font-family: var(--display); font-weight: 900; font-size: 20px; line-height: 1; box-shadow: 2px 2px 0 var(--line); flex-shrink: 0; }
+.ho-tile-bars { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.ho-bar-row { display: grid; grid-template-columns: 52px 1fr 18px; align-items: center; gap: 5px; }
+.ho-bar-row span { font-family: var(--body); font-size: 10px; font-weight: 600; color: var(--ink); }
+.ho-bar { height: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.ho-bar div { height: 100%; }
+.ho-bar-row b { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--ink); text-align: right; }
+.ho-tile-verdict { font-family: var(--body); font-size: 11.5px; font-weight: 600; padding: 5px 8px; border-radius: 5px; }
+.ho-verdict-green { color: #1F8A5B; background: rgba(31,138,91,0.08); }
+.ho-verdict-amber { color: #92400E; background: rgba(217,119,6,0.08); }
+.ho-verdict-red   { color: #A02020; background: rgba(217,83,79,0.08); }
+/* empty tiles */
+.ho-tile-empty { border-style: dashed; box-shadow: none; display: flex; flex-direction: column; gap: 8px; padding: 20px 16px; justify-content: center; min-height: 200px; }
+.ho-tile-empty-label { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+.ho-tile-empty-h { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink); text-transform: uppercase; }
+.ho-tile-empty-bar { display: flex; align-items: center; background: var(--surface); border: 2px solid var(--line); border-radius: 4px; padding: 3px; box-shadow: 2px 2px 0 var(--line); font-family: var(--body); font-size: 11px; gap: 4px; }
+.ho-tile-empty-bar span:first-child { color: var(--muted); font-weight: 600; padding: 0 4px; flex-shrink: 0; }
+.ho-tile-empty-ph { flex: 1; color: var(--muted); font-style: italic; padding: 6px 2px; }
+.ho-tile-empty-btn { background: var(--accent); color: #fff; border: 1.5px solid var(--line); border-radius: 3px; padding: 6px 9px; font-weight: 700; white-space: nowrap; flex-shrink: 0; font-size: 11px; }
+
+@media (max-width: 700px) { .ho-comp-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .ho-comp-grid { grid-template-columns: 1fr; } }
+
 /* ── HOW IT WORKS ── */
 .how-grid {
   display: grid; grid-template-columns: repeat(4, 1fr);
@@ -1017,6 +1055,95 @@ body {
     </div>
   </section>
 
+  <!-- ═══════════ HOMEOWNER COMPARE (homeowner mode only) ═══════════ -->
+  <section class="section surface" id="homeownerCompareSection" style="display:none">
+    <div class="section-head">
+      <div class="kicker" style="background:var(--accent)">For homeowners</div>
+      <h2 class="section-h2">Compare up to 5 builders before you ring anyone</h2>
+      <p class="section-sub">Getting a few quotes? Run all of them through BuilderAudit first. Same 5 checks, same scoring — so you're comparing like for like, not just gut feeling.</p>
+    </div>
+
+    <!-- 5 mini comparison tiles demo -->
+    <div class="ho-comp-grid">
+      <!-- Tile 1 — audited (high score, top pick) -->
+      <div class="ho-tile ho-tile-top">
+        <div class="ho-tile-top-badge">★ Top pick</div>
+        <div class="ho-tile-body">
+          <div class="ho-tile-row">
+            <div><div class="ho-tile-name">Greenfield Build</div><div class="ho-tile-url">greenfieldbuild.co.uk</div></div>
+            <div class="ho-tile-score" style="background:#1F8A5B">78</div>
+          </div>
+          <div class="ho-tile-bars">
+            <div class="ho-bar-row"><span>Photos</span><div class="ho-bar"><div style="width:82%;background:#1F8A5B"></div></div><b>82</b></div>
+            <div class="ho-bar-row"><span>Trust</span><div class="ho-bar"><div style="width:88%;background:#1F8A5B"></div></div><b>88</b></div>
+            <div class="ho-bar-row"><span>Mobile</span><div class="ho-bar"><div style="width:74%;background:#1F8A5B"></div></div><b>74</b></div>
+            <div class="ho-bar-row"><span>Speed</span><div class="ho-bar"><div style="width:66%;background:#FFD24D"></div></div><b>66</b></div>
+            <div class="ho-bar-row"><span>Clarity</span><div class="ho-bar"><div style="width:58%;background:#FFD24D"></div></div><b>58</b></div>
+          </div>
+          <div class="ho-tile-verdict ho-verdict-green">Looks trustworthy</div>
+        </div>
+      </div>
+      <!-- Tile 2 — audited (mid score) -->
+      <div class="ho-tile">
+        <div class="ho-tile-body">
+          <div class="ho-tile-row">
+            <div><div class="ho-tile-name">Heartly Builders</div><div class="ho-tile-url">heartlybuilders.co.uk</div></div>
+            <div class="ho-tile-score" style="background:#FFD24D;color:#1B1A17">64</div>
+          </div>
+          <div class="ho-tile-bars">
+            <div class="ho-bar-row"><span>Photos</span><div class="ho-bar"><div style="width:48%;background:#D9534F"></div></div><b>48</b></div>
+            <div class="ho-bar-row"><span>Trust</span><div class="ho-bar"><div style="width:72%;background:#FFD24D"></div></div><b>72</b></div>
+            <div class="ho-bar-row"><span>Mobile</span><div class="ho-bar"><div style="width:86%;background:#1F8A5B"></div></div><b>86</b></div>
+            <div class="ho-bar-row"><span>Speed</span><div class="ho-bar"><div style="width:54%;background:#D9534F"></div></div><b>54</b></div>
+            <div class="ho-bar-row"><span>Clarity</span><div class="ho-bar"><div style="width:58%;background:#FFD24D"></div></div><b>58</b></div>
+          </div>
+          <div class="ho-tile-verdict ho-verdict-amber">A few concerns</div>
+        </div>
+      </div>
+      <!-- Tile 3 — audited (low score) -->
+      <div class="ho-tile">
+        <div class="ho-tile-body">
+          <div class="ho-tile-row">
+            <div><div class="ho-tile-name">Quick Fix Ltd</div><div class="ho-tile-url">quickfixltd.co.uk</div></div>
+            <div class="ho-tile-score" style="background:#D9534F">41</div>
+          </div>
+          <div class="ho-tile-bars">
+            <div class="ho-bar-row"><span>Photos</span><div class="ho-bar"><div style="width:38%;background:#D9534F"></div></div><b>38</b></div>
+            <div class="ho-bar-row"><span>Trust</span><div class="ho-bar"><div style="width:42%;background:#D9534F"></div></div><b>42</b></div>
+            <div class="ho-bar-row"><span>Mobile</span><div class="ho-bar"><div style="width:48%;background:#D9534F"></div></div><b>48</b></div>
+            <div class="ho-bar-row"><span>Speed</span><div class="ho-bar"><div style="width:36%;background:#D9534F"></div></div><b>36</b></div>
+            <div class="ho-bar-row"><span>Clarity</span><div class="ho-bar"><div style="width:43%;background:#D9534F"></div></div><b>43</b></div>
+          </div>
+          <div class="ho-tile-verdict ho-verdict-red">Significant red flags</div>
+        </div>
+      </div>
+      <!-- Tile 4 — empty -->
+      <div class="ho-tile ho-tile-empty">
+        <div class="ho-tile-empty-label">Builder 4</div>
+        <div class="ho-tile-empty-h">Add a builder</div>
+        <div class="ho-tile-empty-bar">
+          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span><span class="ho-tile-empty-btn">Check →</span>
+        </div>
+      </div>
+      <!-- Tile 5 — empty -->
+      <div class="ho-tile ho-tile-empty">
+        <div class="ho-tile-empty-label">Builder 5</div>
+        <div class="ho-tile-empty-h">Add a builder</div>
+        <div class="ho-tile-empty-bar">
+          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span><span class="ho-tile-empty-btn">Check →</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="comp-cta-row">
+      <div class="comp-cta-text">
+        <strong>Free with a BuilderAudit account.</strong> Run as many checks as you like. The builder never knows you looked.
+      </div>
+      <a href="/signup?audience=homeowner" class="comp-cta-btn">Start comparing free →</a>
+    </div>
+  </section>
+
   <!-- ═══════════ HOW IT WORKS ═══════════ -->
   <section class="section surface">
     <div class="section-head">
@@ -1284,6 +1411,10 @@ function setMode(next) {
   /* Show competitor section for builders only */
   var compSection = document.getElementById('competitorSection');
   if (compSection) compSection.style.display = mode === 'builder' ? 'block' : 'none';
+
+  /* Show homeowner compare section for homeowners only */
+  var hoCompare = document.getElementById('homeownerCompareSection');
+  if (hoCompare) hoCompare.style.display = mode === 'homeowner' ? 'block' : 'none';
 
   try { sessionStorage.setItem('ba_audience', mode); } catch(e) {}
 }

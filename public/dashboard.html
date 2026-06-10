@@ -1403,29 +1403,42 @@ function BuilderCompetitors({ latestAudit, user }) {
     );
   };
 
-  const EmptySlot = ({ slot, i }) => (
-    <Card pad={28} style={{ borderStyle:'dashed', borderWidth:2.5, boxShadow:'none', minHeight:280, display:'flex', flexDirection:'column', justifyContent:'center', position:'relative' }}>
-      {!unlocked && (
-        <div style={{ position:'absolute', top:12, right:12, background:P.accent, color:'#fff', borderRadius:4, padding:'3px 8px', fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em' }}>🔒 SIGN UP TO UNLOCK</div>
-      )}
-      <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Competitor slot</div>
-      <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</h3>
-      <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>Paste a competitor's website. We'll run the same full audit and sit them next to you.</p>
-      <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`4px 4px 0 ${P.line}` }}>
-        <span style={{ padding:'0 12px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</span>
-        <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
-          placeholder="theirsite.co.uk"
-          style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+  const EmptySlot = ({ slot, i }) => {
+    /* Locked — clean placeholder, whole tile opens the modal */
+    if (!unlocked) return (
+      <button onClick={()=>setShowModal(true)}
+        style={{ border:`2.5px dashed ${P.muted}`, borderRadius:10, background:'rgba(255,255,255,0.6)', minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:9, cursor:'pointer', outline:'none', textAlign:'center', padding:24, transition:'border-color .15s, background .15s' }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderColor=P.accent; e.currentTarget.style.background='#fff'; }}
+        onMouseLeave={e=>{ e.currentTarget.style.borderColor=P.muted; e.currentTarget.style.background='rgba(255,255,255,0.6)'; }}>
+        <div style={{ width:46, height:46, borderRadius:'50%', background:P.surface, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:20 }}>🔒</div>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Competitor slot</div>
+        <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</div>
+        <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.5, maxWidth:220 }}>Unlocks with your free account — use the banner above</div>
+      </button>
+    );
+
+    /* Unlocked — input + run */
+    return (
+      <Card pad={28} style={{ borderStyle:'dashed', borderWidth:2.5, boxShadow:'none', minHeight:280, display:'flex', flexDirection:'column', justifyContent:'center' }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Competitor slot</div>
+        <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</h3>
+        <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>Paste a competitor's website. We'll run the same full audit and sit them next to you.</p>
+        <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`4px 4px 0 ${P.line}`, marginBottom:10 }}>
+          <span style={{ padding:'0 12px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</span>
+          <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
+            placeholder="theirsite.co.uk"
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+        </div>
         <button onClick={()=>runAudit(i)}
-          style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 16px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer', whiteSpace:'nowrap' }}>
-          {unlocked ? 'Run audit →' : 'Unlock & run →'}
+          style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 16px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`3px 3px 0 ${P.line}`, width:'100%' }}>
+          Run full audit →
         </button>
-      </div>
-      <div style={{ marginTop:12, fontFamily:F.body, fontSize:12, color:P.muted }}>Takes about 60 seconds. They won't be told.</div>
-      {slot.error && <div style={{ marginTop:10, fontFamily:F.body, fontSize:12.5, color:P.red }}>{slot.error}</div>}
-    </Card>
-  );
+        <div style={{ marginTop:12, fontFamily:F.body, fontSize:12, color:P.muted }}>Takes about 60 seconds. They won't be told.</div>
+        {slot.error && <div style={{ marginTop:10, fontFamily:F.body, fontSize:12.5, color:P.red }}>{slot.error}</div>}
+      </Card>
+    );
+  };
 
   const LoadingSlot = () => (
     <Card pad={28} style={{ minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
@@ -1528,10 +1541,15 @@ function BuilderCompetitors({ latestAudit, user }) {
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>How you stack up</h1>
         <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Add up to five competitor websites. We'll run the same full audit on each and rank everyone side by side.</p>
         {!unlocked && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:10, marginTop:14, padding:'10px 16px', background:P.fill, border:`2px solid ${P.line}`, borderRadius:6, boxShadow:`3px 3px 0 ${P.line}` }}>
-            <span style={{ fontSize:16 }}>🔒</span>
-            <span style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>Free feature — create your account to unlock. Takes 30 seconds.</span>
-            <button onClick={()=>setShowModal(true)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'6px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer' }}>Unlock free →</button>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginTop:18, padding:'18px 22px', background:P.fill, border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`5px 5px 0 ${P.line}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
+              <div style={{ width:42, height:42, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:18, flexShrink:0 }}>🔒</div>
+              <div>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:16, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Free feature — unlock with your account</div>
+                <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, opacity:0.75, marginTop:2 }}>Takes 30 seconds. No payment, ever.</div>
+              </div>
+            </div>
+            <button onClick={()=>setShowModal(true)} style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 22px', fontFamily:F.display, fontWeight:900, fontSize:14.5, cursor:'pointer', boxShadow:`3px 3px 0 rgba(0,0,0,0.25)`, textTransform:'uppercase', letterSpacing:'-0.01em', whiteSpace:'nowrap', flexShrink:0 }}>Unlock free →</button>
           </div>
         )}
       </div>
@@ -2056,41 +2074,61 @@ function HomeownerCompare({ user }) {
   const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
 
   /* Tile */
-  const Tile = ({slot, i}) => {
+  /* Plain render function (not a nested component) so inputs keep focus across re-renders */
+  const renderTile = (slot, i) => {
+    /* Loading */
     if (slot.loading) return (
-      <div style={{ border:`2px dashed ${P.muted}`, borderRadius:8, padding:18, background:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, minHeight:220 }}>
-        <div style={{ width:28,height:28,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
-        <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Checking…</div>
+      <div key={i} style={{ border:`2px solid ${P.line}`, borderRadius:10, padding:18, background:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, minHeight:230, boxShadow:`4px 4px 0 ${P.line}` }}>
+        <div style={{ width:30,height:30,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
+        <div style={{ fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink }}>Running full audit…</div>
+        <div style={{ fontFamily:F.body, fontSize:11, color:P.muted }}>60–90 seconds</div>
       </div>
     );
-    if (!slot.audited) return (
-      <div style={{ border:`2px dashed ${P.muted}`, borderRadius:8, padding:18, background:'#fff', display:'flex', flexDirection:'column', gap:10, minHeight:220, justifyContent:'center', position:'relative' }}>
-        {!unlocked && <div style={{ position:'absolute',top:10,right:10,background:P.accent,color:'#fff',borderRadius:4,padding:'3px 8px',fontFamily:F.body,fontSize:10,fontWeight:700 }}>🔒 SIGN UP</div>}
+
+    /* Empty + LOCKED — clean placeholder, whole tile opens the modal */
+    if (!slot.audited && !unlocked) return (
+      <button key={i} onClick={()=>setShowModal(true)}
+        style={{ border:`2px dashed ${P.muted}`, borderRadius:10, padding:18, background:'rgba(255,255,255,0.6)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, minHeight:230, cursor:'pointer', outline:'none', textAlign:'center', transition:'border-color .15s, background .15s' }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderColor=P.accent; e.currentTarget.style.background='#fff'; }}
+        onMouseLeave={e=>{ e.currentTarget.style.borderColor=P.muted; e.currentTarget.style.background='rgba(255,255,255,0.6)'; }}>
+        <div style={{ width:42, height:42, borderRadius:'50%', background:P.surface, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:18 }}>🔒</div>
         <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase' }}>Builder {i+1}</div>
-        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase' }}>Add a builder</div>
-        <div style={{ display:'flex', alignItems:'center', background:P.surface, border:`2px solid ${P.line}`, borderRadius:4, padding:4, boxShadow:`3px 3px 0 ${P.line}` }}>
+        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Add a builder</div>
+        <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, lineHeight:1.45, maxWidth:170 }}>Unlocks with your free account — use the banner above</div>
+      </button>
+    );
+
+    /* Empty + unlocked — input + Check */
+    if (!slot.audited) return (
+      <div key={i} style={{ border:`2px dashed ${P.muted}`, borderRadius:10, padding:18, background:'#fff', display:'flex', flexDirection:'column', gap:10, minHeight:230, justifyContent:'center' }}>
+        <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase' }}>Builder {i+1}</div>
+        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Add a builder</div>
+        <div style={{ display:'flex', alignItems:'center', background:P.surface, border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`3px 3px 0 ${P.line}` }}>
           <span style={{ padding:'0 7px', fontFamily:F.body, fontSize:11, fontWeight:600, color:P.muted, flexShrink:0 }}>https://</span>
           <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)} onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
             placeholder="theirsite.co.uk"
-            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:12, color:P.ink, padding:'7px 3px', minWidth:0 }}/>
-          <button onClick={()=>runAudit(i)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'7px 10px', fontFamily:F.body, fontWeight:700, fontSize:11, cursor:'pointer', whiteSpace:'nowrap' }}>
-            {unlocked?'Check →':'Unlock →'}
-          </button>
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:12.5, color:P.ink, padding:'8px 3px', minWidth:0 }}/>
         </div>
-        {slot.error && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.red }}>{slot.error}</div>}
+        <button onClick={()=>runAudit(i)}
+          style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:`3px 3px 0 ${P.line}`, width:'100%' }}>
+          Run full audit →
+        </button>
+        {slot.error && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.red, lineHeight:1.4 }}>{slot.error}</div>}
       </div>
     );
+
+    /* Audited result tile */
     const d=slot.data, color=sc(d.score), isTop=topPick&&d.url===topPick.url;
     return (
-      <div style={{ border:`2px solid ${isTop?P.green:P.line}`, borderRadius:8, background:isTop?'rgba(31,138,91,0.04)':'#fff', overflow:'hidden', boxShadow:`4px 4px 0 ${isTop?P.green:P.line}` }}>
+      <div key={i} style={{ border:`2px solid ${isTop?P.green:P.line}`, borderRadius:10, background:isTop?'rgba(31,138,91,0.04)':'#fff', overflow:'hidden', boxShadow:`4px 4px 0 ${isTop?P.green:P.line}` }}>
         {isTop && <div style={{ background:P.green,color:'#fff',fontFamily:F.body,fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase',padding:'4px 10px',textAlign:'center' }}>★ Top pick</div>}
         <div style={{ padding:'14px' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
-            <div>
-              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, letterSpacing:'-0.01em' }}>{d.name}</div>
-              <div style={{ fontFamily:F.body, fontSize:11, color:P.muted, marginTop:1 }}>{d.url}</div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, letterSpacing:'-0.01em', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.name}</div>
+              <div style={{ fontFamily:F.body, fontSize:11, color:P.muted, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.url}</div>
             </div>
-            <div style={{ background:color, color:color===P.fill?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'4px 9px', fontFamily:F.display, fontWeight:900, fontSize:20, lineHeight:1, boxShadow:`2px 2px 0 ${P.line}`, flexShrink:0, marginLeft:8 }}>{d.score}</div>
+            <div style={{ background:color, color:color===P.fill?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'4px 9px', fontFamily:F.display, fontWeight:900, fontSize:20, lineHeight:1, boxShadow:`2px 2px 0 ${P.line}`, flexShrink:0, marginLeft:8 }}>{d.score}</div>
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
             {d.cats.map((c,ci)=>(
@@ -2171,16 +2209,21 @@ function HomeownerCompare({ user }) {
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Up to 5 builders, side by side</h1>
         <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:680 }}>Paste up to 5 builder websites. We run the same full forensic audit on each and rank them so you know who looks most trustworthy before you pick up the phone.</p>
         {!unlocked && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:10, marginTop:14, padding:'10px 16px', background:P.fill, border:`2px solid ${P.line}`, borderRadius:6, boxShadow:`3px 3px 0 ${P.line}` }}>
-            <span style={{ fontSize:16 }}>🔒</span>
-            <span style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>Free feature — create your account to unlock. Takes 30 seconds.</span>
-            <button onClick={()=>setShowModal(true)} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'6px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer' }}>Unlock free →</button>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginTop:18, padding:'18px 22px', background:P.fill, border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`5px 5px 0 ${P.line}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
+              <div style={{ width:42, height:42, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:18, flexShrink:0 }}>🔒</div>
+              <div>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:16, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Free feature — unlock with your account</div>
+                <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, opacity:0.75, marginTop:2 }}>Takes 30 seconds. No payment, ever.</div>
+              </div>
+            </div>
+            <button onClick={()=>setShowModal(true)} style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 22px', fontFamily:F.display, fontWeight:900, fontSize:14.5, cursor:'pointer', boxShadow:`3px 3px 0 rgba(0,0,0,0.25)`, textTransform:'uppercase', letterSpacing:'-0.01em', whiteSpace:'nowrap', flexShrink:0 }}>Unlock free →</button>
           </div>
         )}
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:14, marginBottom:24 }}>
-        {slots.map((slot, i) => <Tile key={i} slot={slot} i={i}/>)}
+        {slots.map((slot, i) => renderTile(slot, i))}
       </div>
 
       {audited.length >= 2 && (

@@ -2368,7 +2368,7 @@ function HomeownerMatch({ user }) {
         <div style={{ fontSize:52, marginBottom:14 }}>🤝</div>
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>You're in safe hands</h1>
         <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 auto 8px', lineHeight:1.6, maxWidth:520 }}>
-          Thanks {form.name.split(' ')[0]} — we've got your project details. One of our team will be in touch within <b style={{ color:P.ink }}>1 working day</b> to match you with accredited builders who have availability for a <b style={{ color:P.ink }}>{form.projectType.toLowerCase()}</b> in <b style={{ color:P.ink }}>{form.location}</b>.
+          Thanks {form.name.split(' ')[0]} — we've got your project details. One of the BuilderAudit team will call you within <b style={{ color:P.ink }}>1 working day</b> to talk through your <b style={{ color:P.ink }}>{form.projectType.toLowerCase()}</b> in <b style={{ color:P.ink }}>{form.location}</b>, then put you in touch with the <b style={{ color:P.ink }}>3 best builders in your area</b>. Prefer to contact them yourself first? Just say — we'll share the directors' details and you reach out when you're ready.
         </p>
         <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:'14px auto 0', maxWidth:480 }}>
           In the meantime, run any builders you're already talking to through the <b>Compare builders</b> tab — it's free.
@@ -2464,7 +2464,7 @@ function HomeownerMatch({ user }) {
                   style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
                 <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
                   <b style={{ display:'block', marginBottom:2 }}>Connect me with recommended builders</b>
-                  Share my project details with vetted, accredited builders so they can get in touch about my project. <span style={{ color:P.muted }}>(You can opt out any time.)</span>
+                  Share my project details with up to 3 vetted, accredited local builders. On our call you choose: they contact you, or we give you the directors' details and you contact them first. <span style={{ color:P.muted }}>(You can opt out any time.)</span>
                 </span>
               </label>
             </div>
@@ -2505,10 +2505,17 @@ function HomeownerMatch({ user }) {
           </Card>
 
           <Card pad={22} style={{ background:P.ink }}>
-            <div style={{ fontFamily:F.body, fontSize:13.5, color:'rgba(255,255,255,0.85)', lineHeight:1.6, fontStyle:'italic' }}>
-              "We had three quotes within a week, all from builders who could actually start when we needed. Night and day compared to the lead sites."
-            </div>
-            <div style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.5)', marginTop:10 }}>— Homeowner, South Yorkshire</div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.fill, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>How it works</div>
+            {[
+              ['1', 'A real person from the BuilderAudit team calls you first — to understand your project properly. No bots, no forms disappearing into the void.'],
+              ['2', 'We match you with the 3 best builders in your area — vetted, accredited, and with genuine availability for your timeline.'],
+              ['3', 'You choose how it goes. Happy for them to ring you? We\'ll arrange it. Prefer to make contact yourself first? Absolutely fine — we\'ll share the personal contact details of the directors of the best local building companies, and you reach out when you\'re ready.'],
+            ].map(([n, text], i) => (
+              <div key={i} style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'9px 0', borderBottom:i<2?'1px solid rgba(255,255,255,0.12)':'none' }}>
+                <span style={{ flex:'0 0 auto', width:24, height:24, borderRadius:'50%', background:P.fill, color:P.ink, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:900, fontSize:13 }}>{n}</span>
+                <span style={{ fontFamily:F.body, fontSize:13, color:'rgba(255,255,255,0.85)', lineHeight:1.55 }}>{text}</span>
+              </div>
+            ))}
           </Card>
         </div>
       </div>

@@ -6,1501 +6,208 @@
 <link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
 <link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
-<title>BuilderAudit — UK builders' free AI website audit</title>
-<meta name="description" content="The first AI-powered website audit built for UK building companies. Paste your URL, get a score out of 100 and a fix-list in 60 seconds. Free, forever.">
-<link rel="canonical" href="https://builderaudit.co.uk/">
 
-<!-- Open Graph / social -->
+<title>Check a builder's website free — BuilderAudit</title>
+<meta name="description" content="Paste any UK builder's website and get a forensic trust score out of 100 in 60 seconds. Builders: find and fix what's losing you enquiries. Homeowners: vet a builder before you hire. Free.">
+<link rel="canonical" href="https://builderaudit.co.uk/check-builder">
+
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="BuilderAudit">
-<meta property="og:title" content="BuilderAudit — free AI website audit for UK builders">
-<meta property="og:description" content="Paste a builder's URL and get a forensic trust score out of 100 in 60 seconds. Free for builders to fix their site, free for homeowners to vet one.">
-<meta property="og:url" content="https://builderaudit.co.uk/">
+<meta property="og:title" content="Check a builder's website free — BuilderAudit">
+<meta property="og:description" content="Paste any UK builder's URL and get a forensic trust score out of 100 in 60 seconds. Free for builders and homeowners.">
+<meta property="og:url" content="https://builderaudit.co.uk/check-builder">
 <meta property="og:image" content="https://builderaudit.co.uk/assets/logo/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 
-<!-- Structured data: Organization + the product, for SEO and AI answer engines -->
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": "https://builderaudit.co.uk/#org",
-      "name": "BuilderAudit",
-      "url": "https://builderaudit.co.uk/",
-      "logo": "https://builderaudit.co.uk/assets/logo/builderaudit-mark.svg",
-      "description": "BuilderAudit is a free AI-powered website audit tool for UK building companies. It forensically scores a builder's website out of 100 across trust signals, photo authenticity, mobile experience, site speed and quote flow, and verifies the business against Companies House.",
-      "areaServed": "GB",
-      "knowsAbout": ["builder website audits", "construction marketing", "hiring a builder", "Companies House verification", "tradesperson trust signals"]
-    },
-    {
-      "@type": "WebSite",
-      "@id": "https://builderaudit.co.uk/#website",
-      "url": "https://builderaudit.co.uk/",
-      "name": "BuilderAudit",
-      "publisher": { "@id": "https://builderaudit.co.uk/#org" }
-    },
-    {
-      "@type": "Service",
-      "name": "AI builder website audit",
-      "provider": { "@id": "https://builderaudit.co.uk/#org" },
-      "areaServed": "GB",
-      "description": "Paste a UK builder's website URL and receive a trust score out of 100 with a prioritised fix-list in about 60 seconds. Builders use it to improve their site; homeowners use it to vet a builder before hiring. Free.",
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" }
-    }
-  ]
-}
-</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
-/* ════════════════════════════════════════════════════════════════
-   BA3 TOOLBOX · CLASSROOM PALETTE · CHEEKY · AIRY · DONUT
-   Faithful port of /tmp/ba-design/ba3/project to plain HTML/CSS.
-   ════════════════════════════════════════════════════════════════ */
+:root{
+  --fill:#FFD24D; --accent:#5247B8; --surface:#FBF5E1; --surfaceAlt:#fff;
+  --ink:#1B1A17; --line:#1B1A17; --muted:#5C5851; --good:#1F8A5B; --warn:#D9534F;
+  --display:'Hanken Grotesk',-apple-system,sans-serif;
+  --body:'IBM Plex Sans',-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface);color:var(--ink);font-family:var(--body);line-height:1.6}
+a{color:var(--accent)}
 
-:root {
-  --fill:     #FFD24D;
-  --accent:   #5247B8;
-  --surface:  #FBF5E1;
-  --surfaceAlt: #ffffff;
-  --ink:      #1B1A17;
-  --line:     #1B1A17;
-  --muted:    #5C5851;
-  --good:     #1F8A5B;
-  --warn:     #D9534F;
-  --display:  'Hanken Grotesk',-apple-system,sans-serif;
-  --body:     'IBM Plex Sans',-apple-system,sans-serif;
-}
+/* top bar */
+.topbar{background:var(--fill);border-bottom:3px solid var(--line);padding:16px 36px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand-name{font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);letter-spacing:-0.01em}
+.brand-name span:last-child{color:var(--accent)}
+.topbar .links{display:flex;gap:22px;align-items:center;font-family:var(--body);font-weight:600;font-size:14px}
+.topbar .links a{color:var(--ink);text-decoration:none}
 
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-  background: var(--surface);
-  font-family: var(--body);
-  color: var(--ink);
-  -webkit-font-smoothing: antialiased;
-  font-size: 15px;
-}
+/* hero */
+.hero{max-width:760px;margin:0 auto;padding:64px 24px 72px;text-align:center}
+.kicker{display:inline-block;background:var(--accent);color:#fff;font-family:var(--body);font-weight:700;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 14px;border-radius:999px;margin-bottom:22px}
+h1{font-family:var(--display);font-weight:900;font-size:52px;line-height:1.02;letter-spacing:-0.02em;margin:0 0 18px}
+h1 .alt{color:var(--accent)}
+.lead{font-size:18px;color:var(--ink);line-height:1.6;max-width:560px;margin:0 auto 14px}
 
-/* Outer shell — full-bleed, fills the screen edge-to-edge */
-.shell {
-  max-width: 100%;
-  margin: 0;
-  background: var(--surface);
-  min-height: 100vh;
-}
+/* audience toggle */
+.toggle{display:inline-flex;background:#fff;border:2px solid var(--line);border-radius:8px;padding:4px;box-shadow:3px 3px 0 var(--line);gap:2px;margin:28px 0 14px}
+.toggle button{font-family:var(--body);font-weight:700;font-size:14px;border:none;background:transparent;color:var(--muted);padding:10px 18px;border-radius:5px;cursor:pointer;transition:all .12s}
+.toggle button.on{background:var(--ink);color:#fff}
 
-/* ── HERO ── */
-.hero {
-  background: var(--fill);
-  padding: 64px 80px 80px;
-  border-bottom: 3px solid var(--line);
-  position: relative;
-  overflow: hidden;
-}
+/* mode-specific blurb */
+.blurb{font-size:15.5px;color:var(--muted);max-width:520px;margin:0 auto 26px;min-height:48px}
 
-.topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 56px; gap: 24px;
-}
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
-.brand-mark-svg { flex-shrink: 0; }
-.brand-name {
-  font-family: var(--display); font-weight: 800; font-size: 22px;
-  color: var(--ink); letter-spacing: -0.01em; line-height: 1;
-  white-space: nowrap;
-}
+/* url input */
+.url-form{display:flex;align-items:center;background:#fff;border:2.5px solid var(--line);border-radius:8px;padding:6px;max-width:600px;margin:0 auto;box-shadow:5px 5px 0 var(--line)}
+.url-form .prefix{padding:0 12px;color:var(--muted);font-size:15px;font-weight:600;flex-shrink:0}
+.url-form input{flex:1;border:none;outline:none;background:transparent;font-family:var(--body);font-size:17px;color:var(--ink);padding:12px 4px;min-width:0}
+.url-form button{background:var(--accent);color:#fff;border:2px solid var(--line);border-radius:6px;padding:13px 22px;font-family:var(--display);font-weight:800;font-size:15px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.subnote{font-size:13px;color:var(--muted);margin-top:16px}
 
-/* Audience toggle */
-.audience-toggle {
-  display: inline-flex; background: #fff;
-  border: 2px solid var(--line); border-radius: 6px;
-  padding: 4px; box-shadow: 3px 3px 0 var(--line); gap: 2px;
-}
-.audience-toggle button {
-  padding: 9px 16px; background: transparent;
-  color: var(--ink); border: none; border-radius: 4px;
-  font-family: var(--body); font-weight: 700; font-size: 13.5px;
-  letter-spacing: 0.01em; cursor: pointer; white-space: nowrap;
-  transition: background .15s, color .15s;
-}
-.audience-toggle button.on { background: var(--ink); color: #fff; }
+/* trust row */
+.trust{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;margin-top:22px;font-size:13.5px;color:var(--muted);font-weight:600}
 
-.signin {
-  background: var(--ink); color: #fff;
-  border: 2px solid var(--line); border-radius: 4px;
-  padding: 10px 18px;
-  font-family: var(--body); font-weight: 700; font-size: 14px;
-  text-decoration: none; white-space: nowrap;
-  display: inline-block;
-}
+/* what you get cards */
+.section{padding:56px 24px;border-top:3px solid var(--line)}
+.section.alt{background:#fff}
+.section-inner{max-width:1000px;margin:0 auto}
+.sec-head{text-align:center;margin-bottom:36px}
+.sec-head h2{font-family:var(--display);font-weight:900;font-size:34px;letter-spacing:-0.02em;margin:0 0 8px}
+.sec-head p{color:var(--muted);font-size:16px;margin:0}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{background:var(--surface);border:2px solid var(--line);border-radius:10px;padding:22px;box-shadow:4px 4px 0 var(--line)}
+.section.alt .card{background:#fff}
+.card .ic{font-size:26px;margin-bottom:10px}
+.card h3{font-family:var(--display);font-weight:800;font-size:17px;margin:0 0 6px;letter-spacing:-0.01em}
+.card p{font-size:14px;color:var(--muted);margin:0;line-height:1.5}
 
-/* Hero grid */
-.hero-grid {
-  display: grid; grid-template-columns: 1.1fr 0.9fr;
-  gap: 56px; align-items: center;
-}
+.footer{border-top:3px solid var(--line);padding:28px 36px;font-size:13px;color:var(--muted);text-align:center}
 
-.kicker {
-  display: inline-block; padding: 6px 14px;
-  background: var(--accent); color: #fff;
-  border-radius: 999px; font-size: 13px; font-weight: 700;
-  letter-spacing: 0.04em; text-transform: uppercase;
-  margin-bottom: 18px; white-space: nowrap;
-  font-family: var(--body);
-}
-
-.h1 {
-  font-family: var(--display); font-weight: 900;
-  font-size: 62px; line-height: 0.94;
-  letter-spacing: -0.02em; color: var(--ink);
-  margin: 0 0 24px; text-transform: uppercase;
-}
-.lead {
-  font-family: var(--body); font-size: 19px; line-height: 1.5;
-  color: var(--muted); max-width: 560px; margin: 0 0 36px;
-}
-
-/* URL input — pill with prefix + button */
-.url-input {
-  display: flex; align-items: stretch;
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 4px; padding: 6px;
-  max-width: 640px; width: 100%;
-  box-shadow: 5px 5px 0 var(--line);
-}
-.url-input .prefix {
-  padding: 0 16px; display: flex; align-items: center;
-  color: var(--muted); font-family: var(--body);
-  font-size: 16px; font-weight: 600; flex-shrink: 0;
-}
-.url-input input {
-  flex: 1; min-width: 0; border: none; outline: none;
-  background: transparent;
-  font-family: var(--body); font-size: 18px;
-  color: var(--ink); padding: 16px 6px;
-}
-.url-input button {
-  background: var(--accent); color: #fff;
-  border: 2px solid var(--line); border-radius: 4px;
-  padding: 16px 28px;
-  font-family: var(--body); font-weight: 700; font-size: 16px;
-  cursor: pointer; white-space: nowrap; flex-shrink: 0;
-}
-.url-input button:hover { background: #3E33A0; }
-
-.trust-row {
-  display: flex; gap: 18px; margin-top: 18px;
-  font-family: var(--body); font-size: 13px; color: var(--muted);
-  flex-wrap: wrap;
-}
-
-/* Stamp — rotated 8° */
-.stamp {
-  position: absolute; top: 184px; right: 64px;
-  transform: rotate(8deg); pointer-events: none;
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 4px; padding: 8px 14px;
-  font-family: var(--body); font-size: 12px; font-weight: 700;
-  color: var(--ink); letter-spacing: 0.04em; text-transform: uppercase;
-  box-shadow: 3px 3px 0 var(--line); white-space: nowrap;
-  z-index: 5;
-}
-
-/* Hero scene — report preview wrapper */
-.hero-scene {
-  display: grid; place-items: center;
-  padding: 36px 28px; /* breathing room for the floating chips */
-}
-
-/* ── Report Preview (hero right col) ── */
-.report-preview {
-  position: relative;
-  width: 100%; max-width: 420px;
-  margin: 0 auto;
-}
-
-/* floating score chip — top-left, tilted */
-.rp-score-chip {
-  position: absolute; top: -22px; left: -18px; z-index: 3;
-  background: var(--accent); color: #fff;
-  border: 2px solid var(--line); border-radius: 6px;
-  padding: 10px 14px; box-shadow: 4px 4px 0 var(--line);
-}
-.rp-rotate-neg { transform: rotate(-5deg); }
-.rp-chip-label { font-family: var(--body); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; white-space: nowrap; }
-.rp-chip-num   { font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 1; }
-.rp-chip-denom { font-size: 14px; opacity: 0.8; }
-
-/* floating verified badge — bottom-right, tilted */
-.rp-badge {
-  position: absolute; bottom: -18px; right: -14px; z-index: 3;
-  background: #fff; color: var(--ink);
-  border: 2px solid var(--line); border-radius: 6px;
-  padding: 8px 12px; box-shadow: 4px 4px 0 var(--line);
-  display: flex; align-items: center; gap: 8px;
-}
-.rp-rotate-pos { transform: rotate(4deg); }
-.rp-badge-check {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: #1F8A5B; color: #fff;
-  display: grid; place-items: center;
-  font-size: 12px; font-weight: 800; flex-shrink: 0;
-}
-.rp-badge-text { font-family: var(--body); font-size: 12px; font-weight: 700; line-height: 1.2; }
-.rp-badge-sub  { color: var(--muted); font-weight: 600; }
-
-/* report card */
-.rp-card {
-  background: #fff;
-  border: 2.5px solid var(--line); border-radius: 10px;
-  box-shadow: 10px 12px 0 var(--line);
-  overflow: hidden;
-  transform: rotate(1.5deg);
-}
-
-/* browser chrome */
-.rp-chrome {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; border-bottom: 2px solid var(--line);
-  background: var(--surface);
-}
-.rp-dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--line); flex-shrink: 0; }
-.rp-dot-r { background: #D9534F; }
-.rp-dot-a { background: #FFD24D; }
-.rp-dot-g { background: #1F8A5B; }
-.rp-url {
-  flex: 1; margin-left: 8px; background: #fff;
-  border: 1.5px solid var(--line); border-radius: 999px;
-  padding: 4px 12px; font-family: var(--body);
-  font-size: 11px; color: var(--muted); font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-
-/* report header */
-.rp-header {
-  padding: 20px 22px; display: flex; gap: 18px; align-items: center;
-  border-bottom: 1px dashed var(--line);
-}
-.rp-donut { flex: 0 0 auto; }
-.rp-summary { min-width: 0; }
-.rp-eyebrow { font-family: var(--body); font-size: 10.5px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rp-headline { font-family: var(--display); font-weight: 800; font-size: 17px; color: var(--ink); line-height: 1.2; letter-spacing: -0.01em; }
-.rp-status-chip {
-  display: inline-flex; align-items: center; gap: 5px; margin-top: 7px;
-  padding: 3px 9px; background: #1F8A5B; color: #fff;
-  border-radius: 999px; font-family: var(--body); font-weight: 700; font-size: 11px;
-}
-.rp-status-green { background: #1F8A5B; }
-
-/* category bars */
-.rp-cats { padding: 16px 22px 8px; }
-.rp-cats-head { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 10px; }
-.rp-cat-row { display: grid; grid-template-columns: 92px 1fr 24px; align-items: center; gap: 10px; margin-bottom: 8px; }
-.rp-cat-name { font-family: var(--body); font-weight: 600; font-size: 11.5px; color: var(--ink); }
-.rp-bar { height: 9px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 5px; overflow: hidden; }
-.rp-bar div { height: 100%; }
-.rp-cat-num { font-family: var(--body); font-weight: 700; font-size: 11px; color: var(--ink); text-align: right; }
-
-/* findings */
-.rp-findings { padding: 12px 22px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.rp-finding { border-radius: 8px; padding: 9px 11px; }
-.rp-finding-risk { background: rgba(217,83,79,0.08); border: 1.5px solid #D9534F; }
-.rp-finding-ok   { background: rgba(31,138,91,0.08);  border: 1.5px solid #1F8A5B; }
-.rp-finding-label { font-family: var(--body); font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 3px; }
-.rp-lbl-risk { color: #D9534F; }
-.rp-lbl-ok   { color: #1F8A5B; }
-.rp-finding-text { font-family: var(--body); font-size: 11.5px; color: var(--ink); line-height: 1.35; }
-
-/* ── SECTION TITLE BLOCK ── */
-.section { padding: 88px 80px; border-bottom: 3px solid var(--line); }
-.section.surface { background: var(--surface); }
-.section.fill    { background: var(--fill); }
-.section.ink     { background: var(--ink); position: relative; overflow: hidden; }
-.section-head { text-align: center; margin-bottom: 48px; }
-.section-h2 {
-  font-family: var(--display); font-weight: 900;
-  font-size: 52px; line-height: 1.05; letter-spacing: -0.02em;
-  color: var(--ink); margin: 0 auto 16px; max-width: 780px;
-  text-transform: uppercase;
-}
-.section-sub {
-  font-family: var(--body); font-size: 18px; color: var(--muted);
-  max-width: 640px; margin: 0 auto;
-}
-
-/* ── WHAT WE CHECK GRID ── */
-.what-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 22px; max-width: 1100px; margin: 0 auto;
-}
-.what-card {
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 4px; padding: 24px;
-  box-shadow: 4px 4px 0 var(--line);
-  display: flex; gap: 18px; align-items: flex-start;
-}
-.what-card img { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
-.what-title {
-  font-family: var(--display); font-weight: 800; font-size: 22px;
-  color: var(--ink); margin: 0 0 4px;
-  letter-spacing: -0.01em; text-transform: uppercase;
-}
-.what-desc {
-  font-family: var(--body); font-size: 14.5px; color: var(--muted);
-  line-height: 1.45;
-}
-
-/* ── SAMPLE REPORT ── */
-.report-card {
-  background: #fff; border: 2px solid var(--line);
-  border-radius: 4px; padding: 36px;
-  box-shadow: 4px 4px 0 var(--line);
-  max-width: 1080px; margin: 0 auto;
-}
-.report-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 24px; border-bottom: 2px dashed var(--line);
-  margin-bottom: 28px;
-}
-.report-eyebrow {
-  font-family: var(--body); font-size: 13px; color: var(--muted);
-  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  margin-bottom: 4px;
-}
-.report-title {
-  font-family: var(--display); font-weight: 800; font-size: 28px;
-  color: var(--ink); letter-spacing: -0.01em; text-transform: uppercase;
-}
-.report-sublabel {
-  font-family: var(--body); font-size: 14px; color: var(--muted); margin-top: 2px;
-}
-.report-scanned {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--body); font-size: 12px; color: var(--muted);
-}
-.report-scanned .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
-
-.report-body {
-  display: grid; grid-template-columns: 280px 1fr; gap: 36px;
-}
-.score-block {
-  display: flex; flex-direction: column; align-items: center; gap: 18px;
-}
-.score-label {
-  font-family: var(--body); font-size: 13px; color: var(--muted);
-  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  margin-bottom: 4px; text-align: center;
-}
-.score-status {
-  font-family: var(--display); font-weight: 600; font-size: 20px;
-  color: var(--ink); text-align: center;
-}
-
-.cat-list-head {
-  font-family: var(--body); font-size: 13px; color: var(--muted);
-  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  margin-bottom: 14px;
-}
-.cat-row {
-  display: grid; grid-template-columns: 180px 1fr 44px;
-  align-items: center; gap: 16px; margin-bottom: 11px;
-}
-.cat-name {
-  font-family: var(--body); font-weight: 600; font-size: 14px; color: var(--ink);
-}
-.cat-bar {
-  height: 14px; background: var(--surface);
-  border: 1.5px solid var(--line); border-radius: 2px; overflow: hidden;
-}
-.cat-bar > div { height: 100%; }
-.cat-score {
-  font-family: var(--body); font-weight: 700; font-size: 14px;
-  color: var(--ink); text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.findings-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 18px; margin-top: 32px;
-}
-.findings-card {
-  background: var(--surface); border: 2px solid var(--line);
-  padding: 22px; border-radius: 4px;
-}
-.findings-card .lbl {
-  font-family: var(--body); font-size: 12px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px;
-}
-.findings-card .lbl.risk { color: var(--warn); }
-.findings-card .lbl.fix  { color: var(--good); }
-.findings-card ol, .findings-card ul {
-  margin: 0; padding: 0; list-style: none;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.findings-card li {
-  font-family: var(--body); font-size: 14.5px; color: var(--ink);
-  display: flex; gap: 10px;
-}
-.findings-card li b { font-weight: 700; flex-shrink: 0; }
-
-/* ── COMPETITOR BENCHMARKING SECTION ── */
-.comp-demo {
-  display: grid; grid-template-columns: 1fr auto 1fr;
-  gap: 20px; align-items: start;
-  max-width: 1100px; margin: 0 auto 36px;
-}
-
-/* Empty competitor slot */
-.comp-slot {
-  border: 2.5px dashed var(--line); border-radius: 8px;
-  padding: 28px 24px; background: #fff;
-  display: flex; flex-direction: column; gap: 10px;
-  min-height: 380px; justify-content: center;
-}
-.comp-slot-label { font-family: var(--body); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.comp-slot-h { font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--ink); text-transform: uppercase; letter-spacing: -0.01em; margin: 0; }
-.comp-slot-sub { font-family: var(--body); font-size: 14px; color: var(--muted); line-height: 1.5; margin: 0; }
-.comp-slot-input {
-  display: flex; align-items: center;
-  background: var(--surface); border: 2px solid var(--line); border-radius: 4px;
-  padding: 4px; gap: 0; box-shadow: 3px 3px 0 var(--line); margin-top: 4px;
-}
-.comp-prefix { font-family: var(--body); font-size: 13px; font-weight: 600; color: var(--muted); padding: 0 10px; flex-shrink: 0; }
-.comp-placeholder { flex: 1; font-family: var(--body); font-size: 14px; color: var(--muted); padding: 9px 4px; font-style: italic; }
-.comp-btn {
-  background: var(--accent); color: #fff;
-  border: 2px solid var(--line); border-radius: 4px;
-  padding: 9px 14px; font-family: var(--body); font-size: 13px; font-weight: 700;
-  white-space: nowrap; flex-shrink: 0;
-}
-.comp-slot-note { font-family: var(--body); font-size: 12px; color: var(--muted); }
-
-/* Your score card (centre) */
-.comp-you {
-  background: var(--fill); border: 3px solid var(--line); border-radius: 8px;
-  padding: 22px 20px; box-shadow: 6px 6px 0 var(--line);
-  display: flex; flex-direction: column; gap: 6px;
-  min-width: 240px; max-width: 280px;
-}
-.comp-you-label { font-family: var(--body); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
-.comp-you-name { font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--ink); letter-spacing: -0.01em; }
-.comp-you-url { font-family: var(--body); font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-.comp-you-score-chip {
-  display: inline-flex; align-items: baseline; gap: 2px;
-  background: var(--ink); color: #fff;
-  border: 2px solid var(--line); border-radius: 4px;
-  padding: 8px 14px; width: fit-content;
-  box-shadow: 3px 3px 0 var(--line); margin-bottom: 8px;
-}
-.comp-score-num { font-family: var(--display); font-weight: 900; font-size: 36px; line-height: 1; }
-.comp-score-sub { font-family: var(--body); font-size: 13px; color: rgba(255,255,255,0.65); font-weight: 600; }
-
-/* mini bars */
-.comp-bars { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.comp-bar-row { display: grid; grid-template-columns: 60px 1fr 22px; align-items: center; gap: 8px; }
-.comp-bar-row span { font-family: var(--body); font-size: 11.5px; font-weight: 600; color: var(--ink); }
-.comp-bar { height: 8px; background: rgba(27,26,23,0.12); border-radius: 3px; overflow: hidden; }
-.comp-bar div { height: 100%; border-radius: 3px; }
-.comp-bar-row b { font-family: var(--body); font-size: 11px; font-weight: 700; color: var(--ink); text-align: right; }
-
-.comp-you-good { font-family: var(--body); font-size: 12.5px; color: #1F8A5B; padding: 6px 10px; background: rgba(31,138,91,0.12); border-radius: 5px; line-height: 1.4; }
-.comp-you-risk { font-family: var(--body); font-size: 12.5px; color: #D9534F; padding: 6px 10px; background: rgba(217,83,79,0.08); border-radius: 5px; line-height: 1.4; margin-top: 4px; }
-
-/* CTA row */
-.comp-cta-row {
-  max-width: 1100px; margin: 0 auto;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 24px; padding: 22px 28px;
-  background: var(--ink); color: #fff;
-  border: 2px solid var(--line); border-radius: 8px;
-  box-shadow: 5px 5px 0 var(--line);
-}
-.comp-cta-text { font-family: var(--body); font-size: 15px; color: rgba(255,255,255,0.85); line-height: 1.5; }
-.comp-cta-text strong { color: #fff; }
-.comp-cta-btn {
-  background: var(--fill); color: var(--ink);
-  border: 2px solid var(--line); border-radius: 4px;
-  padding: 13px 22px; font-family: var(--body); font-weight: 700; font-size: 15px;
-  text-decoration: none; white-space: nowrap; flex-shrink: 0;
-  box-shadow: 4px 4px 0 var(--line);
-}
-
-@media (max-width: 900px) {
-  .comp-demo { grid-template-columns: 1fr; }
-  .comp-you { max-width: 100%; }
-  .comp-cta-row { flex-direction: column; text-align: center; }
-}
-
-/* ── HOMEOWNER COMPARE TILES ── */
-.ho-comp-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 14px; max-width: 1100px; margin: 0 auto 32px;
-}
-.ho-tile {
-  border: 2px solid var(--line); border-radius: 8px; background: #fff;
-  overflow: hidden; box-shadow: 4px 4px 0 var(--line);
-}
-.ho-tile-top { border-color: #1F8A5B; box-shadow: 4px 4px 0 #1F8A5B; background: rgba(31,138,91,0.03); }
-.ho-tile-top-badge { background: #1F8A5B; color: #fff; font-family: var(--body); font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; padding: 4px 10px; text-align: center; }
-.ho-tile-body { padding: 14px; }
-.ho-tile-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.ho-tile-name { font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink); letter-spacing: -0.01em; }
-.ho-tile-url { font-family: var(--body); font-size: 11px; color: var(--muted); margin-top: 1px; }
-.ho-tile-score { color: #fff; border: 2px solid var(--line); border-radius: 4px; padding: 4px 9px; font-family: var(--display); font-weight: 900; font-size: 20px; line-height: 1; box-shadow: 2px 2px 0 var(--line); flex-shrink: 0; }
-.ho-tile-bars { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
-.ho-bar-row { display: grid; grid-template-columns: 52px 1fr 18px; align-items: center; gap: 5px; }
-.ho-bar-row span { font-family: var(--body); font-size: 10px; font-weight: 600; color: var(--ink); }
-.ho-bar { height: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
-.ho-bar div { height: 100%; }
-.ho-bar-row b { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--ink); text-align: right; }
-.ho-tile-verdict { font-family: var(--body); font-size: 11.5px; font-weight: 600; padding: 5px 8px; border-radius: 5px; }
-.ho-verdict-green { color: #1F8A5B; background: rgba(31,138,91,0.08); }
-.ho-verdict-amber { color: #92400E; background: rgba(217,119,6,0.08); }
-.ho-verdict-red   { color: #A02020; background: rgba(217,83,79,0.08); }
-/* empty tiles */
-.ho-tile-empty { border-style: dashed; box-shadow: none; display: flex; flex-direction: column; gap: 8px; padding: 20px 16px; justify-content: center; min-height: 200px; }
-.ho-tile-empty-label { font-family: var(--body); font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
-.ho-tile-empty-h { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink); text-transform: uppercase; }
-.ho-tile-empty-bar { display: flex; align-items: center; background: var(--surface); border: 2px solid var(--line); border-radius: 6px; padding: 4px; box-shadow: 2px 2px 0 var(--line); font-family: var(--body); font-size: 12px; gap: 4px; min-width: 0; }
-.ho-tile-empty-bar span:first-child { color: var(--muted); font-weight: 600; padding: 0 6px; flex-shrink: 0; }
-.ho-tile-empty-ph { flex: 1; color: var(--muted); font-style: italic; padding: 7px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.ho-tile-empty-btn { display: block; width: 100%; box-sizing: border-box; text-align: center; background: var(--accent); color: #fff; border: 2px solid var(--line); border-radius: 6px; padding: 9px 12px; font-family: var(--body); font-weight: 700; font-size: 12.5px; box-shadow: 2px 2px 0 var(--line); }
-
-@media (max-width: 700px) { .ho-comp-grid { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 480px) { .ho-comp-grid { grid-template-columns: 1fr; } }
-
-/* ── HOW IT WORKS ── */
-.how-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 24px; max-width: 1100px; margin: 0 auto;
-}
-.how-card {
-  background: #fff; border: 2px solid var(--line); border-radius: 4px;
-  padding: 24px; position: relative;
-  box-shadow: 4px 4px 0 var(--line);
-}
-.how-num {
-  position: absolute; top: -22px; left: 20px;
-  width: 44px; height: 44px; border-radius: 4px;
-  background: var(--fill); border: 2px solid var(--line);
-  display: grid; place-items: center;
-  font-family: var(--display); font-weight: 900; font-size: 22px;
-  color: var(--ink);
-}
-.how-spacer { height: 28px; }
-.how-title {
-  font-family: var(--display); font-weight: 800; font-size: 22px;
-  color: var(--ink); margin: 0 0 8px;
-  letter-spacing: -0.01em; text-transform: uppercase;
-}
-.how-desc {
-  font-family: var(--body); font-size: 14.5px; color: var(--muted); line-height: 1.5;
-}
-
-/* ── TWO SIDED CARDS ── */
-.two-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 28px; max-width: 1100px; margin: 0 auto;
-}
-.two-card {
-  border: 2px solid var(--line); border-radius: 4px; padding: 36px;
-  box-shadow: 6px 6px 0 var(--line);
-  position: relative; overflow: hidden;
-}
-.two-card.builder   { background: #fff; }
-.two-card.homeowner { background: var(--surface); }
-.two-card .corner-icon {
-  position: absolute; top: -12px; right: -10px;
-  transform: rotate(8deg);
-}
-.two-card .corner-icon img { width: 120px; height: 120px; object-fit: contain; }
-.two-side {
-  display: inline-block; padding: 4px 12px;
-  background: var(--ink); color: #fff;
-  border-radius: 999px; font-family: var(--body);
-  font-size: 11px; font-weight: 700;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  margin-bottom: 16px;
-}
-.two-card h3 {
-  font-family: var(--display); font-weight: 900; font-size: 34px;
-  line-height: 1.05; color: var(--ink); margin: 0 0 12px;
-  letter-spacing: -0.02em; text-transform: uppercase;
-  max-width: 70%;
-}
-.two-card p {
-  font-family: var(--body); font-size: 16px; color: var(--muted);
-  margin: 0 0 22px; max-width: 90%; line-height: 1.5;
-}
-.two-card ul {
-  margin: 0; padding: 0; list-style: none;
-  display: flex; flex-direction: column; gap: 9px;
-}
-.two-card li {
-  font-family: var(--body); font-size: 14.5px; color: var(--ink);
-  display: flex; gap: 10px; align-items: baseline;
-}
-.two-card li .check {
-  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
-  margin-top: 2px;
-}
-
-/* ── FINAL CTA on dark ink ── */
-.section.ink .stripes {
-  position: absolute; inset: 0; opacity: 0.08;
-  background-image: repeating-linear-gradient(135deg, var(--fill) 0 40px, transparent 40px 80px);
-}
-.final-block {
-  position: relative; max-width: 900px; margin: 0 auto; text-align: center;
-}
-.final-kicker {
-  display: inline-block; padding: 6px 14px;
-  background: var(--fill); color: var(--ink); border: 2px solid var(--fill);
-  border-radius: 999px; font-family: var(--body); font-size: 13px;
-  font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-  margin-bottom: 20px;
-}
-.final-h2 {
-  font-family: var(--display); font-weight: 900;
-  font-size: 68px; line-height: 1; letter-spacing: -0.025em;
-  color: #fff; margin: 0 0 22px; text-transform: uppercase;
-}
-.final-sub {
-  font-family: var(--body); font-size: 19px;
-  color: rgba(255,255,255,0.78); max-width: 600px; margin: 0 auto 36px;
-}
-.final-url {
-  display: flex; align-items: stretch;
-  background: #fff; border: 2px solid #fff; border-radius: 4px;
-  padding: 6px; max-width: 600px; margin: 0 auto;
-  box-shadow: 6px 6px 0 var(--fill);
-}
-.final-url .prefix {
-  padding: 0 14px; display: flex; align-items: center;
-  color: var(--muted); font-family: var(--body);
-  font-size: 15px; font-weight: 600; flex-shrink: 0;
-}
-.final-url input {
-  flex: 1; min-width: 0; border: none; outline: none;
-  background: transparent; font-family: var(--body);
-  font-size: 17px; color: var(--ink); padding: 14px 4px;
-}
-.final-url button {
-  background: var(--accent); color: #fff;
-  border: 2px solid var(--accent); border-radius: 4px;
-  padding: 14px 22px;
-  font-family: var(--body); font-weight: 700; font-size: 15px;
-  cursor: pointer; white-space: nowrap; flex-shrink: 0;
-}
-
-/* ── FOOTER ── */
-.footer {
-  background: var(--surface); padding: 36px 80px;
-  font-family: var(--body);
-  display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: 16px;
-}
-.footer-brand { display: flex; align-items: center; gap: 10px; }
-.footer-brand .mini-svg { flex-shrink: 0; }
-.footer-brand .name { font-weight: 700; color: var(--ink); font-size: 15px; font-family: var(--display); line-height: 1; white-space: nowrap; }
-.footer-brand .tagline { color: var(--muted); font-size: 13px; margin-left: 8px; }
-.footer-links { display: flex; gap: 24px; color: var(--muted); font-size: 13px; }
-.footer-links a { color: var(--muted); text-decoration: none; }
-.footer-links a:hover { color: var(--ink); }
-
-/* ── RESPONSIVE ── */
-@media (max-width: 1100px) {
-  .hero-grid { grid-template-columns: 1fr; }
-  .hero-scene { order: -1; padding: 48px 24px 24px; } /* extra top padding for floating chip */
-  .report-preview { max-width: 340px; }
-  .h1 { font-size: 56px; }
-  .what-grid, .how-grid { grid-template-columns: repeat(2, 1fr); }
-  .two-grid, .findings-grid, .report-body { grid-template-columns: 1fr; }
-  .stamp { display: none; }
-}
-@media (max-width: 700px) {
-  .hero, .section, .footer { padding-left: 24px; padding-right: 24px; }
-  .topbar { flex-wrap: wrap; }
-  .h1 { font-size: 40px; line-height: 1; }
-  .section-h2, .final-h2 { font-size: 34px; }
-  .what-grid, .how-grid { grid-template-columns: 1fr; }
-  .cat-row { grid-template-columns: 120px 1fr 36px; gap: 10px; font-size: 13px; }
-  .two-card h3 { font-size: 26px; max-width: 100%; }
-  .two-card .corner-icon img { width: 80px; height: 80px; }
+@media (max-width:680px){
+  h1{font-size:38px}
+  .cards{grid-template-columns:1fr}
+  .topbar .links a:not(.cta-link){display:none}
+  .url-form{flex-wrap:wrap}
+  .url-form button{width:100%}
 }
 </style>
 </head>
 <body>
-<div class="shell">
 
-  <!-- ═══════════ HERO ═══════════ -->
-  <section class="hero">
-    <div class="topbar">
-      <a href="/" class="brand">
-        <svg class="brand-mark-svg" width="40" height="41" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/><path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/><path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/></svg>
-        <span class="brand-name"><span>Builder</span><span style="color:var(--accent)">Audit</span></span>
-      </a>
+<header class="topbar">
+  <a href="/" class="brand">
+    <svg width="38" height="39" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/></svg>
+    <span class="brand-name"><span>Builder</span><span>Audit</span></span>
+  </a>
+  <nav class="links">
+    <a href="/insights">Insights</a>
+    <a href="/" class="cta-link">Home</a>
+    <a href="/login">Sign in</a>
+  </nav>
+</header>
 
-      <div class="audience-toggle" role="tablist" aria-label="Choose your view">
-        <button type="button" role="tab" data-mode="builder" class="on" onclick="setMode('builder')">I'm a builder</button>
-        <button type="button" role="tab" data-mode="homeowner" onclick="setMode('homeowner')">I'm a homeowner</button>
-      </div>
+<section class="hero">
+  <div class="kicker">Free · 60 seconds · no sign-up to try</div>
+  <h1 id="h1">Check a builder's website, <span class="alt">free</span></h1>
+  <p class="lead">Paste any UK builder's URL. We examine it the way a careful homeowner would — photos, reviews, trade badges, Companies House — and grade it out of 100.</p>
 
-      <div style="display:flex;align-items:center;gap:18px">
-        <a href="/insights" class="signin">Insights</a>
-        <a href="/login" class="signin">Sign in</a>
-      </div>
+  <div class="toggle" role="tablist" aria-label="Choose your view">
+    <button type="button" role="tab" data-mode="builder" class="on" onclick="setMode('builder')">I'm a builder</button>
+    <button type="button" role="tab" data-mode="homeowner" onclick="setMode('homeowner')">I'm a homeowner</button>
+  </div>
+  <p class="blurb" id="blurb">Checking your own site? See exactly what's losing you enquiries — and get a plain-English fix-list.</p>
+
+  <form class="url-form" id="checkForm" onsubmit="return runCheck(event)">
+    <span class="prefix">https://</span>
+    <input type="text" id="urlInput" placeholder="builderwebsite.co.uk" autocomplete="off" required>
+    <button type="submit" id="checkBtn">Check this builder →</button>
+  </form>
+  <div class="subnote" id="subnote">This is an independent forensic check. The builder is never contacted or notified.</div>
+
+  <div class="trust">
+    <span>✓ No sign-up to try</span>
+    <span>✓ Results in ~60 seconds</span>
+    <span>✓ Works on any UK builder</span>
+  </div>
+</section>
+
+<section class="section alt" id="whatSection">
+  <div class="section-inner">
+    <div class="sec-head">
+      <h2 id="whatH2">What the check covers</h2>
+      <p id="whatSub">The nine things that decide whether a homeowner trusts a builder enough to get in touch.</p>
     </div>
-
-    <div class="stamp" id="heroStamp">UK builders · free tool</div>
-
-    <div class="hero-grid">
-      <div>
-        <div class="kicker">Free · 60 seconds · no sign-up</div>
-        <h1 class="h1" id="heroH1">How good is your building company's website, really?</h1>
-        <p class="lead" id="heroSub">Paste your URL. We'll poke around like a homeowner would — photos, reviews, the lot — and grade your site out of 100. With actual things to fix, in plain English.</p>
-
-        <form class="url-input" id="auditForm" onsubmit="return startAudit(event)">
-          <div class="prefix">https://</div>
-          <input type="text" id="urlInput" placeholder="heartlybuilders.co.uk" autocomplete="off" required>
-          <button type="submit" id="auditBtn"><span id="auditLabel">Run my free audit</span> →</button>
-        </form>
-
-        <div class="trust-row" id="trustRow">
-          <span>✓ Free, forever</span>
-          <span>✓ No sign-up to try</span>
-          <span>✓ Results in 60 seconds</span>
-        </div>
-      </div>
-
-      <div class="hero-scene" id="heroScene">
-        <!-- Report preview — switches between builder and homeowner versions -->
-
-        <!-- BUILDER preview (score 64, risks visible) -->
-        <div id="heroPreviewBuilder" class="report-preview">
-          <!-- floating score chip -->
-          <div class="rp-score-chip rp-rotate-neg">
-            <div class="rp-chip-label">Your score</div>
-            <div class="rp-chip-num">64<span class="rp-chip-denom">/100</span></div>
-          </div>
-          <!-- floating verified badge -->
-          <div class="rp-badge rp-rotate-pos">
-            <span class="rp-badge-check">✓</span>
-            <div class="rp-badge-text">14 reviews<br><span class="rp-badge-sub">verified</span></div>
-          </div>
-          <!-- report card -->
-          <div class="rp-card">
-            <!-- browser chrome -->
-            <div class="rp-chrome">
-              <span class="rp-dot rp-dot-r"></span>
-              <span class="rp-dot rp-dot-a"></span>
-              <span class="rp-dot rp-dot-g"></span>
-              <div class="rp-url">builderaudit.co.uk/report</div>
-            </div>
-            <!-- header: donut + summary -->
-            <div class="rp-header">
-              <svg width="92" height="92" viewBox="0 0 92 92" class="rp-donut" aria-hidden="true">
-                <circle cx="46" cy="46" r="34" fill="none" stroke="#1B1A17" stroke-width="11" opacity="0.12"/>
-                <circle cx="46" cy="46" r="34" fill="none" stroke="#FFD24D" stroke-width="11"
-                  stroke-dasharray="136.4 213.6" stroke-dashoffset="53.4"
-                  transform="rotate(-90 46 46)" stroke-linecap="round"/>
-                <text x="46" y="44" text-anchor="middle" dominant-baseline="middle"
-                  style="font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;fill:#1B1A17">64</text>
-                <text x="46" y="62" text-anchor="middle"
-                  style="font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:8px;fill:#5C5851;letter-spacing:0.1em">/ 100</text>
-              </svg>
-              <div class="rp-summary">
-                <div class="rp-eyebrow">Audit · heartlybuilders.co.uk</div>
-                <div class="rp-headline">Could be better — climbing fast</div>
-                <div class="rp-status-chip">↑ +6 since last scan</div>
-              </div>
-            </div>
-            <!-- category bars -->
-            <div class="rp-cats">
-              <div class="rp-cats-head">Score by category</div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Photo quality</span><div class="rp-bar"><div style="width:48%;background:#D9534F"></div></div><span class="rp-cat-num">48</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Trust signals</span><div class="rp-bar"><div style="width:72%;background:#1F8A5B"></div></div><span class="rp-cat-num">72</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Mobile friendly</span><div class="rp-bar"><div style="width:86%;background:#1F8A5B"></div></div><span class="rp-cat-num">86</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Site speed</span><div class="rp-bar"><div style="width:54%;background:#D9534F"></div></div><span class="rp-cat-num">54</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Quote flow</span><div class="rp-bar"><div style="width:68%;background:#FFD24D"></div></div><span class="rp-cat-num">68</span></div>
-            </div>
-            <!-- risk + fix -->
-            <div class="rp-findings">
-              <div class="rp-finding rp-finding-risk">
-                <div class="rp-finding-label rp-lbl-risk">⚠ Risk</div>
-                <div class="rp-finding-text">6 of 9 photos look like stock</div>
-              </div>
-              <div class="rp-finding rp-finding-ok">
-                <div class="rp-finding-label rp-lbl-ok">✓ Fix</div>
-                <div class="rp-finding-text">Swap in real job photos</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- HOMEOWNER preview (score 78, positive signals) -->
-        <div id="heroPreviewHomeowner" class="report-preview" style="display:none">
-          <!-- floating score chip -->
-          <div class="rp-score-chip rp-rotate-neg">
-            <div class="rp-chip-label">Their score</div>
-            <div class="rp-chip-num">78<span class="rp-chip-denom">/100</span></div>
-          </div>
-          <!-- floating verified badge -->
-          <div class="rp-badge rp-rotate-pos">
-            <span class="rp-badge-check">✓</span>
-            <div class="rp-badge-text">14 reviews<br><span class="rp-badge-sub">verified</span></div>
-          </div>
-          <!-- report card -->
-          <div class="rp-card">
-            <!-- browser chrome -->
-            <div class="rp-chrome">
-              <span class="rp-dot rp-dot-r"></span>
-              <span class="rp-dot rp-dot-a"></span>
-              <span class="rp-dot rp-dot-g"></span>
-              <div class="rp-url">builderaudit.co.uk/check</div>
-            </div>
-            <!-- header: donut + summary -->
-            <div class="rp-header">
-              <svg width="92" height="92" viewBox="0 0 92 92" class="rp-donut" aria-hidden="true">
-                <circle cx="46" cy="46" r="34" fill="none" stroke="#1B1A17" stroke-width="11" opacity="0.12"/>
-                <circle cx="46" cy="46" r="34" fill="none" stroke="#1F8A5B" stroke-width="11"
-                  stroke-dasharray="166.3 213.6" stroke-dashoffset="53.4"
-                  transform="rotate(-90 46 46)" stroke-linecap="round"/>
-                <text x="46" y="44" text-anchor="middle" dominant-baseline="middle"
-                  style="font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;fill:#1B1A17">78</text>
-                <text x="46" y="62" text-anchor="middle"
-                  style="font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:8px;fill:#5C5851;letter-spacing:0.1em">/ 100</text>
-              </svg>
-              <div class="rp-summary">
-                <div class="rp-eyebrow">Check · theirbuilding.co.uk</div>
-                <div class="rp-headline">Looks a safe pair of hands</div>
-                <div class="rp-status-chip rp-status-green">Above the local average</div>
-              </div>
-            </div>
-            <!-- category bars -->
-            <div class="rp-cats">
-              <div class="rp-cats-head">Score by category</div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Photo quality</span><div class="rp-bar"><div style="width:82%;background:#1F8A5B"></div></div><span class="rp-cat-num">82</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Trust signals</span><div class="rp-bar"><div style="width:88%;background:#1F8A5B"></div></div><span class="rp-cat-num">88</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Mobile friendly</span><div class="rp-bar"><div style="width:74%;background:#1F8A5B"></div></div><span class="rp-cat-num">74</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Site speed</span><div class="rp-bar"><div style="width:66%;background:#FFD24D"></div></div><span class="rp-cat-num">66</span></div>
-              <div class="rp-cat-row"><span class="rp-cat-name">Quote flow</span><div class="rp-bar"><div style="width:58%;background:#FFD24D"></div></div><span class="rp-cat-num">58</span></div>
-            </div>
-            <!-- watch out + good sign -->
-            <div class="rp-findings">
-              <div class="rp-finding rp-finding-risk">
-                <div class="rp-finding-label rp-lbl-risk">⚠ Watch out</div>
-                <div class="rp-finding-text">Quote form is a bit long-winded</div>
-              </div>
-              <div class="rp-finding rp-finding-ok">
-                <div class="rp-finding-label rp-lbl-ok">✓ Good sign</div>
-                <div class="rp-finding-text">Insurance &amp; reviews verified</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="cards">
+      <div class="card"><div class="ic">📸</div><h3>Photo authenticity</h3><p id="c1">Are the job photos real and theirs — or stock and AI-generated? We reverse-image-search every one.</p></div>
+      <div class="card"><div class="ic">🛡</div><h3>Trust signals</h3><p id="c2">Reviews, FMB / TrustMark / CHAS accreditation, and public liability insurance.</p></div>
+      <div class="card"><div class="ic">🏛</div><h3>Companies House</h3><p id="c3">We verify the business is genuinely registered, active, and show you the directors and filing health.</p></div>
+      <div class="card"><div class="ic">📱</div><h3>Mobile & speed</h3><p id="c4">Whether the site actually works on a phone and loads fast enough not to lose visitors.</p></div>
+      <div class="card"><div class="ic">💬</div><h3>Quote flow</h3><p id="c5">How easy it is to actually get in touch and ask for a price.</p></div>
+      <div class="card"><div class="ic">📋</div><h3>Clear verdict</h3><p id="c6">A score out of 100 with the specific things that matter, in plain English.</p></div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- ═══════════ ANSWER-FIRST INTRO (GEO) ═══════════ -->
-  <section class="section surface" style="padding-top:64px;padding-bottom:64px">
-    <div class="section-head" style="margin-bottom:28px">
-      <div class="kicker" style="background:var(--accent)">The short version</div>
-      <h2 class="section-h2" id="geoH2">What is BuilderAudit?</h2>
-    </div>
-    <div style="max-width:780px;margin:0 auto;position:relative">
-      <!-- answer card -->
-      <div style="background:#fff;border:2.5px solid var(--line);border-radius:12px;box-shadow:8px 8px 0 var(--line);padding:30px 34px;display:flex;gap:20px;align-items:flex-start">
-        <!-- mini logo mark -->
-        <svg width="46" height="47" viewBox="0 0 240 248" aria-hidden="true" style="flex:0 0 auto;margin-top:2px"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/></svg>
-        <p id="geoAnswer" style="font-family:var(--body);font-size:17.5px;line-height:1.65;color:var(--ink);margin:0">BuilderAudit is a free AI-powered website audit for UK building companies. Paste any builder's URL and, in about 60 seconds, it returns a trust score out of 100 across photo authenticity, trust signals, mobile experience, site speed and quote flow — plus a Companies House check. Builders use it to fix their site; homeowners use it to vet a builder before hiring.</p>
-      </div>
-      <!-- corner accent chip -->
-      <div style="position:absolute;top:-14px;right:-12px;background:var(--fill);border:2px solid var(--line);border-radius:6px;padding:6px 12px;font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;box-shadow:3px 3px 0 var(--line);transform:rotate(3deg)" id="geoChip">Free · 60 seconds</div>
-    </div>
-  </section>
-
-  <!-- ═══════════ WHAT WE CHECK ═══════════ -->
-  <section class="section surface">
-    <div class="section-head">
-      <div class="kicker">The 9-point check</div>
-      <h2 class="section-h2" id="whatH2">We look at the same stuff a homeowner does — just faster</h2>
-      <p class="section-sub" id="whatSub">Nine things that decide whether someone trusts you enough to ask for a quote, or scrolls on.</p>
-    </div>
-
-    <div class="what-grid">
-      <div class="what-card"><img src="/assets/icons/drill.png" alt=""><div><div class="what-title">Site speed</div><div class="what-desc" data-what="speed">How fast pages load on a homeowner's phone.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/tape.png" alt=""><div><div class="what-title">Mobile friendly</div><div class="what-desc" data-what="mobile">Does it actually work on a 6-inch screen?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/hardhat.png" alt=""><div><div class="what-title">Photo quality</div><div class="what-desc" data-what="photos">Sharp, real photos of finished work — or grainy stock.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/gear.png" alt=""><div><div class="what-title">Trust signals</div><div class="what-desc" data-what="trust">Reviews, FMB / TrustMark, public liability insurance.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/toolbox.png" alt=""><div><div class="what-title">Services clarity</div><div class="what-desc" data-what="services">Can a homeowner tell what you actually do?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/screwdriver.png" alt=""><div><div class="what-title">Quote flow</div><div class="what-desc" data-what="quote">How easy is it to actually ask you for a price?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/ladder.png" alt=""><div><div class="what-title">SEO &amp; Google</div><div class="what-desc" data-what="seo">Will anyone find you when they're searching?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/roller.png" alt=""><div><div class="what-title">Copy &amp; tone</div><div class="what-desc" data-what="copy">Does it sound like a builder or a robot?</div></div></div>
-      <div class="what-card"><img src="/assets/icons/cone.png" alt=""><div><div class="what-title">Real vs AI photos</div><div class="what-desc" data-what="ai">We flag stock and AI-generated job photos.</div></div></div>
-    </div>
-  </section>
-
-  <!-- ═══════════ SAMPLE REPORT ═══════════ -->
-  <section class="section fill">
-    <div class="section-head">
-      <div class="kicker" id="sampleKicker">Here's what you get</div>
-      <h2 class="section-h2" id="sampleH2">A score out of 100, with the bits that need work</h2>
-      <p class="section-sub" id="sampleSub">This is a real example. Yours arrives within a minute of pasting your URL.</p>
-    </div>
-
-    <div class="report-card">
-      <div class="report-head">
-        <div>
-          <div class="report-eyebrow">Audit · heartlybuilders.co.uk</div>
-          <div class="report-title">Heartly Builders Ltd</div>
-          <div class="report-sublabel">Bath · Extensions, loft conversions, refurbs</div>
-        </div>
-        <div class="report-scanned"><span>Scanned just now</span><span class="dot"></span></div>
-      </div>
-
-      <div class="report-body">
-        <div class="score-block">
-          <!-- Score donut, 64/100 -->
-          <svg width="180" height="180" viewBox="0 0 180 180">
-            <circle cx="90" cy="90" r="64" fill="none" stroke="#1B1A17" stroke-width="2" opacity="0.2"/>
-            <!-- 64% of 2πr ≈ 257.4 of 402.1 -->
-            <circle cx="90" cy="90" r="64" fill="none" stroke="#FFD24D" stroke-width="18"
-              stroke-dasharray="257.4 402.1" stroke-dashoffset="100.5"
-              transform="rotate(-90 90 90)" stroke-linecap="round"/>
-            <text x="90" y="92" text-anchor="middle" dominant-baseline="middle"
-              style="font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:52px;fill:#1B1A17">64</text>
-            <text x="90" y="118" text-anchor="middle"
-              style="font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:12px;fill:#5C5851;letter-spacing:0.06em">/ 100</text>
-          </svg>
-          <div>
-            <div class="score-label">Overall</div>
-            <div class="score-status">Could be better</div>
-          </div>
-        </div>
-
-        <div>
-          <div class="cat-list-head">Score by category</div>
-          <div class="cat-row">
-            <div class="cat-name">Photo quality</div>
-            <div class="cat-bar"><div style="width:48%;background:#D9534F"></div></div>
-            <div class="cat-score">48</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">Trust signals</div>
-            <div class="cat-bar"><div style="width:72%;background:#FFD24D"></div></div>
-            <div class="cat-score">72</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">Mobile friendly</div>
-            <div class="cat-bar"><div style="width:86%;background:#1F8A5B"></div></div>
-            <div class="cat-score">86</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">Site speed</div>
-            <div class="cat-bar"><div style="width:54%;background:#D9534F"></div></div>
-            <div class="cat-score">54</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">Services clarity</div>
-            <div class="cat-bar"><div style="width:58%;background:#FFD24D"></div></div>
-            <div class="cat-score">58</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">Quote flow</div>
-            <div class="cat-bar"><div style="width:68%;background:#FFD24D"></div></div>
-            <div class="cat-score">68</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">SEO &amp; Google</div>
-            <div class="cat-bar"><div style="width:62%;background:#FFD24D"></div></div>
-            <div class="cat-score">62</div>
-          </div>
-          <div class="cat-row">
-            <div class="cat-name">Copy &amp; tone</div>
-            <div class="cat-bar"><div style="width:70%;background:#FFD24D"></div></div>
-            <div class="cat-score">70</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="findings-grid">
-        <div class="findings-card">
-          <div class="lbl risk" id="findingsLabel1">⚠ Top 3 risks a homeowner sees</div>
-          <ol id="findingsList1">
-            <li><b>1.</b> 6 of 9 "past jobs" are stock photos. Looks fake.</li>
-            <li><b>2.</b> No trade accreditations on display.</li>
-            <li><b>3.</b> Quote form asks for 11 things — most quit.</li>
-          </ol>
-        </div>
-        <div class="findings-card">
-          <div class="lbl fix" id="findingsLabel2">✓ Top 3 fixes (do these first)</div>
-          <ol id="findingsList2">
-            <li><b>1.</b> Swap in real before/after shots from your phone.</li>
-            <li><b>2.</b> Add your FMB / TrustMark badges near the top.</li>
-            <li><b>3.</b> Cut the quote form to: name, postcode, job.</li>
-          </ol>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ COMPETITOR BENCHMARKING (builder mode only) ═══════════ -->
-  <section class="section surface" id="competitorSection">
-    <div class="section-head">
-      <div class="kicker" style="background:var(--ink)">For builders</div>
-      <h2 class="section-h2">See how you stack up against local competitors</h2>
-      <p class="section-sub">Paste two rivals' websites. We'll audit them the same way — same 9 checks, same scoring — and tell you who a homeowner would call first.</p>
-    </div>
-
-    <div class="comp-demo">
-      <!-- Competitor slot 1 (empty) -->
-      <div class="comp-slot">
-        <div class="comp-slot-label">Competitor slot</div>
-        <h3 class="comp-slot-h">Who are you up against?</h3>
-        <p class="comp-slot-sub">Paste a competitor's website. We'll audit it and compare scores side by side.</p>
-        <div class="comp-slot-input">
-          <span class="comp-prefix">https://</span>
-          <span class="comp-placeholder">theirsite.co.uk</span>
-          <span class="comp-btn">Run audit →</span>
-        </div>
-        <div class="comp-slot-note">Takes about 60 seconds. They won't be told.</div>
-      </div>
-
-      <!-- YOUR score card (centre) -->
-      <div class="comp-you">
-        <div class="comp-you-label">YOU · UK</div>
-        <div class="comp-you-name">Your company</div>
-        <div class="comp-you-url">yoursite.co.uk</div>
-        <div class="comp-you-score-chip">
-          <span class="comp-score-num">64</span>
-          <span class="comp-score-sub">/100</span>
-        </div>
-        <div class="comp-bars">
-          <div class="comp-bar-row"><span>Photos</span><div class="comp-bar"><div style="width:48%;background:#D9534F"></div></div><b>48</b></div>
-          <div class="comp-bar-row"><span>Trust</span><div class="comp-bar"><div style="width:72%;background:#FFD24D"></div></div><b>72</b></div>
-          <div class="comp-bar-row"><span>Mobile</span><div class="comp-bar"><div style="width:86%;background:#1F8A5B"></div></div><b>86</b></div>
-          <div class="comp-bar-row"><span>Speed</span><div class="comp-bar"><div style="width:54%;background:#D9534F"></div></div><b>54</b></div>
-          <div class="comp-bar-row"><span>Clarity</span><div class="comp-bar"><div style="width:58%;background:#FFD24D"></div></div><b>58</b></div>
-          <div class="comp-bar-row"><span>Quote flow</span><div class="comp-bar"><div style="width:68%;background:#FFD24D"></div></div><b>68</b></div>
-        </div>
-        <div class="comp-you-good">✓ Mobile experience and copy feel genuinely human.</div>
-        <div class="comp-you-risk">! Stock photos and missing trade badges undermine trust.</div>
-      </div>
-
-      <!-- Competitor slot 2 (empty) -->
-      <div class="comp-slot">
-        <div class="comp-slot-label">Competitor slot</div>
-        <h3 class="comp-slot-h">Who are you up against?</h3>
-        <p class="comp-slot-sub">Paste a competitor's website. We'll audit it and compare scores side by side.</p>
-        <div class="comp-slot-input">
-          <span class="comp-prefix">https://</span>
-          <span class="comp-placeholder">theirsite.co.uk</span>
-          <span class="comp-btn">Run audit →</span>
-        </div>
-        <div class="comp-slot-note">Takes about 60 seconds. They won't be told.</div>
-      </div>
-    </div>
-
-    <!-- CTA row -->
-    <div class="comp-cta-row">
-      <div class="comp-cta-text">
-        <strong>Free with your BuilderAudit account.</strong> Run as many competitor checks as you like — they'll never know.
-      </div>
-      <a href="/signup?audience=builder" class="comp-cta-btn">Get my free account →</a>
-    </div>
-  </section>
-
-  <!-- ═══════════ HOMEOWNER COMPARE (homeowner mode only) ═══════════ -->
-  <section class="section surface" id="homeownerCompareSection" style="display:none">
-    <div class="section-head">
-      <div class="kicker" style="background:var(--accent)">For homeowners</div>
-      <h2 class="section-h2">Compare up to 5 builders before you ring anyone</h2>
-      <p class="section-sub">Getting a few quotes? Run all of them through BuilderAudit first. Same 5 checks, same scoring — so you're comparing like for like, not just gut feeling.</p>
-    </div>
-
-    <!-- 5 mini comparison tiles demo -->
-    <div class="ho-comp-grid">
-      <!-- Tile 1 — audited (high score, top pick) -->
-      <div class="ho-tile ho-tile-top">
-        <div class="ho-tile-top-badge">★ Top pick</div>
-        <div class="ho-tile-body">
-          <div class="ho-tile-row">
-            <div><div class="ho-tile-name">Greenfield Build</div><div class="ho-tile-url">greenfieldbuild.co.uk</div></div>
-            <div class="ho-tile-score" style="background:#1F8A5B">78</div>
-          </div>
-          <div class="ho-tile-bars">
-            <div class="ho-bar-row"><span>Photos</span><div class="ho-bar"><div style="width:82%;background:#1F8A5B"></div></div><b>82</b></div>
-            <div class="ho-bar-row"><span>Trust</span><div class="ho-bar"><div style="width:88%;background:#1F8A5B"></div></div><b>88</b></div>
-            <div class="ho-bar-row"><span>Mobile</span><div class="ho-bar"><div style="width:74%;background:#1F8A5B"></div></div><b>74</b></div>
-            <div class="ho-bar-row"><span>Speed</span><div class="ho-bar"><div style="width:66%;background:#FFD24D"></div></div><b>66</b></div>
-            <div class="ho-bar-row"><span>Clarity</span><div class="ho-bar"><div style="width:58%;background:#FFD24D"></div></div><b>58</b></div>
-          </div>
-          <div class="ho-tile-verdict ho-verdict-green">Looks trustworthy</div>
-        </div>
-      </div>
-      <!-- Tile 2 — audited (mid score) -->
-      <div class="ho-tile">
-        <div class="ho-tile-body">
-          <div class="ho-tile-row">
-            <div><div class="ho-tile-name">Heartly Builders</div><div class="ho-tile-url">heartlybuilders.co.uk</div></div>
-            <div class="ho-tile-score" style="background:#FFD24D;color:#1B1A17">64</div>
-          </div>
-          <div class="ho-tile-bars">
-            <div class="ho-bar-row"><span>Photos</span><div class="ho-bar"><div style="width:48%;background:#D9534F"></div></div><b>48</b></div>
-            <div class="ho-bar-row"><span>Trust</span><div class="ho-bar"><div style="width:72%;background:#FFD24D"></div></div><b>72</b></div>
-            <div class="ho-bar-row"><span>Mobile</span><div class="ho-bar"><div style="width:86%;background:#1F8A5B"></div></div><b>86</b></div>
-            <div class="ho-bar-row"><span>Speed</span><div class="ho-bar"><div style="width:54%;background:#D9534F"></div></div><b>54</b></div>
-            <div class="ho-bar-row"><span>Clarity</span><div class="ho-bar"><div style="width:58%;background:#FFD24D"></div></div><b>58</b></div>
-          </div>
-          <div class="ho-tile-verdict ho-verdict-amber">A few concerns</div>
-        </div>
-      </div>
-      <!-- Tile 3 — audited (low score) -->
-      <div class="ho-tile">
-        <div class="ho-tile-body">
-          <div class="ho-tile-row">
-            <div><div class="ho-tile-name">Quick Fix Ltd</div><div class="ho-tile-url">quickfixltd.co.uk</div></div>
-            <div class="ho-tile-score" style="background:#D9534F">41</div>
-          </div>
-          <div class="ho-tile-bars">
-            <div class="ho-bar-row"><span>Photos</span><div class="ho-bar"><div style="width:38%;background:#D9534F"></div></div><b>38</b></div>
-            <div class="ho-bar-row"><span>Trust</span><div class="ho-bar"><div style="width:42%;background:#D9534F"></div></div><b>42</b></div>
-            <div class="ho-bar-row"><span>Mobile</span><div class="ho-bar"><div style="width:48%;background:#D9534F"></div></div><b>48</b></div>
-            <div class="ho-bar-row"><span>Speed</span><div class="ho-bar"><div style="width:36%;background:#D9534F"></div></div><b>36</b></div>
-            <div class="ho-bar-row"><span>Clarity</span><div class="ho-bar"><div style="width:43%;background:#D9534F"></div></div><b>43</b></div>
-          </div>
-          <div class="ho-tile-verdict ho-verdict-red">Significant red flags</div>
-        </div>
-      </div>
-      <!-- Tile 4 — empty -->
-      <div class="ho-tile ho-tile-empty">
-        <div class="ho-tile-empty-label">Builder 4</div>
-        <div class="ho-tile-empty-h">Add a builder</div>
-        <div class="ho-tile-empty-bar">
-          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span>
-        </div>
-        <span class="ho-tile-empty-btn">Run free check →</span>
-      </div>
-      <!-- Tile 5 — empty -->
-      <div class="ho-tile ho-tile-empty">
-        <div class="ho-tile-empty-label">Builder 5</div>
-        <div class="ho-tile-empty-h">Add a builder</div>
-        <div class="ho-tile-empty-bar">
-          <span>https://</span><span class="ho-tile-empty-ph">theirsite.co.uk</span>
-        </div>
-        <span class="ho-tile-empty-btn">Run free check →</span>
-      </div>
-    </div>
-
-    <!-- CTA -->
-    <div class="comp-cta-row">
-      <div class="comp-cta-text">
-        <strong>Free with a BuilderAudit account.</strong> Run as many checks as you like. The builder never knows you looked.
-      </div>
-      <a href="/signup?audience=homeowner" class="comp-cta-btn">Start comparing free →</a>
-    </div>
-  </section>
-
-  <!-- ═══════════ HOW IT WORKS ═══════════ -->
-  <section class="section surface">
-    <div class="section-head">
-      <div class="kicker">How it works</div>
-      <h2 class="section-h2" id="howH2">Three minutes from URL to action list</h2>
-    </div>
-
-    <div class="how-grid">
-      <div class="how-card">
-        <div class="how-num">1</div>
-        <div class="how-spacer"></div>
-        <div class="how-title" data-step="t1">Paste your URL</div>
-        <div class="how-desc" data-step="d1">Just the website address. No sign-up, no card, nothing daft.</div>
-      </div>
-      <div class="how-card">
-        <div class="how-num">2</div>
-        <div class="how-spacer"></div>
-        <div class="how-title" data-step="t2">AI does a full sweep</div>
-        <div class="how-desc" data-step="d2">Every page, every photo, your reviews and trust signals. About 60 seconds.</div>
-      </div>
-      <div class="how-card">
-        <div class="how-num">3</div>
-        <div class="how-spacer"></div>
-        <div class="how-title" data-step="t3">Read your report</div>
-        <div class="how-desc" data-step="d3">Score out of 100, broken down by category, with prioritised fixes.</div>
-      </div>
-      <div class="how-card">
-        <div class="how-num">4</div>
-        <div class="how-spacer"></div>
-        <div class="how-title" data-step="t4">Make the fixes, rescan</div>
-        <div class="how-desc" data-step="d4">Come back any time. Free. Watch your score climb.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ TWO SIDED ═══════════ -->
-  <section class="section fill">
-    <div class="section-head">
-      <div class="kicker">Two sides, one tool</div>
-      <h2 class="section-h2">Built for builders. Trusted by homeowners.</h2>
-    </div>
-
-    <div class="two-grid" id="twoGrid">
-      <div class="two-card builder" data-card="builder">
-        <div class="corner-icon"><img src="/assets/icons/hardhat.png" alt=""></div>
-        <div class="two-side">For builders</div>
-        <h3>Win more enquiries — fix the leaks first</h3>
-        <p>Most builder sites lose homeowners on photos, trust badges, or a faffy quote form. We tell you which, in order.</p>
-        <ul>
-          <li><span class="check">✓</span>See your site through a homeowner's eyes</li>
-          <li><span class="check">✓</span>A priority list — fix the biggest leak first</li>
-          <li><span class="check">✓</span>Re-scan whenever you change something, free</li>
-        </ul>
-      </div>
-      <div class="two-card homeowner" data-card="homeowner">
-        <div class="corner-icon"><img src="/assets/icons/bricks.png" alt=""></div>
-        <div class="two-side">For homeowners</div>
-        <h3>Vet a builder before you ring them up</h3>
-        <p>Run their website through BuilderAudit. If they're hiding fake photos or no insurance, you'll know in a minute.</p>
-        <ul>
-          <li><span class="check">✓</span>Spot stock photos and AI-generated job pics</li>
-          <li><span class="check">✓</span>Check trade body memberships and insurance</li>
-          <li><span class="check">✓</span>Get the score before you get the quote</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ FINAL CTA ═══════════ -->
-  <section class="section ink">
-    <div class="stripes"></div>
-    <div class="final-block">
-      <div class="final-kicker">Free, forever</div>
-      <h2 class="final-h2" id="finalH2">Right then. Paste your URL.</h2>
-      <p class="final-sub" id="finalSub">No sign-up to try. We don't share your data. We don't even ring you up.</p>
-      <form class="final-url" onsubmit="return startAuditFromBottom(event)">
-        <div class="prefix">https://</div>
-        <input type="text" id="finalUrlInput" placeholder="yourbuildingcompany.co.uk" autocomplete="off">
-        <button type="submit" id="finalAuditBtn">Run my free audit →</button>
-      </form>
-    </div>
-  </section>
-
-  <!-- ═══════════ FOOTER ═══════════ -->
-  <footer class="footer">
-    <div class="footer-brand">
-      <svg class="mini-svg" width="30" height="31" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/><path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/><path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/></svg>
-      <div class="name"><span>Builder</span><span style="color:var(--accent)">Audit</span></div>
-      <div class="tagline">· Free website audits & trusted builder matching across the UK</div>
-    </div>
-    <div class="footer-links">
-      <a href="/privacy">Privacy</a>
-      <a href="/terms">Terms</a>
-      <a href="mailto:gthangavel1@gmail.com">Contact</a>
-    </div>
-  </footer>
-</div>
+<footer class="footer">
+  © 2026 BuilderAudit · Free website audits &amp; trusted builder matching across the UK · <a href="/">Home</a> · <a href="/insights">Insights</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+</footer>
 
 <script>
-/* ─── Mode-driven copy, exactly per ba-sections-2.jsx COPY_CHEEKY ───── */
+var mode = 'builder';
+try { var saved = sessionStorage.getItem('ba_audience'); if (saved === 'homeowner' || saved === 'builder') mode = saved; } catch(e){}
+
 var COPY = {
   builder: {
-    heroH1: "How good is your building company's website, really?",
-    heroSub: "Paste your URL. We'll poke around like a homeowner would — photos, reviews, the lot — and grade your site out of 100. With actual things to fix, in plain English.",
-    geoH2: "What is BuilderAudit?",
-    geoAnswer: "BuilderAudit is a free AI-powered website audit for UK building companies. Paste your URL and, in about 60 seconds, it returns a trust score out of 100 across photo authenticity, trust signals, mobile experience, site speed and quote flow — plus a Companies House check. You get a prioritised, plain-English fix-list so you can win more enquiries from your website.",
-    geoChip: "Free · 60 seconds",
-    heroCta: "Run my free audit",
-    heroPlaceholder: "heartlybuilders.co.uk",
-    heroStamp: "UK builders · free tool",
-    trust: ["✓ Free, forever", "✓ No sign-up to try", "✓ Results in 60 seconds"],
-
-    whatH2: "We look at the same stuff a homeowner does — just faster",
-    whatSub: "Nine things that decide whether someone trusts you enough to ask for a quote, or scrolls on.",
-    whatCards: {
-      speed:    "How fast your pages load on a homeowner's phone.",
-      mobile:   "Does your site actually work on a 6-inch screen?",
-      photos:   "Are your job photos real and sharp — or grainy stock?",
-      trust:    "Do you show reviews, FMB / TrustMark, public liability?",
-      services: "Can a homeowner tell exactly what you do and where?",
-      quote:    "How easy is it for someone to ask you for a price?",
-      seo:      "Will homeowners in your area actually find you on Google?",
-      copy:     "Does your site sound like a real person or a robot?",
-      ai:       "We reverse-image-search your job photos to catch fakes.",
-    },
-
-    sampleKicker: "Here's what you get",
-    sampleH2: "A score out of 100, with the bits that need work",
-    sampleSub: "This is a real example. Yours arrives within a minute of pasting your URL.",
-    findingsLabel1: "⚠ Top 3 risks a homeowner sees",
-    findingsList1: [
-      "6 of 9 \"past jobs\" are stock photos. Looks fake.",
-      "No trade accreditations on display.",
-      "Quote form asks for 11 things — most quit.",
-    ],
-    findingsLabel2: "✓ Top 3 fixes (do these first)",
-    findingsList2: [
-      "Swap in real before/after shots from your phone.",
-      "Add your FMB / TrustMark badges near the top.",
-      "Cut the quote form to: name, postcode, job.",
-    ],
-
-    howH2: "Three minutes from URL to action list",
-    howSteps: [
-      { t: "Paste your URL", d: "Just the website address. No sign-up, no card, nothing daft." },
-      { t: "AI does a full sweep", d: "Every page, every photo, your reviews and trust signals. About 60 seconds." },
-      { t: "Read your report", d: "Score out of 100, broken down by category, with prioritised fixes." },
-      { t: "Make the fixes, rescan", d: "Come back any time. Free. Watch your score climb." }
-    ],
-
-    finalH2: "Right then. Paste your URL.",
-    finalSub: "No sign-up to try. We don't share your data. We don't even ring you up.",
-    finalPlaceholder: "yourbuildingcompany.co.uk",
+    h1: 'Check your building company\u2019s website, <span class="alt">free</span>',
+    lead: 'Paste your URL. We examine it the way a careful homeowner would \u2014 photos, reviews, trade badges, Companies House \u2014 and grade it out of 100, with actual things to fix.',
+    blurb: 'Checking your own site? See exactly what\u2019s losing you enquiries \u2014 and get a prioritised, plain-English fix-list.',
+    placeholder: 'yourcompany.co.uk',
+    btn: 'Run my free audit \u2192',
+    subnote: 'Free to run. No sign-up needed to see your score.',
+    whatH2: 'What your audit covers',
+    whatSub: 'The nine things that decide whether a homeowner trusts you enough to ask for a quote \u2014 or scrolls on.',
+    c1: 'Are your job photos real and yours \u2014 or do they look like stock? We reverse-image-search every one before homeowners do.',
+    c2: 'Whether you show reviews, FMB / TrustMark / CHAS accreditation, and public liability insurance prominently.',
+    c3: 'We confirm your Companies House record is active and your filings are up to date \u2014 visible to any homeowner who checks.',
+    c4: 'Whether your site works properly on a phone and loads fast enough not to lose visitors.',
+    c5: 'How easy you make it for a homeowner to actually get in touch and ask for a price.',
+    c6: 'A score out of 100 and a prioritised fix-list \u2014 the highest-impact changes first, in plain English.'
   },
   homeowner: {
-    heroH1: "Vet a builder's website before you ring them up",
-    heroSub: "Paste their URL. We'll check the photos, the reviews and the trade badges — everything a careful homeowner should look at — and grade the site out of 100. In plain English.",
-    geoH2: "How do I check if a builder is trustworthy?",
-    geoAnswer: "Paste the builder's website into BuilderAudit and, in about 60 seconds, you'll get a trust score out of 100 — covering whether their photos are real, whether reviews are verifiable, and whether they show insurance and trade accreditation. It also checks them against the official Companies House register so you can confirm the business is genuinely registered, active and who's behind it before you hire.",
-    geoChip: "Free · before you hire",
-    heroCta: "Check this builder",
-    heroPlaceholder: "thatbuilderyou'vebeentoldabout.co.uk",
-    heroStamp: "UK homeowners · free check",
-    trust: ["✓ Builder never knows", "✓ No sign-up to try", "✓ Results in 60 seconds"],
-
-    whatH2: "Nine things a good builder gets right on their website",
-    whatSub: "If their site falls down on these, ask yourself if their work will hold up too.",
-    whatCards: {
-      speed:    "Slow sites suggest the business isn't properly looked after.",
-      mobile:   "If it's broken on your phone, that's already a red flag.",
-      photos:   "Are the job photos genuinely theirs — or lifted from the internet?",
-      trust:    "Do they show trade accreditations, reviews, and insurance proof?",
-      services: "Is it clear they actually do the type of work you need?",
-      quote:    "A 10-field quote form is a sign of a disorganised business.",
-      seo:      "Do they show up when you search for builders in your area?",
-      copy:     "Does the site sound like a real, confident company you'd trust?",
-      ai:       "We run every job photo through a reverse-image search for fakes.",
-    },
-
-    sampleKicker: "Here's what you'll see",
-    sampleH2: "A score out of 100, with the bits to worry about",
-    sampleSub: "Same audit, every builder. Run your shortlist before you start ringing round.",
-    findingsLabel1: "⚠ Red flags to raise with them",
-    findingsList1: [
-      "6 of 9 \"job photos\" are stock images — not their own work.",
-      "No trade body membership (FMB, TrustMark) anywhere on site.",
-      "No mention of public liability insurance.",
-    ],
-    findingsLabel2: "✓ Questions to ask before hiring",
-    findingsList2: [
-      "Can you show me the original photos from these jobs?",
-      "Are you FMB or TrustMark accredited — can I see proof?",
-      "Can I see your public liability insurance certificate?",
-    ],
-
-    howH2: "Three minutes from URL to peace of mind",
-    howSteps: [
-      { t: "Paste their URL", d: "The builder's website. No sign-up, no card, nothing fiddly." },
-      { t: "AI does a full sweep", d: "Every page, every photo, the reviews and the trust badges. About 60 seconds." },
-      { t: "Read the report", d: "Overall score, plus the red flags worth raising before you ring them up." },
-      { t: "Run a few more", d: "Compare your shortlist side by side. No limit. Still free." }
-    ],
-
-    finalH2: "Got a builder in mind? Run them through it.",
-    finalSub: "No sign-up to try. The builder never knows you checked.",
-    finalPlaceholder: "thatbuilderyou'vebeentoldabout.co.uk",
+    h1: 'Check a builder before you hire, <span class="alt">free</span>',
+    lead: 'Paste their URL. We check the photos, the reviews and the trade badges \u2014 everything a careful homeowner should look at \u2014 and grade the site out of 100.',
+    blurb: 'Vetting a builder? See whether their photos are real, whether their reviews can be trusted, and whether they\u2019re a genuine, registered company \u2014 before you let them near your home.',
+    placeholder: 'theirwebsite.co.uk',
+    btn: 'Check this builder \u2192',
+    subnote: 'This is an independent forensic check. The builder is never contacted or notified.',
+    whatH2: 'What the check covers',
+    whatSub: 'Everything a careful homeowner should look at before letting a builder near their home or their money.',
+    c1: 'Are the job photos genuinely theirs \u2014 or lifted from a stock library or another company? We reverse-image-search every one.',
+    c2: 'Whether they show real reviews, trade accreditation (FMB / TrustMark / CHAS), and public liability insurance.',
+    c3: 'We verify them on Companies House \u2014 is the business real, active, and who are the directors? Plus filing health.',
+    c4: 'Whether the site works on your phone and loads properly \u2014 small signs of how the business is run.',
+    c5: 'How easy it is to get a price \u2014 and whether the quote form is reasonable or a 12-field nightmare.',
+    c6: 'A clear score out of 100 with the red flags to raise and the exact questions to ask before you sign.'
   }
 };
 
-var mode = 'builder';
-
-function setMode(next) {
-  mode = next;
-  /* Toggle button state */
-  document.querySelectorAll('.audience-toggle button').forEach(function(b){
-    b.classList.toggle('on', b.dataset.mode === mode);
-  });
-  var c = COPY[mode];
-  document.getElementById('heroH1').textContent = c.heroH1;
-  document.getElementById('heroSub').textContent = c.heroSub;
-  var geoH2 = document.getElementById('geoH2'); if (geoH2) geoH2.textContent = c.geoH2;
-  var geoA  = document.getElementById('geoAnswer'); if (geoA) geoA.textContent = c.geoAnswer;
-  var geoC  = document.getElementById('geoChip'); if (geoC && c.geoChip) geoC.textContent = c.geoChip;
-  document.getElementById('auditLabel').textContent = c.heroCta;
-  document.getElementById('urlInput').placeholder = c.heroPlaceholder;
-  document.getElementById('heroStamp').textContent = c.heroStamp;
-  var trustEl = document.getElementById('trustRow');
-  trustEl.innerHTML = c.trust.map(function(t){ return '<span>' + t + '</span>'; }).join('');
-
+function setMode(m){
+  mode = m;
+  var c = COPY[m];
+  document.querySelectorAll('.toggle button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-mode')===m); });
+  document.getElementById('h1').innerHTML = c.h1;
+  document.querySelector('.lead').textContent = c.lead;
+  document.getElementById('blurb').textContent = c.blurb;
+  document.getElementById('urlInput').placeholder = c.placeholder;
+  document.getElementById('checkBtn').textContent = c.btn;
+  document.getElementById('subnote').textContent = c.subnote;
   document.getElementById('whatH2').textContent = c.whatH2;
   document.getElementById('whatSub').textContent = c.whatSub;
-  Object.keys(c.whatCards).forEach(function(key) {
-    var el = document.querySelector('[data-what="' + key + '"]');
-    if (el) el.textContent = c.whatCards[key];
-  });
-  document.getElementById('sampleKicker').textContent = c.sampleKicker;
-  document.getElementById('sampleH2').textContent = c.sampleH2;
-  document.getElementById('sampleSub').textContent = c.sampleSub;
-
-  /* Swap findings labels */
-  document.getElementById('findingsLabel1').textContent = c.findingsLabel1;
-  document.getElementById('findingsLabel2').textContent = c.findingsLabel2;
-  /* Swap findings list items */
-  ['findingsList1','findingsList2'].forEach(function(id) {
-    var el = document.getElementById(id);
-    var items = c[id];
-    el.innerHTML = items.map(function(t, i) { return '<li><b>' + (i+1) + '.</b> ' + t + '</li>'; }).join('');
-  });
-  document.getElementById('howH2').textContent = c.howH2;
-
-  c.howSteps.forEach(function(s, i){
-    var n = i + 1;
-    document.querySelector('[data-step="t' + n + '"]').textContent = s.t;
-    document.querySelector('[data-step="d' + n + '"]').textContent = s.d;
-  });
-
-  document.getElementById('finalH2').textContent = c.finalH2;
-  document.getElementById('finalSub').textContent = c.finalSub;
-  document.getElementById('finalUrlInput').placeholder = c.finalPlaceholder;
-  document.getElementById('finalAuditBtn').textContent = c.heroCta + ' →';
-
-  /* Reorder the two-sided cards — active audience first */
-  var grid = document.getElementById('twoGrid');
-  var builderCard = grid.querySelector('[data-card="builder"]');
-  var homeownerCard = grid.querySelector('[data-card="homeowner"]');
-  grid.innerHTML = '';
-  if (mode === 'builder') { grid.appendChild(builderCard); grid.appendChild(homeownerCard); }
-  else { grid.appendChild(homeownerCard); grid.appendChild(builderCard); }
-
-  /* Swap hero preview graphic */
-  document.getElementById('heroPreviewBuilder').style.display  = mode === 'builder'   ? 'block' : 'none';
-  document.getElementById('heroPreviewHomeowner').style.display = mode === 'homeowner' ? 'block' : 'none';
-
-  /* Show competitor section for builders only */
-  var compSection = document.getElementById('competitorSection');
-  if (compSection) compSection.style.display = mode === 'builder' ? 'block' : 'none';
-
-  /* Show homeowner compare section for homeowners only */
-  var hoCompare = document.getElementById('homeownerCompareSection');
-  if (hoCompare) hoCompare.style.display = mode === 'homeowner' ? 'block' : 'none';
-
-  try { sessionStorage.setItem('ba_audience', mode); } catch(e) {}
+  for (var i=1;i<=6;i++){ document.getElementById('c'+i).textContent = c['c'+i]; }
+  try { sessionStorage.setItem('ba_audience', m); } catch(e){}
 }
 
-/* Restore previously chosen mode */
-try {
-  var saved = sessionStorage.getItem('ba_audience');
-  if (saved === 'homeowner') setMode('homeowner');
-} catch(e) {}
-
-function startAudit(e) {
+function runCheck(e){
   e.preventDefault();
   var url = document.getElementById('urlInput').value.trim();
   if (!url) return false;
@@ -1509,15 +216,8 @@ function startAudit(e) {
   window.location.href = '/audit?' + qs.toString();
   return false;
 }
-function startAuditFromBottom(e) {
-  e.preventDefault();
-  var url = document.getElementById('finalUrlInput').value.trim();
-  if (!url) return false;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  var qs = new URLSearchParams({ url: url, audience: mode });
-  window.location.href = '/audit?' + qs.toString();
-  return false;
-}
+
+setMode(mode);
 </script>
 
 </body>

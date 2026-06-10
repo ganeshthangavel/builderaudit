@@ -151,15 +151,17 @@ function Nav({ role, page, setPage, user }) {
   const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
   const initials = user?.name ? user.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase() : role==='builder'?'HB':'AT';
 
-  /* ── Account settings dropdown ── */
-  const [menuOpen, setMenuOpen] = useState(false);
+  /* ── Account menu + gated preferences modal ── */
+  const [menuOpen,    setMenuOpen]    = useState(false);
+  const [prefsModal,  setPrefsModal]  = useState(false);   /* the gated settings panel */
+  const [confirmOff,  setConfirmOff]  = useState(false);   /* confirm turning marketing OFF */
   const [prefs, setPrefs]       = useState({ consentAgency:false, weeklyEmailOptIn:false });
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsSaved,  setPrefsSaved]  = useState(false);
   useEffect(() => {
     if (user) setPrefs({ consentAgency: !!user.consentAgency, weeklyEmailOptIn: !!user.weeklyEmailOptIn });
   }, [user]);
-  /* Close on outside click */
+  /* Close menu on outside click */
   useEffect(() => {
     if (!menuOpen) return;
     const close = (e) => { if (!e.target.closest('[data-account-menu]')) setMenuOpen(false); };
@@ -168,6 +170,7 @@ function Nav({ role, page, setPage, user }) {
   }, [menuOpen]);
 
   const savePref = async (key, value) => {
+    const prev = prefs;
     const next = { ...prefs, [key]: value };
     setPrefs(next);
     setPrefsSaving(true); setPrefsSaved(false);
@@ -178,8 +181,15 @@ function Nav({ role, page, setPage, user }) {
       });
       setPrefsSaved(true);
       setTimeout(()=>setPrefsSaved(false), 2000);
-    } catch(e) { /* revert on failure */ setPrefs(prefs); }
+    } catch(e) { setPrefs(prev); }
     finally { setPrefsSaving(false); }
+  };
+
+  /* Marketing consent is the valuable signal — turning it OFF requires a confirm step.
+     Turning it ON is immediate. */
+  const handleAgencyToggle = (value) => {
+    if (value === false) { setConfirmOff(true); }
+    else { savePref('consentAgency', true); }
   };
 
   const Toggle = ({ on, onChange }) => (
@@ -212,7 +222,7 @@ function Nav({ role, page, setPage, user }) {
           {role==='builder'?'Builder account':'Homeowner account'}
         </div>
 
-        {/* Avatar → settings dropdown */}
+        {/* Avatar → compact account menu */}
         <div data-account-menu style={{ position:'relative' }}>
           <button onClick={()=>setMenuOpen(o=>!o)}
             style={{ width:36, height:36, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, cursor:'pointer', outline:'none', boxShadow:menuOpen?`2px 2px 0 ${P.line}`:'none' }}>
@@ -220,50 +230,92 @@ function Nav({ role, page, setPage, user }) {
           </button>
 
           {menuOpen && (
-            <div style={{ position:'absolute', top:'calc(100% + 10px)', right:0, width:320, background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`6px 6px 0 ${P.line}`, zIndex:200, overflow:'hidden' }}>
-              {/* Header */}
+            <div style={{ position:'absolute', top:'calc(100% + 10px)', right:0, width:260, background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`6px 6px 0 ${P.line}`, zIndex:200, overflow:'hidden' }}>
               <div style={{ padding:'14px 18px', background:P.surface, borderBottom:`2px solid ${P.line}` }}>
-                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Account settings</div>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Signed in as</div>
                 <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:700, color:P.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email || 'Not signed in'}</div>
               </div>
-
               {user ? (
-                <div style={{ padding:'14px 18px', display:'flex', flexDirection:'column', gap:14 }}>
-                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Contact preferences</div>
-
-                  <div style={{ display:'flex', gap:12, alignItems:'flex-start', justifyContent:'space-between' }}>
-                    <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45 }}>
-                      <b style={{ display:'block' }}>{role==='builder' ? 'Recommendations & marketing help' : 'Builder recommendations & help'}</b>
-                      <span style={{ color:P.muted, fontSize:12 }}>{role==='builder' ? 'BuilderAudit can contact me about recommendations and marketing services.' : 'BuilderAudit can contact me with trusted builder recommendations and help.'}</span>
-                    </div>
-                    <Toggle on={prefs.consentAgency} onChange={v=>savePref('consentAgency', v)}/>
-                  </div>
-
-                  <div style={{ display:'flex', gap:12, alignItems:'flex-start', justifyContent:'space-between' }}>
-                    <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45 }}>
-                      <b style={{ display:'block' }}>Weekly email check-ins</b>
-                      <span style={{ color:P.muted, fontSize:12 }}>Score updates and progress by email.</span>
-                    </div>
-                    <Toggle on={prefs.weeklyEmailOptIn} onChange={v=>savePref('weeklyEmailOptIn', v)}/>
-                  </div>
-
-                  <div style={{ minHeight:16, fontFamily:F.body, fontSize:11.5, color:prefsSaved?P.green:P.muted }}>
-                    {prefsSaving ? 'Saving…' : prefsSaved ? '✓ Preferences saved' : ''}
-                  </div>
-                </div>
+                <button onClick={()=>{ setMenuOpen(false); setPrefsModal(true); }}
+                  style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'13px 18px', background:'transparent', border:'none', borderBottom:`1.5px solid ${P.surface}`, cursor:'pointer', textAlign:'left', fontFamily:F.body, fontSize:14, fontWeight:600, color:P.ink, outline:'none' }}>
+                  <span style={{ fontSize:15 }}>⚙</span> Manage account & preferences
+                </button>
               ) : (
-                <div style={{ padding:'16px 18px' }}>
-                  <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, lineHeight:1.5, marginBottom:12 }}>Sign in to manage your contact preferences.</div>
-                  <a href="/login" style={{ display:'inline-block', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13, textDecoration:'none' }}>Sign in →</a>
-                </div>
+                <a href="/login" style={{ display:'block', padding:'13px 18px', borderBottom:`1.5px solid ${P.surface}`, fontFamily:F.body, fontSize:14, fontWeight:600, color:P.accent, textDecoration:'none' }}>Sign in →</a>
               )}
-
-              <div style={{ borderTop:`1.5px solid ${P.line}`, padding:'10px 18px' }}>
-                <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
-              </div>
+              <a href="/login" style={{ display:'block', padding:'13px 18px', fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
             </div>
           )}
         </div>
+
+        {/* Gated preferences modal */}
+        {prefsModal && user && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
+            onClick={e=>{ if(e.target===e.currentTarget && !confirmOff) setPrefsModal(false); }}>
+            <div style={{ background:'#fff', border:`3px solid ${P.line}`, borderRadius:10, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:460, width:'100%', overflow:'hidden' }}>
+              <div style={{ padding:'20px 24px', background:P.surface, borderBottom:`2px solid ${P.line}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Account & preferences</div>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>{user.email}</div>
+                </div>
+                <button onClick={()=>setPrefsModal(false)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:22, color:P.muted, lineHeight:1, padding:4 }}>×</button>
+              </div>
+
+              <div style={{ padding:'22px 24px', display:'flex', flexDirection:'column', gap:18 }}>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Contact preferences</div>
+
+                <div style={{ display:'flex', gap:14, alignItems:'flex-start', justifyContent:'space-between' }}>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                    <b style={{ display:'block' }}>{role==='builder' ? 'Recommendations & marketing help' : 'Builder recommendations & help'}</b>
+                    <span style={{ color:P.muted, fontSize:12.5 }}>{role==='builder' ? 'BuilderAudit can contact me about recommendations and marketing services.' : 'BuilderAudit can contact me with trusted builder recommendations and help.'}</span>
+                  </div>
+                  <Toggle on={prefs.consentAgency} onChange={handleAgencyToggle}/>
+                </div>
+
+                <div style={{ display:'flex', gap:14, alignItems:'flex-start', justifyContent:'space-between' }}>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                    <b style={{ display:'block' }}>Weekly email check-ins</b>
+                    <span style={{ color:P.muted, fontSize:12.5 }}>Score updates and progress by email.</span>
+                  </div>
+                  <Toggle on={prefs.weeklyEmailOptIn} onChange={v=>savePref('weeklyEmailOptIn', v)}/>
+                </div>
+
+                <div style={{ minHeight:16, fontFamily:F.body, fontSize:12, color:prefsSaved?P.green:P.muted }}>
+                  {prefsSaving ? 'Saving…' : prefsSaved ? '✓ Preferences saved' : ''}
+                </div>
+
+                {/* Confirm turning marketing OFF */}
+                {confirmOff && (
+                  <div style={{ padding:'14px 16px', background:'rgba(217,119,6,0.08)', border:`2px solid #D97706`, borderRadius:8 }}>
+                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:6 }}>Turn off {role==='builder' ? 'recommendations' : 'builder help'}?</div>
+                    <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5, marginBottom:14 }}>
+                      {role==='builder'
+                        ? "You'll no longer hear from us about competitor insights, website improvements, or ways to win more work. You can turn this back on anytime."
+                        : "We won't be able to send you trusted builder recommendations or help with your project. You can turn this back on anytime."}
+                    </div>
+                    <div style={{ display:'flex', gap:10 }}>
+                      <button onClick={()=>{ savePref('consentAgency', false); setConfirmOff(false); }}
+                        style={{ background:'transparent', color:P.red, border:`2px solid ${P.red}`, borderRadius:6, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer' }}>
+                        Yes, turn off
+                      </button>
+                      <button onClick={()=>setConfirmOff(false)}
+                        style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:`2px 2px 0 ${P.line}` }}>
+                        Keep it on
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ borderTop:`1.5px solid ${P.line}`, padding:'14px 24px', display:'flex', justifyContent:'flex-end' }}>
+                <button onClick={()=>{ if(!confirmOff) setPrefsModal(false); }}
+                  style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 20px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:confirmOff?'not-allowed':'pointer', opacity:confirmOff?0.5:1, boxShadow:`3px 3px 0 ${P.line}` }}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
       </div>

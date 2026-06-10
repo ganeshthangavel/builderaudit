@@ -69,6 +69,11 @@ app.get('/services', (req, res) => res.sendFile(path.join(PUBLIC, 'services.html
 app.get('/check-builder', (req, res) => res.sendFile(path.join(PUBLIC, 'check-builder.html')));
 app.get('/privacy', (req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
+app.get('/insights', (req, res) => res.sendFile(path.join(PUBLIC, 'insights.html')));
+
+// SEO / crawler files
+app.get('/robots.txt', (req, res) => res.type('text/plain').sendFile(path.join(PUBLIC, 'robots.txt')));
+app.get('/sitemap.xml', (req, res) => res.type('application/xml').sendFile(path.join(PUBLIC, 'sitemap.xml')));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STOCK DOMAINS — instant flag
@@ -1382,4 +1387,3 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-     

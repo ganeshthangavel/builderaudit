@@ -15,6 +15,10 @@ const { crawlWebsiteScrapFly, isAvailable: isScrapFlyAvailable } = require('./cr
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
 const app = express();
+// Railway (and most hosts) run the app behind an HTTPS-terminating proxy.
+// Without this, Express doesn't recognise the connection as secure, which can
+// break `secure: true` session cookies — users appear logged out after sign-in.
+app.set('trust proxy', 1);
 app.use(cors({ credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
@@ -1387,3 +1391,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+     

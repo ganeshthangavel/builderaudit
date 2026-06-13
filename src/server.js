@@ -979,11 +979,15 @@ app.get('/api/my/latest-audit', auth.requireAuth, async (req, res) => {
     const full = await db.getAudit(latestId);
     if (!full || full.user_id !== req.user.id) return res.json({ audit: null });
 
-    /* Pull image URLs out of raw_data so photo thumbnails work, same as ?id= path */
+    /* Build imageUrls as objects {src, alt, pageUrl} — the same shape the
+       /api/report/:id/data endpoint uses — so the Photos page can pair them.
+       (Plain strings here crash BuilderPhotos, which reads img.src/img.alt.) */
     let imageUrls = [];
     try {
       const pages = full.raw_data?.pages || [];
-      imageUrls = pages.flatMap(p => (p.images || []).map(im => im.src || im.url || im)).filter(Boolean).slice(0, 60);
+      imageUrls = pages.flatMap(p =>
+        (p.images || []).map(img => ({ src: img.src, alt: img.alt || '', pageUrl: p.url }))
+      ).filter(img => img.src && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src)).slice(0, 30);
     } catch (e) { /* non-fatal */ }
 
     res.json({
@@ -1466,3 +1470,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+       

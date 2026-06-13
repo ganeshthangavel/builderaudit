@@ -196,7 +196,61 @@ async function initSchema() {
   await step('index enquiries.audit',      `CREATE INDEX IF NOT EXISTS idx_enquiries_audit ON enquiries(audit_id)`);
   await step('index enquiries.created_at', `CREATE INDEX IF NOT EXISTS idx_enquiries_created_at ON enquiries(created_at DESC)`);
 
+  /* Competitor audits a user has run, so they persist across logins.
+     slot_index keeps them in the same position on the compare grid. */
+  await step('table competitors', `
+    CREATE TABLE IF NOT EXISTS competitors (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'builder',
+      slot_index INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      data_json JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await step('index competitors.user', `CREATE INDEX IF NOT EXISTS idx_competitors_user ON competitors(user_id, role)`);
+  await step('uniq competitors.slot',  `CREATE UNIQUE INDEX IF NOT EXISTS uniq_competitors_slot ON competitors(user_id, role, slot_index)`);
+
   console.log('✓ Database schema ready');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COMPETITORS — persisted competitor audits per user, per role
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function listCompetitorsForUser(userId, role = 'builder') {
+  if (!getPool()) return [];
+  const { rows } = await getPool().query(
+    `SELECT slot_index, url, data_json, created_at
+     FROM competitors WHERE user_id = $1 AND role = $2
+     ORDER BY slot_index ASC`,
+    [userId, role]
+  );
+  return rows;
+}
+
+async function saveCompetitor({ userId, role = 'builder', slotIndex, url, data }) {
+  if (!getPool()) throw new Error('Database not configured');
+  const id = 'cmp_' + Math.random().toString(36).slice(2, 12);
+  /* Upsert on (user, role, slot) so re-auditing the same slot replaces it */
+  await getPool().query(
+    `INSERT INTO competitors (id, user_id, role, slot_index, url, data_json)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (user_id, role, slot_index)
+     DO UPDATE SET url = EXCLUDED.url, data_json = EXCLUDED.data_json, created_at = NOW()`,
+    [id, userId, role, slotIndex, url, data]
+  );
+  return { slotIndex, url };
+}
+
+async function deleteCompetitor(userId, role, slotIndex) {
+  if (!getPool()) throw new Error('Database not configured');
+  await getPool().query(
+    `DELETE FROM competitors WHERE user_id = $1 AND role = $2 AND slot_index = $3`,
+    [userId, role, slotIndex]
+  );
+  return { ok: true };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -628,6 +682,10 @@ module.exports = {
   unlockAudit,
   claimAudit,
   setImageOverride,
+  // competitors
+  listCompetitorsForUser,
+  saveCompetitor,
+  deleteCompetitor,
   // snapshots (score history)
   createSnapshot,
   getLatestSnapshot,

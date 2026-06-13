@@ -1455,11 +1455,44 @@ function BuilderCompetitors({ latestAudit, user }) {
   };
 
   /* ── Slots ── */
+  const NUM_SLOTS = 4;
   const [slots, setSlots] = useState(
-    Array.from({length:4}, () => ({ draft:'', audited:false, data:null, loading:false, error:null }))
+    Array.from({length:NUM_SLOTS}, () => ({ draft:'', audited:false, data:null, loading:false, error:null }))
   );
   const setDraft  = (i,v)  => setSlots(s => s.map((sl,j) => j===i ? {...sl, draft:v} : sl));
   const editAgain = (i)    => setSlots(s => s.map((sl,j) => j===i ? {...sl, audited:false, data:null, error:null, draft:sl.data?.url||sl.draft} : sl));
+
+  /* Load any competitor audits this user saved previously, so they persist across logins */
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/my/competitors?role=builder', { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d?.competitors?.length) return;
+        setSlots(s => {
+          const next = s.map(sl => ({...sl}));
+          d.competitors.forEach(c => {
+            if (c.slotIndex >= 0 && c.slotIndex < NUM_SLOTS && c.data) {
+              next[c.slotIndex] = { draft:'', audited:true, loading:false, error:null, data:c.data };
+            }
+          });
+          return next;
+        });
+      })
+      .catch(()=>{});
+    return () => { cancelled = true; };
+  }, []);
+
+  /* Persist a competitor audit to the user's account */
+  const persistCompetitor = (slotIndex, data) => {
+    fetch('/api/my/competitors', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ slotIndex, url: data.url, data, role:'builder' }),
+    }).catch(()=>{});
+  };
+  const unpersistCompetitor = (slotIndex) => {
+    fetch('/api/my/competitors/' + slotIndex + '?role=builder', { method:'DELETE', credentials:'include' }).catch(()=>{});
+  };
 
   /* Pass skipGate=true when called immediately after sign-up */
   const runAudit = async (i, skipGate = false) => {
@@ -1495,17 +1528,17 @@ function BuilderCompetitors({ latestAudit, user }) {
       if (!res.ok) throw new Error(data.error || 'Audit failed');
 
       const d = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){ return url; } })();
-      setSlots(s => s.map((sl,j) => j===i ? {
-        ...sl, audited:true, loading:false, data:{
-          name:      data.company_name || d,
-          url:       d,
-          loc:       '',
-          score:     data.score,
-          breakdown: (data.categories||[]).map(c => ({ name:c.name, s:c.score })),
-          good:      data.verdict || '',
-          bad:       (data.top_actions||[])[0] || '',
-        }
-      } : sl));
+      const compData = {
+        name:      data.company_name || d,
+        url:       d,
+        loc:       '',
+        score:     data.score,
+        breakdown: (data.categories||[]).map(c => ({ name:c.name, s:c.score })),
+        good:      data.verdict || '',
+        bad:       (data.top_actions||[])[0] || '',
+      };
+      setSlots(s => s.map((sl,j) => j===i ? { ...sl, audited:true, loading:false, data:compData } : sl));
+      persistCompetitor(i, compData);   // remember it for next login
     } catch(err) {
       setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:false, error:err.message} : sl));
     }
@@ -2184,9 +2217,41 @@ function HomeownerCompare({ user }) {
   };
 
   /* Slots */
-  const [slots, setSlots] = useState(Array.from({length:5}, ()=>({draft:'', audited:false, data:null, loading:false, error:null})));
+  const HO_SLOTS = 5;
+  const [slots, setSlots] = useState(Array.from({length:HO_SLOTS}, ()=>({draft:'', audited:false, data:null, loading:false, error:null})));
   const setDraft  = (i,v) => setSlots(s=>s.map((sl,j)=>j===i?{...sl,draft:v}:sl));
-  const clearSlot = (i)   => setSlots(s=>s.map((sl,j)=>j===i?{...sl,audited:false,data:null,error:null,draft:''}:sl));
+  const clearSlot = (i)   => { setSlots(s=>s.map((sl,j)=>j===i?{...sl,audited:false,data:null,error:null,draft:''}:sl)); unpersistCompetitor(i); };
+
+  /* Load previously-saved compared builders so they persist across logins */
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/my/competitors?role=homeowner', { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d?.competitors?.length) return;
+        setSlots(s => {
+          const next = s.map(sl => ({...sl}));
+          d.competitors.forEach(c => {
+            if (c.slotIndex >= 0 && c.slotIndex < HO_SLOTS && c.data) {
+              next[c.slotIndex] = { draft:'', audited:true, loading:false, error:null, data:c.data };
+            }
+          });
+          return next;
+        });
+      })
+      .catch(()=>{});
+    return () => { cancelled = true; };
+  }, []);
+
+  const persistCompetitor = (slotIndex, data) => {
+    fetch('/api/my/competitors', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ slotIndex, url: data.url, data, role:'homeowner' }),
+    }).catch(()=>{});
+  };
+  const unpersistCompetitor = (slotIndex) => {
+    fetch('/api/my/competitors/' + slotIndex + '?role=homeowner', { method:'DELETE', credentials:'include' }).catch(()=>{});
+  };
 
   const runAudit = async (i, skipGate=false) => {
     const raw = (slots[i]?.draft||'').trim();
@@ -2204,10 +2269,9 @@ function HomeownerCompare({ user }) {
       if (!res.ok) throw new Error(data.error||'Audit failed');
       const domain = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){return raw;} })();
       const cats = (data.categories||[]).map(c=>({name:c.name, s:c.score}));
-      setSlots(s=>s.map((sl,j)=>j===i?{...sl, audited:true, loading:false, data:{
-        name: data.company_name||domain, url:domain,
-        score:data.score, cats, verdict:data.verdict||'',
-      }}:sl));
+      const compData = { name: data.company_name||domain, url:domain, score:data.score, cats, verdict:data.verdict||'' };
+      setSlots(s=>s.map((sl,j)=>j===i?{...sl, audited:true, loading:false, data:compData}:sl));
+      persistCompetitor(i, compData);
     } catch(err) { setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:false,error:err.message}:sl)); }
   };
 
@@ -2929,10 +2993,23 @@ function DashboardApp() {
           }
         }
 
-        // 2. Load the user's audit list (logged-in users without a ?id= URL).
-        //    Note: rows contain {id,url,score,created_at} — no report_json.
-        const auditsRes = await fetch('/api/my/audits', { credentials:'include' }).catch(()=>null);
+        // 2. No ?id= in URL: load the user's MOST RECENT full audit so the
+        //    dashboard shows their real data on login (not demo mode).
+        const latestRes = await fetch('/api/my/latest-audit', { credentials:'include' }).catch(()=>null);
+        if (latestRes?.ok) {
+          const data = await latestRes.json().catch(()=>null);
+          if (data?.audit?.report_json) {
+            const a = data.audit;
+            setLatestAudit({ id: a.id, url: a.url, report_json: a.report_json, created_at: a.created_at });
+            setImageUrls(a.imageUrls || []);
+            const ov = a.overrides || {};
+            setCompletedFixIds(new Set(Object.keys(ov).filter(k => k.startsWith('fix_') && ov[k] === 'completed').map(k => parseInt(k.replace('fix_','')))));
+            setExcludedPhotoIds(new Set(Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').map(k => parseInt(k.replace('photo_excluded_','')))));
+          }
+        }
 
+        // 3. Also load the audit list for the score-history summary.
+        const auditsRes = await fetch('/api/my/audits', { credentials:'include' }).catch(()=>null);
         if (auditsRes?.ok) {
           const data = await auditsRes.json().catch(()=>null);
           const list = data?.audits || [];
@@ -2940,7 +3017,7 @@ function DashboardApp() {
             setAuditData({
               count:   list.length,
               company: list[0]?.url || 'Your company',
-              history: list.slice(0,8).map(a => ({ date:(a.created_at||'').slice(0,10), score:a.score||0 })),
+              history: list.slice(0,8).reverse().map(a => ({ date:(a.created_at||'').slice(0,10), score:a.score||0 })),
             });
           }
         }

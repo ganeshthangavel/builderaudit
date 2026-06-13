@@ -768,7 +768,7 @@ app.post('/api/audit', async (req, res) => {
        rawData includes the crawled pages + image URLs — stored so the dashboard
        can show real photo thumbnails and link back to the page they're on. */
     if (db.isEnabled()) {
-      await db.saveAudit({ id: auditId, url, report, rawData: { pages, imageVerification } });
+      await db.saveAudit({ id: auditId, userId: req.user?.id || null, url, report, rawData: { pages, imageVerification }, audience });
     }
 
     /* Notify the user if they opted in via /api/audit/notify */
@@ -966,6 +966,80 @@ app.post('/api/auth/settings', auth.requireAuth, async (req, res) => {
 app.get('/api/my/audits', auth.requireAuth, async (req, res) => {
   const audits = await db.listAuditsForUser(req.user.id);
   res.json({ audits });
+});
+
+/* Returns the user's most recent FULL audit (with report_json + image URLs),
+   so the dashboard can show real data on login without needing ?id= in the URL. */
+app.get('/api/my/latest-audit', auth.requireAuth, async (req, res) => {
+  try {
+    const audits = await db.listAuditsForUser(req.user.id);
+    if (!audits || audits.length === 0) return res.json({ audit: null });
+    const latestId = audits[0].id;               // listAuditsForUser is ordered newest-first
+    const full = await db.getAudit(latestId);
+    if (!full || full.user_id !== req.user.id) return res.json({ audit: null });
+
+    /* Pull image URLs out of raw_data so photo thumbnails work, same as ?id= path */
+    let imageUrls = [];
+    try {
+      const pages = full.raw_data?.pages || [];
+      imageUrls = pages.flatMap(p => (p.images || []).map(im => im.src || im.url || im)).filter(Boolean).slice(0, 60);
+    } catch (e) { /* non-fatal */ }
+
+    res.json({
+      audit: {
+        id: full.id,
+        url: full.url,
+        report_json: full.report_json,
+        created_at: full.created_at,
+        last_analyzed_at: full.last_analyzed_at,
+        imageUrls,
+        overrides: full.image_overrides || {},
+      },
+    });
+  } catch (err) {
+    console.error('[my/latest-audit] failed:', err.message);
+    res.json({ audit: null });
+  }
+});
+
+/* ── Persisted competitor audits ──────────────────────────────────────────── */
+app.get('/api/my/competitors', auth.requireAuth, async (req, res) => {
+  const role = req.query.role === 'homeowner' ? 'homeowner' : 'builder';
+  try {
+    const rows = await db.listCompetitorsForUser(req.user.id, role);
+    res.json({ competitors: rows.map(r => ({ slotIndex: r.slot_index, url: r.url, data: r.data_json })) });
+  } catch (err) {
+    console.error('[my/competitors] failed:', err.message);
+    res.json({ competitors: [] });
+  }
+});
+
+app.post('/api/my/competitors', auth.requireAuth, async (req, res) => {
+  const { slotIndex, url, data, role: bodyRole } = req.body;
+  const role = bodyRole === 'homeowner' ? 'homeowner' : 'builder';
+  if (typeof slotIndex !== 'number' || !url || !data) {
+    return res.status(400).json({ error: 'slotIndex, url and data are required' });
+  }
+  try {
+    await db.saveCompetitor({ userId: req.user.id, role, slotIndex, url, data });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[my/competitors save] failed:', err.message);
+    res.status(500).json({ error: 'Could not save competitor' });
+  }
+});
+
+app.delete('/api/my/competitors/:slot', auth.requireAuth, async (req, res) => {
+  const role = req.query.role === 'homeowner' ? 'homeowner' : 'builder';
+  const slotIndex = parseInt(req.params.slot, 10);
+  if (Number.isNaN(slotIndex)) return res.status(400).json({ error: 'Invalid slot' });
+  try {
+    await db.deleteCompetitor(req.user.id, role, slotIndex);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[my/competitors delete] failed:', err.message);
+    res.status(500).json({ error: 'Could not delete competitor' });
+  }
 });
 
 app.get('/api/my/enquiries', auth.requireAuth, async (req, res) => {
@@ -1391,3 +1465,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+   

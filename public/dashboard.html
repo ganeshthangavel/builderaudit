@@ -1075,8 +1075,8 @@ function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set
     let bestIdx = -1, bestScore = 0;
     urlList.forEach((img, i) => {
       if (usedIndices.has(i)) return;
-      const altWords = (img.alt || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
-      const srcWords = img.src.toLowerCase().split(/[\W_]+/).filter(w => w.length > 3);
+      const altWords = ((img && img.alt) || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
+      const srcWords = ((img && img.src) || '').toLowerCase().split(/[\W_]+/).filter(w => w.length > 3);
       const combined = [...altWords, ...srcWords];
       const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
       if (score > bestScore) { bestScore = score; bestIdx = i; }
@@ -1949,7 +1949,7 @@ function HoPhotoCheck({ report, imageUrls }) {
     let bestIdx = -1, bestScore = 0;
     urlList.forEach((img, i) => {
       if (usedIndices.has(i)) return;
-      const combined = [...(img.alt||'').toLowerCase().split(/\W+/), ...img.src.toLowerCase().split(/[\W_]+/)].filter(w => w.length > 3);
+      const combined = [...((img && img.alt)||'').toLowerCase().split(/\W+/), ...((img && img.src)||'').toLowerCase().split(/[\W_]+/)].filter(w => w.length > 3);
       const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
       if (score > bestScore) { bestScore = score; bestIdx = i; }
     });

@@ -1,185 +1,146 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
 <title>Terms of Service — BuilderAudit</title>
+<meta name="description" content="The agreement between you and BuilderAudit when you use the service.">
+<link rel="canonical" href="https://builderaudit.co.uk/terms">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-.legal-wrap { max-width: 760px; margin: 1.5rem auto 4rem; padding: 0 1.5rem; }
-.legal-card {
-  background: #fff;
-  border: 1px solid var(--brd);
-  border-radius: 20px;
-  padding: 2.5rem 2.5rem 3rem;
-  box-shadow: var(--shadow);
+:root{
+  --fill:#FFD24D; --accent:#5247B8; --surface:#FBF5E1; --surfaceAlt:#fff;
+  --ink:#1B1A17; --line:#1B1A17; --muted:#5C5851; --good:#1F8A5B; --warn:#D9534F;
+  --display:'Hanken Grotesk',-apple-system,sans-serif;
+  --body:'IBM Plex Sans',-apple-system,sans-serif;
 }
-.legal-meta {
-  font-size: 12px;
-  color: var(--fg3);
-  margin-bottom: 1.5rem;
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.legal-card h1 {
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -.02em;
-  margin-bottom: .25rem;
-  line-height: 1.15;
-}
-.legal-card h2 {
-  font-size: 19px;
-  font-weight: 700;
-  margin-top: 2rem;
-  margin-bottom: .75rem;
-  color: var(--fg);
-  letter-spacing: -.01em;
-}
-.legal-card h3 {
-  font-size: 15px;
-  font-weight: 700;
-  margin-top: 1.25rem;
-  margin-bottom: .5rem;
-}
-.legal-card p, .legal-card li {
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--fg2);
-  margin-bottom: .75rem;
-}
-.legal-card ul, .legal-card ol { margin-left: 1.5rem; margin-bottom: 1rem; }
-.legal-card a { color: var(--peach-d); font-weight: 600; text-decoration: underline; }
-.legal-card strong { color: var(--fg); font-weight: 700; }
-
-.legal-callout {
-  background: var(--peach-b);
-  border-left: 3px solid var(--peach-d);
-  padding: 14px 18px;
-  border-radius: 8px;
-  margin: 1.5rem 0;
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-@media (max-width: 640px) {
-  .legal-card { padding: 1.75rem 1.5rem 2rem; }
-  .legal-card h1 { font-size: 26px; }
-  .legal-card h2 { font-size: 17px; }
-}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface);color:var(--ink);font-family:var(--body);line-height:1.65}
+a{color:var(--accent)}
+.topbar{background:var(--fill);border-bottom:3px solid var(--line);padding:16px 36px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand-name{font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);letter-spacing:-0.01em}
+.brand-name span:last-child{color:var(--accent)}
+.topbar .links{display:flex;gap:22px;align-items:center;font-family:var(--body);font-weight:600;font-size:14px}
+.topbar .links a{color:var(--ink);text-decoration:none}
+.wrap{max-width:820px;margin:0 auto;padding:52px 24px 80px}
+.kicker{display:inline-block;background:var(--accent);color:#fff;font-family:var(--body);font-weight:700;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;border-radius:999px;margin-bottom:18px}
+.tabs{display:inline-flex;gap:2px;background:#fff;border:2px solid var(--line);border-radius:8px;padding:4px;box-shadow:3px 3px 0 var(--line);margin-bottom:26px}
+.tabs a{font-family:var(--body);font-weight:700;font-size:13.5px;color:var(--muted);text-decoration:none;padding:9px 16px;border-radius:5px}
+.tabs a.on{background:var(--ink);color:#fff}
+h1{font-family:var(--display);font-weight:900;font-size:42px;line-height:1.04;letter-spacing:-0.02em;margin:0 0 14px}
+.standfirst{font-size:18px;color:var(--muted);margin:0 0 8px;line-height:1.55}
+.meta{font-size:13px;color:var(--muted);margin:0 0 30px;padding-bottom:24px;border-bottom:2px solid var(--line)}
+.tldr{background:#fff;border:2.5px solid var(--line);border-radius:10px;box-shadow:6px 6px 0 var(--line);padding:22px 26px;margin:0 0 40px}
+.tldr b{font-family:var(--display)}
+h2{font-family:var(--display);font-weight:900;font-size:25px;letter-spacing:-0.02em;margin:40px 0 12px;line-height:1.12}
+h3{font-family:var(--display);font-weight:800;font-size:17px;margin:24px 0 6px}
+p{margin:0 0 15px}
+ul{margin:0 0 15px;padding-left:22px}
+li{margin:0 0 8px}
+.legal-card{background:#fff;border:2px solid var(--line);border-radius:10px;padding:22px 26px;box-shadow:4px 4px 0 var(--line);margin:0 0 22px}
+strong{color:var(--ink);font-weight:700}
+.footer{border-top:3px solid var(--line);padding:28px 36px;font-size:13px;color:var(--muted);text-align:center}
+.footer a{color:var(--muted);text-decoration:none;margin:0 8px}
+@media (max-width:680px){h1{font-size:32px}.wrap{padding:36px 18px 60px}.topbar .links a{display:none}}
 </style>
 </head>
 <body>
-
-<header>
-  <a href="/" class="logo">Builder<em>Audit</em></a>
-  <div class="tagline">Forensic trust analysis for UK construction websites</div>
+<header class="topbar">
+  <a href="/" class="brand"><svg width="38" height="39" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/></svg><span class="brand-name"><span>Builder</span><span>Audit</span></span></a>
+  <nav class="links"><a href="/insights">Insights</a><a href="/check-builder">Check a builder</a><a href="/login">Sign in</a></nav>
 </header>
+<main class="wrap">
+  <div class="kicker">Legal</div>
+  <div class="tabs"><a href="/privacy">Privacy</a><a href="/terms" class="on">Terms</a><a href="/contact">Contact</a></div>
+  <h1>Terms of Service</h1>
+  <p class="standfirst">The agreement between you and BuilderAudit when you use this service.</p>
+  <p class="meta">Version 1.0 · Last updated: 26 April 2026</p>
 
-<div class="legal-wrap">
-  <div class="legal-card">
+  <div class="tldr"><b>The plain-English version.</b> If you sign up, you agree these terms apply. We provide a website audit tool. We try to make it accurate but we don't guarantee anything specific. You're responsible for what you do with the audit reports. Don't abuse the service. Either side can end the agreement at any time.</div>
 
-    <div class="legal-meta">
-      <span><strong>Version 1.0</strong> · Last updated: 26 April 2026</span>
-      <span><a href="/privacy">Privacy Policy</a></span>
-    </div>
+  <h2>1. Who this applies to</h2>
+  <p>These terms apply between you (the person who creates an account) and BuilderAudit, the operator of this service. By signing up, you confirm you've read these terms and agree to be bound by them. If you sign up on behalf of a business, you confirm you have authority to do so. If you do not agree, do not sign up or use the service.</p>
 
-    <h1>Terms of Service</h1>
-    <p style="font-size:15px;color:var(--fg2);margin-top:.5rem">The agreement between you and BuilderAudit when you use this service.</p>
+  <h2>2. The service</h2>
+  <p>BuilderAudit performs forensic trust analysis on UK construction company websites. We crawl the URLs you submit, extract publicly available content, run automated checks (including AI-driven analysis and reverse image searches), and produce a report identifying trust signals and gaps.</p>
+  <p>We may add, change, or remove features at any time. We aim to give registered users notice of significant changes by email.</p>
 
-    <div class="legal-callout">
-      <strong>The plain-English version.</strong> If you sign up, you agree these terms apply. We provide a website audit tool. We try to make it accurate but we don't guarantee anything specific. You're responsible for what you do with the audit reports. Don't abuse the service. Either side can end the agreement at any time.
-    </div>
+  <h2>3. Your account</h2>
+  <p>To use most features you need an account. You must:</p>
+  <ul>
+    <li>Provide accurate registration information (email, phone, business details, region).</li>
+    <li>Use a strong password and keep it confidential. You're responsible for activity under your account.</li>
+    <li>Notify us promptly if you believe your account has been compromised.</li>
+    <li>Be 18 or over.</li>
+  </ul>
 
-    <h2>1. Who this applies to</h2>
-    <p>These terms apply between you (the person who creates an account) and BuilderAudit, the operator of this service. By signing up, you confirm you've read these terms and agree to be bound by them. If you sign up on behalf of a business, you confirm you have authority to do so.</p>
-    <p>If you do not agree, do not sign up or use the service.</p>
+  <h2>4. Acceptable use</h2>
+  <p>You agree not to:</p>
+  <ul>
+    <li>Submit URLs for audit in order to harass, defame, or unfairly disparage a competitor.</li>
+    <li>Use the service in a way that violates any applicable law including UK GDPR, the Computer Misuse Act 1990, or the Defamation Act 2013.</li>
+    <li>Attempt to reverse-engineer, scrape, or extract our data, scoring algorithms, or AI prompts.</li>
+    <li>Resell our reports as your own product.</li>
+    <li>Submit URLs that you have been notified you are not permitted to submit.</li>
+    <li>Use the service to attack, overload, or harm any website (the audit crawler is rate-limited and respects robots.txt).</li>
+  </ul>
+  <p>We may suspend or terminate accounts that breach these rules.</p>
 
-    <h2>2. The service</h2>
-    <p>BuilderAudit performs forensic trust analysis on UK construction company websites. We crawl the URLs you submit, extract publicly available content, run automated checks (including AI-driven analysis and reverse image searches), and produce a report identifying trust signals and gaps.</p>
-    <p>We may add, change, or remove features at any time. We aim to give registered users notice of significant changes by email.</p>
+  <h2>5. Audits and reports</h2>
+  <p>BuilderAudit reports are based on automated analysis of publicly available website content at a specific point in time. They reflect our scoring methodology and the AI's assessment.</p>
+  <h3>What reports are not</h3>
+  <ul>
+    <li>Reports are not professional legal, financial, or business advice.</li>
+    <li>Reports do not constitute a definitive judgment about whether any business is trustworthy.</li>
+    <li>Reports do not guarantee any outcome, including more leads, higher conversion, or better SEO.</li>
+    <li>A low score does not mean a business is fraudulent. A high score does not mean it is risk-free.</li>
+  </ul>
+  <p>You are responsible for any decisions you make based on a report, including how you communicate findings to others.</p>
 
-    <h2>3. Your account</h2>
-    <p>To use most features you need an account. You must:</p>
-    <ul>
-      <li>Provide accurate registration information (email, phone, business details, region).</li>
-      <li>Use a strong password and keep it confidential. You're responsible for activity under your account.</li>
-      <li>Notify us promptly if you believe your account has been compromised.</li>
-      <li>Be 18 or over.</li>
-    </ul>
+  <h2>6. Pricing</h2>
+  <p>BuilderAudit is currently free to use. Free audits are offered to registered users subject to fair-use limits we may set at our discretion. The trusted-builder matching service is entirely free to homeowners. Paid services, if introduced, will be clearly priced before purchase.</p>
 
-    <h2>4. Acceptable use</h2>
-    <p>You agree not to:</p>
-    <ul>
-      <li>Submit URLs for audit if you're doing so to harass, defame, or unfairly disparage a competitor.</li>
-      <li>Use the service in a way that violates any applicable law including UK GDPR, the Computer Misuse Act 1990, or the Defamation Act 2013.</li>
-      <li>Attempt to reverse-engineer, scrape, or extract our data, scoring algorithms, or AI prompts.</li>
-      <li>Resell our reports as your own product.</li>
-      <li>Submit URLs that you have been notified you are not permitted to submit.</li>
-      <li>Use the service to attack, overload, or harm any website (the audit crawler is rate-limited and respects robots.txt).</li>
-    </ul>
-    <p>We may suspend or terminate accounts that breach these rules.</p>
+  <h2>7. Builder &amp; agency partner introductions</h2>
+  <p>If you opted in (at signup or in your dashboard) we may introduce you to vetted third-party partners — for builders, agency partners such as web design, SEO and photography; for homeowners, accredited local building companies.</p>
+  <ul>
+    <li>We are not responsible for the work, conduct, pricing, or quality of partners.</li>
+    <li>Any contract for services or building work is between you and the partner.</li>
+    <li>We may receive a referral fee from partners, which we'll disclose at the point of introduction.</li>
+    <li>You can withdraw this consent at any time from your dashboard, after which no further introductions will be made.</li>
+  </ul>
 
-    <h2>5. Audits and reports</h2>
-    <p>BuilderAudit reports are based on automated analysis of publicly available website content at a specific point in time. They reflect our scoring methodology and the AI's assessment.</p>
-    <h3>What reports are not</h3>
-    <ul>
-      <li>Reports are not professional legal, financial, or business advice.</li>
-      <li>Reports do not constitute a definitive judgment about whether any business is trustworthy.</li>
-      <li>Reports do not guarantee any outcome, including more leads, higher conversion, or better SEO.</li>
-      <li>A low score does not mean a business is fraudulent. A high score does not mean it is risk-free.</li>
-    </ul>
-    <p>You are responsible for any decisions you make based on a report, including how you communicate findings to others.</p>
+  <h2>8. Intellectual property</h2>
+  <p>BuilderAudit, the BuilderAudit name and logo, the scoring methodology, the report format, the AI prompts, and all software underlying the service remain our property.</p>
+  <p>Reports we generate for you are licensed to you for your own use (including sharing with prospective clients or your own staff). You may not republish reports as a paid commercial product. Public website content shown in reports remains the property of its respective owner; our analysis and presentation of that content is ours.</p>
 
-    <h2>6. Pricing</h2>
-    <p>Our current pricing is shown on the website. Free audits are offered to registered users subject to fair-use limits we may set at our discretion. Paid services, if introduced, will be clearly priced before purchase.</p>
+  <h2>9. Disclaimers and limits of liability</h2>
+  <p>The service is provided "as is" and "as available". To the maximum extent permitted by law:</p>
+  <ul>
+    <li>We do not warrant that the service will be uninterrupted, error-free, or that scores and findings will be accurate.</li>
+    <li>We are not liable for indirect, consequential, or special losses, including lost profits, lost business, or loss of reputation.</li>
+    <li>Our total aggregate liability to you for any claim arising from the service is limited to the greater of (a) £100, or (b) the total amount you have paid us in the 12 months preceding the claim.</li>
+  </ul>
+  <p>Nothing in these terms limits liability we cannot lawfully limit, including liability for death or personal injury caused by negligence, fraudulent misrepresentation, or breach of statutory consumer rights.</p>
 
-    <h2>7. Agency partner introductions</h2>
-    <p>If you opted in (at signup or in your dashboard) we may introduce you to vetted third-party agency partners (web design, SEO, photography, etc.) when relevant to issues found in your reports.</p>
-    <ul>
-      <li>We are not responsible for the work, conduct, pricing, or quality of partner agencies.</li>
-      <li>Any contract for services is between you and the partner.</li>
-      <li>We may receive a referral fee from partners, which we'll disclose at the point of introduction.</li>
-      <li>You can withdraw this consent at any time from your dashboard, after which no further introductions will be made.</li>
-    </ul>
+  <h2>10. Indemnity</h2>
+  <p>You agree to indemnify us against claims, damages, and reasonable costs arising from your breach of these terms, your misuse of audit reports, or your unlawful use of the service. We will tell you promptly of any such claim and let you control the defence.</p>
 
-    <h2>8. Intellectual property</h2>
-    <p>BuilderAudit, the BuilderAudit name and logo, the scoring methodology, the report format, the AI prompts, and all software underlying the service remain our property.</p>
-    <p>Reports we generate for you are licensed to you for your own use (including sharing with prospective clients or your own staff). You may not republish reports as a paid commercial product.</p>
-    <p>Public website content shown in reports remains the property of its respective owner. Our analysis and presentation of that content is ours.</p>
+  <h2>11. Termination</h2>
+  <p>You can close your account at any time from your dashboard or by emailing us. We will delete your data within 30 days as described in our Privacy Policy (subject to legal retention requirements). We may suspend or terminate your account immediately if we reasonably believe you've breached these terms or used the service unlawfully.</p>
 
-    <h2>9. Disclaimers and limits of liability</h2>
-    <p>The service is provided "as is" and "as available". To the maximum extent permitted by law:</p>
-    <ul>
-      <li>We do not warrant that the service will be uninterrupted, error-free, or that scores and findings will be accurate.</li>
-      <li>We are not liable for indirect, consequential, or special losses, including lost profits, lost business, or loss of reputation.</li>
-      <li>Our total aggregate liability to you for any claim arising from the service is limited to the greater of (a) £100, or (b) the total amount you have paid us in the 12 months preceding the claim.</li>
-    </ul>
-    <p><strong>Nothing in these terms limits liability we cannot lawfully limit</strong>, including liability for death or personal injury caused by negligence, fraudulent misrepresentation, or breach of statutory consumer rights.</p>
+  <h2>12. Changes to these terms</h2>
+  <p>We may update these terms from time to time. Material changes will be notified to registered users by email at least 14 days before they take effect. Continued use after that date constitutes acceptance.</p>
 
-    <h2>10. Indemnity</h2>
-    <p>You agree to indemnify us against claims, damages, and reasonable costs arising from your breach of these terms, your misuse of audit reports, or your unlawful use of the service. We will tell you promptly of any such claim and let you control the defence.</p>
+  <h2>13. Governing law and jurisdiction</h2>
+  <p>These terms are governed by English law. Any dispute will be subject to the exclusive jurisdiction of the courts of England and Wales.</p>
 
-    <h2>11. Termination</h2>
-    <p>You can close your account at any time from your dashboard or by emailing us. We will delete your data within 30 days as described in our Privacy Policy (subject to legal retention requirements).</p>
-    <p>We may suspend or terminate your account immediately if we reasonably believe you've breached these terms or used the service unlawfully.</p>
-
-    <h2>12. Changes to these terms</h2>
-    <p>We may update these terms from time to time. Material changes will be notified to registered users by email at least 14 days before they take effect. Continued use after that date constitutes acceptance.</p>
-
-    <h2>13. Governing law and jurisdiction</h2>
-    <p>These terms are governed by English law. Any dispute will be subject to the exclusive jurisdiction of the courts of England and Wales.</p>
-
-    <h2>14. Contact</h2>
-    <p>Questions about these terms? Email <a href="mailto:gthangavel1@gmail.com">gthangavel1@gmail.com</a>.</p>
-
-  </div>
-</div>
-
+  <h2>14. Contact</h2>
+  <p>Questions about these terms? Email <a href="mailto:gthangavel1@gmail.com">gthangavel1@gmail.com</a>.</p>
+</main>
+<footer class="footer">© 2026 BuilderAudit · <a href="/">Home</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></footer>
 </body>
 </html>

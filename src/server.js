@@ -741,7 +741,7 @@ app.post('/api/audit', async (req, res) => {
         reason,
         pagesAttempted: pages.length,
         message: 'We could not audit this website. It appears to be using bot protection (e.g. Cloudflare, custom WAF) that blocks automated analysis tools.',
-        suggestion: 'This is unusual for legitimate UK construction websites. If you own this site, check your anti-bot settings or contact us at gthangavel1@gmail.com so we can review your case.',
+        suggestion: 'This is unusual for legitimate UK construction websites. If you own this site, check your anti-bot settings or contact us at hello@builderaudit.co.uk so we can review your case.',
       });
       /* Notify the user that the audit didn't complete, if they opted in */
       const notify = pendingNotifications.get(auditId);
@@ -1867,4 +1867,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-   
+         

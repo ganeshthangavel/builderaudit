@@ -226,6 +226,7 @@ module.exports = {
   sendNewSignupNotification,
   sendReportLeadNotification,
   sendFeedbackNotification,
+  sendVerificationEmail,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -452,6 +453,51 @@ async function sendReportLeadNotification({ lead, reportCompany, reportUrl }) {
     return { success: true, id: result?.data?.id };
   } catch (err) {
     console.error('[email] sendReportLeadNotification failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EMAIL VERIFICATION — sent to the USER at signup with a one-time link they
+   must click to confirm the address is real and theirs.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function sendVerificationEmail({ to, name, verifyUrl }) {
+  if (!resend || !to) {
+    console.warn('[email] sendVerificationEmail skipped — no Resend key or no recipient');
+    return { skipped: true };
+  }
+  const who = (name && String(name).trim()) ? String(name).trim() : 'there';
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1B1A17;background:#FBF5E1">
+      <div style="background:#fff;border:3px solid #1B1A17;border-radius:14px;padding:32px 28px;box-shadow:6px 6px 0 #1B1A17">
+        <div style="font-family:'Hanken Grotesk',sans-serif;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#5247B8;margin-bottom:14px">BuilderAudit · Confirm your email</div>
+        <h2 style="margin:0 0 10px;font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;letter-spacing:-0.02em;line-height:1.05;text-transform:uppercase">One quick step, ${escapeHtml(who)}</h2>
+        <p style="font-size:15px;line-height:1.55;margin:0 0 22px;color:#1B1A17">
+          Please confirm this is your email address so we can finish setting up your BuilderAudit account. Just tap the button below.
+        </p>
+        <a href="${verifyUrl}" style="display:block;padding:15px 22px;background:#5247B8;color:#fff;text-align:center;border:2px solid #1B1A17;border-radius:6px;text-decoration:none;font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:16px;box-shadow:4px 4px 0 #1B1A17;margin:0 0 18px">
+          Confirm my email →
+        </a>
+        <div style="font-size:12.5px;color:#5C5851;line-height:1.6;padding-top:12px;border-top:1px solid #E8E2D6">
+          If the button doesn't work, copy and paste this link into your browser:<br>
+          <span style="word-break:break-all;color:#5247B8">${verifyUrl}</span>
+        </div>
+        <div style="font-size:12px;color:#8A7E72;line-height:1.6;margin-top:14px">
+          This link expires in 7 days. If you didn't create a BuilderAudit account, you can safely ignore this email.
+        </div>
+      </div>
+    </div>`;
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: 'Confirm your email — BuilderAudit',
+      html,
+    });
+    console.log('[email] sendVerificationEmail sent to', to);
+    return { success: true, id: result?.data?.id };
+  } catch (err) {
+    console.error('[email] sendVerificationEmail failed for', to, ':', err.message);
     return { success: false, error: err.message };
   }
 }

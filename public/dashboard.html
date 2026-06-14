@@ -492,8 +492,16 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
     saveOverride({ fixId: id, completed: nowDone });
   };
 
-  /* Score: use server-adjusted score if available, else calculate locally */
-  const completedPts = fixDefs.filter(f => completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0);
+  /* Score: use server-adjusted score if available, else calculate locally.
+     Count ALL completed fixes (the Fixes page can complete beyond the top 5
+     shown here), matching the server's computation across every top_action. */
+  const allActions = report?.top_actions || [];
+  const completedPtsAll = allActions.reduce((s,a,i) => {
+    if (!completedFixIds.has(i)) return s;
+    const pts = (typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2);
+    return s + pts;
+  }, 0);
+  const completedPts = completedPtsAll || fixDefs.filter(f => completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0);
   const photoBoost = excludedPhotoIds.size * 5;
   const score = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts + photoBoost);
 
@@ -631,7 +639,7 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
               <div style={{ flex:'0 0 auto', width:36, height:36, display:'grid', placeItems:'center' }}>
                 <img src={`/assets/icons/${f.icon}.png`} alt="" width={36} height={36} style={{ width:36, height:36, objectFit:'contain' }}/>
               </div>
-              <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:f.done?'line-through':'none' }}>{f.text}</div>
+              <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:completedFixIds.has(f.id)?'line-through':'none' }}>{f.text}</div>
               <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:completedFixIds.has(f.id)?P.muted:P.green, background:completedFixIds.has(f.id)?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
             </li>
           ))}
@@ -1397,8 +1405,9 @@ function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set
 }
 
 // ── Builder: Top 10 Fixes ────────────────────────────────────────
-function BuilderFixes({ latestAudit }) {
+function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
   const report = latestAudit?.report_json;
+  const baseScore = report?.hero?.score ?? 64;
 
   const iconForCategory = (cat) => {
     const m = { 'Photos':'hammer','Trust':'gear','Quote':'screwdriver','Speed':'roller','Clarity':'hardhat','SEO':'cone','Copy':'clipboard','Mobile':'tape' };
@@ -1406,15 +1415,17 @@ function BuilderFixes({ latestAudit }) {
     return 'wrench';
   };
 
+  /* IDs are 0-indexed to match the server (fix_0, fix_1…) and the main
+     dashboard, so completing a fix here moves the score there too. */
   const baseFixes = report?.top_actions?.map((a,i)=>{
     const cats = ['Photos','Trust','Quote flow','Speed','Clarity','SEO','Copy','Mobile','Trust','Speed'];
     const cat = cats[i%cats.length];
     const isObj = typeof a === 'object' && a !== null;
     return {
-      id: i+1,
+      id: i,
       icon: iconForCategory(isObj ? (a.title || '') : a),
       title: isObj ? (a.title || `Action ${i+1}`) : a,
-      impact: isObj ? (a.impact_pts || [14,9,7,6,5,5,4,4,3,2][i] || 2) : ([14,9,7,6,5,5,4,4,3,2][i] || 2),
+      impact: isObj ? (a.impact_pts || [8,6,5,3,2][i] || 2) : ([8,6,5,3,2][i] || 2),
       difficulty: 'Medium',
       est: isObj ? (a.time || '—') : '—',
       category: cat,
@@ -1422,26 +1433,39 @@ function BuilderFixes({ latestAudit }) {
       how: isObj ? (a.how || null) : null,
     };
   }) || [
-    { id:1,  icon:'hammer',     title:'Replace 6 stock photos with real before/after job shots',             impact:14, difficulty:'Medium', est:'1 hour',    category:'Photos',     why:'Six of your nine portfolio images are flagged as stock. Real photos are the single biggest score lift.' },
-    { id:2,  icon:'gear',       title:'Apply for FMB or TrustMark accreditation',                           impact:9,  difficulty:'Medium', est:'2-3 weeks', category:'Trust',      why:'You show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.' },
-    { id:3,  icon:'screwdriver',title:'Cut quote form to 4 fields: name, postcode, job type, note',         impact:7,  difficulty:'Easy',   est:'20 min',    category:'Quote flow', why:'Your form has 11 fields. Drop-off testing shows abandonment doubles past 6.' },
-    { id:4,  icon:'roller',     title:'Compress homepage hero image (currently 2.1MB)',                      impact:6,  difficulty:'Easy',   est:'10 min',    category:'Speed',      why:'Convert to WebP and target under 200KB. Cuts load time from 4.2s to ~1.8s.' },
-    { id:5,  icon:'hardhat',    title:'Create one landing page per service',                                 impact:5,  difficulty:'Hard',   est:'1 day',     category:'Clarity',    why:'Per-service pages help homeowners self-identify AND lift local SEO.' },
-    { id:6,  icon:'cone',       title:'Claim & link Google Business Profile from contact page',              impact:4,  difficulty:'Easy',   est:'20 min',    category:'SEO',        why:'You\'re ranking #14 for your area. A linked GBP is the fastest way into the local 3-pack.' },
-    { id:7,  icon:'clipboard',  title:'Surface 3 best reviews on the homepage',                             impact:4,  difficulty:'Easy',   est:'30 min',    category:'Trust',      why:'Reviews are buried. Move three to the homepage above the fold.' },
-    { id:8,  icon:'wrench',     title:'Rewrite hero headline around the homeowner outcome',                  impact:3,  difficulty:'Medium', est:'45 min',    category:'Copy',       why:'Hero currently says "We build X." Try "Add a kitchen-diner without losing your garden."' },
-    { id:9,  icon:'tape',       title:'Add a phone number to the header on mobile',                         impact:3,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'On mobile, the phone number isn\'t visible above the fold. Homeowners want quick contact.' },
-    { id:10, icon:'level',      title:'Add visible field labels during focus on quote form',                 impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'Labels disappear when typing on mobile. People forget what each field is.' },
+    { id:0,  icon:'hammer',     title:'Replace 6 stock photos with real before/after job shots',             impact:8, difficulty:'Medium', est:'1 hour',    category:'Photos',     why:'Six of your nine portfolio images are flagged as stock. Real photos are the single biggest score lift.' },
+    { id:1,  icon:'gear',       title:'Apply for FMB or TrustMark accreditation',                           impact:6,  difficulty:'Medium', est:'2-3 weeks', category:'Trust',      why:'You show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.' },
+    { id:2,  icon:'screwdriver',title:'Cut quote form to 4 fields: name, postcode, job type, note',         impact:5,  difficulty:'Easy',   est:'20 min',    category:'Quote flow', why:'Your form has 11 fields. Drop-off testing shows abandonment doubles past 6.' },
+    { id:3,  icon:'roller',     title:'Compress homepage hero image (currently 2.1MB)',                      impact:3,  difficulty:'Easy',   est:'10 min',    category:'Speed',      why:'Convert to WebP and target under 200KB. Cuts load time from 4.2s to ~1.8s.' },
+    { id:4,  icon:'hardhat',    title:'Create one landing page per service',                                 impact:2,  difficulty:'Hard',   est:'1 day',     category:'Clarity',    why:'Per-service pages help homeowners self-identify AND lift local SEO.' },
+    { id:5,  icon:'cone',       title:'Claim & link Google Business Profile from contact page',              impact:2,  difficulty:'Easy',   est:'20 min',    category:'SEO',        why:'You\'re ranking #14 for your area. A linked GBP is the fastest way into the local 3-pack.' },
+    { id:6,  icon:'clipboard',  title:'Surface 3 best reviews on the homepage',                             impact:2,  difficulty:'Easy',   est:'30 min',    category:'Trust',      why:'Reviews are buried. Move three to the homepage above the fold.' },
+    { id:7,  icon:'wrench',     title:'Rewrite hero headline around the homeowner outcome',                  impact:2,  difficulty:'Medium', est:'45 min',    category:'Copy',       why:'Hero currently says "We build X." Try "Add a kitchen-diner without losing your garden."' },
+    { id:8,  icon:'tape',       title:'Add a phone number to the header on mobile',                         impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'On mobile, the phone number isn\'t visible above the fold. Homeowners want quick contact.' },
+    { id:9,  icon:'level',      title:'Add visible field labels during focus on quote form',                 impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'Labels disappear when typing on mobile. People forget what each field is.' },
   ];
 
-  const [fixes, setFixes] = useState(baseFixes.map(f=>({...f, done:false, requestOpen:false, requested:false})));
-  const toggleDone = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, done:!f.done}:f));
-  const toggleReq  = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, requestOpen:!f.requestOpen}:f));
-  const submitReq  = (id) => setFixes(fs=>fs.map(f=>f.id===id?{...f, requested:true, requestOpen:false}:f));
+  /* Done-state lives in the shared, persisted completedFixIds (survives
+     navigation + reload, and updates the score). Request-the-team flow stays
+     local UI state. */
+  const isDone = (id) => completedFixIds.has(id);
+  const toggleDone = (id) => {
+    const nowDone = !completedFixIds.has(id);
+    const next = new Set(completedFixIds);
+    if (nowDone) next.add(id); else next.delete(id);
+    setCompletedFixIds(next);
+    saveOverride({ fixId: id, completed: nowDone });
+  };
+  const [reqState, setReqState] = useState({});   // { [id]: { open, requested } }
+  const toggleReq  = (id) => setReqState(s => ({ ...s, [id]: { ...s[id], open: !s[id]?.open } }));
+  const submitReq  = (id) => setReqState(s => ({ ...s, [id]: { requested:true, open:false } }));
 
-  const doneCount      = fixes.filter(f=>f.done).length;
-  const reqCount       = fixes.filter(f=>f.requested).length;
-  const remaining      = fixes.filter(f=>!f.done).reduce((a,b)=>a+b.impact,0);
+  const fixes = baseFixes;
+  const doneCount      = fixes.filter(f=>isDone(f.id)).length;
+  const reqCount       = Object.values(reqState).filter(r=>r.requested).length;
+  const remaining      = fixes.filter(f=>!isDone(f.id)).reduce((a,b)=>a+b.impact,0);
+  const completedPts   = fixes.filter(f=>isDone(f.id)).reduce((a,b)=>a+b.impact,0);
+  const liveScore      = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts);
   const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
 
   return (
@@ -1464,17 +1488,39 @@ function BuilderFixes({ latestAudit }) {
         <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub="still on the table" yellow/></Card>
       </div>
 
+      {/* Live projected score — climbs as fixes are ticked, persists across the dashboard */}
+      <div style={{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap', background:P.ink, border:`2.5px solid ${P.line}`, borderRadius:12, boxShadow:`5px 5px 0 ${P.line}`, padding:'18px 22px', marginBottom:24 }}>
+        <div style={{ display:'flex', alignItems:'baseline', gap:10 }}>
+          <span style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>Projected score</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
+          <span style={{ fontFamily:F.display, fontWeight:900, fontSize:34, color:'#fff', lineHeight:1 }}>{liveScore}</span>
+          <span style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.55)' }}>/ 100</span>
+          {liveScore > baseScore && (
+            <span style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:'#7BE0AE', marginLeft:4 }}>▲ {liveScore - baseScore} from {baseScore}</span>
+          )}
+        </div>
+        <div style={{ flex:1, minWidth:160 }}>
+          <div style={{ height:10, background:'rgba(255,255,255,0.12)', borderRadius:5, overflow:'hidden' }}>
+            <div style={{ width:`${liveScore}%`, height:'100%', background:P.green, transition:'width .35s' }}/>
+          </div>
+        </div>
+        <span style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.55)', maxWidth:230, lineHeight:1.45 }}>
+          {completedPts > 0 ? 'Tick saves automatically. Re-scan to make this your official score.' : 'Tick fixes off to see your score climb — it saves as you go.'}
+        </span>
+      </div>
+
       <Card pad={22} style={{ marginBottom:24 }}>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {fixes.map((f,idx)=>(
-            <div key={f.id} style={{ border:`2px solid ${P.line}`, borderRadius:6, background:f.done?P.surface:'#fff', opacity:f.done?0.68:1, overflow:'hidden', transition:'opacity .2s, background .2s' }}>
+          {fixes.map((f,idx)=>{ const done = isDone(f.id); const req = reqState[f.id] || {}; return (
+            <div key={f.id} style={{ border:`2px solid ${P.line}`, borderRadius:6, background:done?P.surface:'#fff', opacity:done?0.68:1, overflow:'hidden', transition:'opacity .2s, background .2s' }}>
               <div style={{ display:'grid', gridTemplateColumns:'auto 40px 1fr auto auto', gap:14, alignItems:'center', padding:'14px 16px' }}>
-                <button onClick={()=>toggleDone(f.id)} style={{ flex:'0 0 auto', width:26, height:26, borderRadius:5, background:f.done?P.green:'#fff', border:`2.4px solid ${f.done?P.green:P.line}`, cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:14, fontFamily:F.display, transition:'background .15s, border-color .15s' }}>{f.done?'✓':''}</button>
+                <button onClick={()=>toggleDone(f.id)} style={{ flex:'0 0 auto', width:26, height:26, borderRadius:5, background:done?P.green:'#fff', border:`2.4px solid ${done?P.green:P.line}`, cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:14, fontFamily:F.display, transition:'background .15s, border-color .15s' }}>{done?'✓':''}</button>
                 <div style={{ flex:'0 0 auto', width:40, height:40, display:'grid', placeItems:'center' }}>
                   <img src={`/assets/icons/${f.icon}.png`} alt="" width={40} height={40} style={{ width:40, height:40, objectFit:'contain' }}/>
                 </div>
                 <div style={{ minWidth:0 }}>
-                  <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:f.done?'line-through':'none', lineHeight:1.35 }}>
+                  <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:done?'line-through':'none', lineHeight:1.35 }}>
                     <span style={{ display:'inline-block', marginRight:8, padding:'1px 7px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:11, color:P.muted, letterSpacing:'0.04em' }}>#{idx+1}</span>
                     {f.title}
                   </div>
@@ -1488,16 +1534,16 @@ function BuilderFixes({ latestAudit }) {
                 </div>
                 <span style={{ flex:'0 0 auto', padding:'6px 12px', background:P.green, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:13, whiteSpace:'nowrap' }}>+{f.impact} pts</span>
                 <div style={{ display:'flex', gap:6, flex:'0 0 auto' }}>
-                  {f.requested ? (
+                  {req.requested ? (
                     <span style={{ padding:'8px 12px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:12, letterSpacing:'0.04em', whiteSpace:'nowrap' }}>✓ Help requested</span>
                   ) : (
-                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'8px 12px', fontSize:12.5, boxShadow:'none' }}>{f.requestOpen?'Cancel':'Get help'}</Btn>
+                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'8px 12px', fontSize:12.5, boxShadow:'none' }}>{req.open?'Cancel':'Get help'}</Btn>
                   )}
                 </div>
               </div>
               <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13.5, color:P.muted, lineHeight:1.5 }}>{f.why}</div>
               {f.how && <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13, color:P.accent, lineHeight:1.5 }}><b style={{ textTransform:'uppercase', fontSize:10, letterSpacing:'0.07em', display:'block', marginBottom:3 }}>How</b>{f.how}</div>}
-              {f.requestOpen && (
+              {req.open && (
                 <div style={{ borderTop:`2px solid ${P.line}`, background:'rgba(82,71,184,0.06)', padding:'18px 16px 18px 102px' }}>
                   <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Request support from BuilderAudit</div>
                   <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:'0 0 14px', lineHeight:1.5, maxWidth:640 }}>Our team will reach out within 1 working day with a quote. Most fixes in this band are £{f.difficulty==='Easy'?'40-60':f.difficulty==='Medium'?'120-200':'300+'} including a free re-audit afterwards.</p>
@@ -1509,7 +1555,7 @@ function BuilderFixes({ latestAudit }) {
                 </div>
               )}
             </div>
-          ))}
+          ); })}
         </div>
       </Card>
 
@@ -3166,9 +3212,12 @@ function DashboardApp() {
 
   /* Save an override to the server and update the adjusted score */
   const saveOverride = useCallback(async (payload) => {
-    if (!auditIdFromUrl) return;
+    /* Works whether the audit was opened via ?id= OR loaded as the user's
+       latest audit (no ?id=). Without a target id we can't persist. */
+    const targetId = auditIdFromUrl || latestAudit?.id;
+    if (!targetId) return;
     try {
-      const res = await fetch('/api/report/' + auditIdFromUrl + '/override', {
+      const res = await fetch('/api/report/' + targetId + '/override', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -3179,7 +3228,7 @@ function DashboardApp() {
         if (data?.adjustedScore != null) setAdjustedScore(data.adjustedScore);
       }
     } catch(e) { /* silent — state still updates locally */ }
-  }, [auditIdFromUrl]);
+  }, [auditIdFromUrl, latestAudit]);
 
   // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
@@ -3274,7 +3323,7 @@ function DashboardApp() {
     about:       <BuilderAbout       latestAudit={latestAudit}/>,
     review:      <BuilderReview      latestAudit={latestAudit}/>,
     photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride}/>,
-    fixes:       <BuilderFixes       latestAudit={latestAudit}/>,
+    fixes:       <BuilderFixes       latestAudit={latestAudit} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
     competitors: <BuilderCompetitors latestAudit={latestAudit} user={user}/>,
   } : {
     dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,

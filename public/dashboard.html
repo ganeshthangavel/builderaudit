@@ -1573,10 +1573,11 @@ function BuilderCompetitors({ latestAudit, user }) {
   const youRank  = ranked.findIndex(x => x === you) + 1;
 
   /* ── Sub-components ── */
-  const ScoreCard = ({ b, label, yellow, onEdit }) => {
+  const ScoreCard = ({ b, label, yellow, onEdit, badge, badgeColor }) => {
     const color = b.score >= 75 ? P.green : b.score >= 55 ? P.fill : P.red;
     return (
-      <Card pad={22} style={{ background: yellow ? P.fill : '#fff' }}>
+      <Card pad={22} style={{ background: yellow ? P.fill : '#fff', overflow:'hidden' }}>
+        {badge && <div style={{ margin:'-22px -22px 14px', background:badgeColor||P.ink, color:'#fff', fontFamily:F.body, fontSize:10.5, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', padding:'5px 12px', textAlign:'center' }}>{badge}</div>}
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:14 }}>
           <div>
             <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{label}</div>
@@ -1769,26 +1770,83 @@ function BuilderCompetitors({ latestAudit, user }) {
 
       {/* Grid: your card + 4 competitor slots */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:18, marginBottom:24 }}>
-        <ScoreCard b={you} label={`You · ${you.loc}`} yellow/>
+        <ScoreCard b={you} label={`You · ${you.loc}`} yellow
+          badge={audited.length ? (youRank === 1 ? '★ You\'re winning' : `Behind on ${ranked[0].score - you.score} pts — #${youRank} of ${ranked.length}`) : null}
+          badgeColor={audited.length && youRank === 1 ? P.green : audited.length ? P.red : P.ink}/>
         {slots.map((slot, i) =>
           slot.loading  ? <LoadingSlot key={i}/> :
-          slot.audited  ? <ScoreCard key={i} b={slot.data} label="Competitor" onEdit={()=>editAgain(i)}/> :
+          slot.audited  ? <ScoreCard key={i} b={slot.data} label="Competitor" onEdit={()=>editAgain(i)}
+                            badge={you.score >= slot.data.score ? 'You beat them' : 'They beat you'}
+                            badgeColor={you.score >= slot.data.score ? P.green : P.red}/> :
                           <React.Fragment key={i}>{EmptySlot({ slot, i })}</React.Fragment>
         )}
       </div>
 
-      {/* Verdict band */}
-      {audited.length > 0 && (
-        <Card style={{ background:P.ink }}>
-          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>The verdict</div>
-          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
-            {youRank === 1 ? 'You\'re ahead of the pack' : `You're ranked #${youRank} of ${ranked.length}`}
-          </h3>
-          <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>
-            {youRank === 1 ? 'Your site currently outscores all audited competitors. Keep fixing to stay there.' : `Address your top fixes to close the gap. You're ${ranked[0].score - you.score} points behind the leader.`}
-          </p>
-        </Card>
-      )}
+      {/* Decision-led summary — recomputes every time a competitor is added/changed */}
+      {audited.length > 0 && (() => {
+        const rivals    = audited.map(s => s.data);
+        const rivalScores = rivals.map(r => r.score);
+        const avgRival  = Math.round(rivalScores.reduce((a,b)=>a+b,0) / rivalScores.length);
+        const topRival  = rivals.reduce((m,r)=> r.score > m.score ? r : m, rivals[0]);
+        const beat      = rivals.filter(r => you.score > r.score).length;
+        const lead      = you.score - topRival.score;            // +ve = ahead of best rival
+        const gapToTop  = topRival.score - you.score;            // +ve = behind best rival
+        const winning   = youRank === 1;
+
+        /* Per-category: where do you beat / lose to the field on average? */
+        const catNames = you.breakdown.map(c => c.name);
+        const catCompare = catNames.map((name, idx) => {
+          const mine = you.breakdown[idx]?.s ?? 0;
+          const theirs = rivals.map(r => r.breakdown?.[idx]?.s).filter(v => typeof v === 'number');
+          const avgTheirs = theirs.length ? Math.round(theirs.reduce((a,b)=>a+b,0)/theirs.length) : null;
+          return avgTheirs == null ? null : { name, mine, avgTheirs, diff: mine - avgTheirs };
+        }).filter(Boolean);
+        const weakest = [...catCompare].sort((a,b)=>a.diff-b.diff)[0];      // biggest deficit
+        const strongest = [...catCompare].sort((a,b)=>b.diff-a.diff)[0];    // biggest lead
+
+        /* Outcome headline + what it means for winning enquiries */
+        const headline = winning
+          ? 'You are the one to beat'
+          : gapToTop <= 5 ? 'It\'s neck-and-neck — small fixes decide this'
+          : gapToTop <= 15 ? 'You\'re losing winnable work right now'
+          : 'Competitors are taking enquiries you should be getting';
+
+        const outcome = winning
+          ? `When a homeowner compares you against ${rivals.length === 1 ? 'this rival' : 'these '+rivals.length+' rivals'}, your site makes the strongest first impression — you outscore ${beat === rivals.length ? 'all of them' : beat+' of '+rivals.length}. The risk now is complacency: hold the lead by clearing your remaining fixes before they catch up.`
+          : `A homeowner getting quotes from you and ${topRival.name} will, on the evidence of the websites alone, trust ${topRival.name} more — they score ${topRival.score} to your ${you.score}. That's the difference between getting the call and getting ignored. Close the ${gapToTop}-point gap and you flip that decision.`;
+
+        return (
+          <Card style={{ background:P.ink, marginBottom:18 }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>
+              Will you win the work? · based on you + {rivals.length} competitor{rivals.length>1?'s':''}
+            </div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>{headline}</h3>
+            <div style={{ fontFamily:F.body, fontSize:13.5, color:'rgba(255,255,255,0.6)', marginBottom:14 }}>
+              Ranked <b style={{color:'#fff'}}>#{youRank} of {ranked.length}</b> · your score {you.score} vs field average {avgRival}
+            </div>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.85)', margin:'0 0 16px', lineHeight:1.6 }}>{outcome}</p>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              {strongest && strongest.diff > 0 && (
+                <div style={{ background:'rgba(31,138,91,0.18)', border:`1.5px solid ${P.green}`, borderRadius:8, padding:'12px 14px' }}>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:'#7BE0AE', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Your edge — lean into it</div>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, color:'#fff', lineHeight:1.45 }}>You beat the field on <b>{strongest.name}</b> ({strongest.mine} vs their {strongest.avgTheirs} avg). Make this obvious to homeowners — it's already winning you trust.</div>
+                </div>
+              )}
+              {weakest && weakest.diff < 0 && (
+                <div style={{ background:'rgba(217,83,79,0.18)', border:`1.5px solid ${P.red}`, borderRadius:8, padding:'12px 14px' }}>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:'#FFB3B0', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Where you're losing — fix first</div>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, color:'#fff', lineHeight:1.45 }}>You trail on <b>{weakest.name}</b> ({weakest.mine} vs their {weakest.avgTheirs} avg). This is the single biggest reason a homeowner picks them over you. Fixing it has the highest payoff.</div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ fontFamily:F.body, fontSize:12.5, color:'rgba(255,255,255,0.5)', marginTop:14, lineHeight:1.5 }}>
+              This updates automatically as you add or re-audit competitors. Add your closest rivals for the sharpest read.
+            </div>
+          </Card>
+        );
+      })()}
     </main>
   );
 }
@@ -2381,9 +2439,20 @@ function HomeownerCompare({ user }) {
 
     /* Audited result tile */
     const d=slot.data, color=sc(d.score), isTop=topPick&&d.url===topPick.url;
+    const myRank = ranked.findIndex(r => r.data.url === d.url) + 1;   // 1-based rank in field
+    const fieldN = ranked.length;
+    /* Decision-led one-liner per tile */
+    const pickLine = fieldN <= 1 ? null
+      : myRank === 1 ? '✓ Your strongest option so far'
+      : myRank === fieldN ? '↓ Weakest of the ' + fieldN + ' — extra caution'
+      : '#' + myRank + ' of ' + fieldN + ' — still worth a quote';
+    const pickColor = myRank === 1 ? P.green : myRank === fieldN ? P.red : '#D97706';
     return (
       <div key={i} style={{ border:`2px solid ${isTop?P.green:P.line}`, borderRadius:10, background:isTop?'rgba(31,138,91,0.04)':'#fff', overflow:'hidden', boxShadow:`4px 4px 0 ${isTop?P.green:P.line}` }}>
-        {isTop && <div style={{ background:P.green,color:'#fff',fontFamily:F.body,fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase',padding:'4px 10px',textAlign:'center' }}>★ Top pick</div>}
+        {isTop
+          ? <div style={{ background:P.green,color:'#fff',fontFamily:F.body,fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase',padding:'4px 10px',textAlign:'center' }}>★ Best option of the {fieldN>1?fieldN:''}</div>
+          : pickLine && <div style={{ background:pickColor,color:'#fff',fontFamily:F.body,fontSize:10,fontWeight:700,letterSpacing:'0.07em',textTransform:'uppercase',padding:'4px 10px',textAlign:'center' }}>{pickLine}</div>
+        }
         <div style={{ padding:'14px' }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
             <div style={{ minWidth:0 }}>
@@ -2487,23 +2556,56 @@ function HomeownerCompare({ user }) {
         {slots.map((slot, i) => renderTile(slot, i))}
       </div>
 
-      {audited.length >= 2 && (
-        <Card style={{ background:P.ink, marginBottom:24 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
-            <div>
-              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.5)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>The verdict</div>
-              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>{topPick?.name} looks strongest</h3>
-              <p style={{ fontFamily:F.body, fontSize:13.5, color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.5 }}>
-                {ranked.map((r,idx)=>`#${idx+1} ${r.data.name} (${r.data.score})`).join(' · ')}
-              </p>
+      {audited.length >= 1 && (() => {
+        const list = ranked.map(r => r.data);
+        const best = list[0];
+        const worst = list[list.length - 1];
+        const runnerUp = list[1];
+        const bestColor = best.score >= 75 ? P.green : best.score >= 55 ? '#D97706' : P.red;
+        const margin = runnerUp ? best.score - runnerUp.score : null;
+
+        /* Decision framing: how confident can they be in the top pick? */
+        const single = list.length === 1;
+        const verdictWord = best.score >= 75 ? 'a strong, trustworthy-looking choice'
+                          : best.score >= 55 ? 'the safest of the options, but still worth scrutinising'
+                          : 'the best of a weak field — proceed carefully with all of them';
+
+        const recommendation = single
+          ? `On the evidence of their website, ${best.name} scores ${best.score}/100 — ${verdictWord}. Add a couple more builders here to see how they really compare; one score alone doesn't tell you if it's good or just average.`
+          : margin >= 12
+            ? `${best.name} is the clear front-runner at ${best.score}/100 — a full ${margin} points ahead of the next builder. Of the ${list.length} you've compared, this is ${verdictWord}. Start the conversation here, but still get a written quote and check their references.`
+            : margin >= 1
+            ? `${best.name} edges it at ${best.score}/100, but only by ${margin} point${margin>1?'s':''} over ${runnerUp.name} (${runnerUp.score}). It's close — the website won't decide this for you. Get quotes from both and let price, availability and how they communicate be the tie-breaker.`
+            : `${best.name} and ${runnerUp.name} are level on ${best.score}/100. The websites can't separate them — speak to both, get written quotes, and judge them on responsiveness and references.`;
+
+        return (
+          <Card style={{ background:P.ink, marginBottom:24 }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.5)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>
+              Which should you go with? · {list.length} builder{list.length>1?'s':''} compared
             </div>
-            <div style={{ textAlign:'center', flexShrink:0 }}>
-              <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:P.fill, lineHeight:1 }}>{topPick?.score}</div>
-              <div style={{ fontFamily:F.body, fontSize:10, color:'rgba(255,255,255,0.5)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Top score</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
+              <div>
+                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
+                  {single ? `${best.name} — your only audit so far` : `Best option: ${best.name}`}
+                </h3>
+                <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.85)', margin:'0 0 12px', lineHeight:1.6 }}>{recommendation}</p>
+                {list.length > 1 && (
+                  <div style={{ fontFamily:F.body, fontSize:13, color:'rgba(255,255,255,0.6)', lineHeight:1.6 }}>
+                    Full ranking: {list.map((r,idx)=>`#${idx+1} ${r.name} (${r.score})`).join('  ·  ')}
+                  </div>
+                )}
+              </div>
+              <div style={{ textAlign:'center', flexShrink:0 }}>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:52, color:bestColor, lineHeight:1 }}>{best.score}</div>
+                <div style={{ fontFamily:F.body, fontSize:10, color:'rgba(255,255,255,0.5)', textTransform:'uppercase', letterSpacing:'0.07em', marginTop:2 }}>Top score / 100</div>
+              </div>
             </div>
-          </div>
-        </Card>
-      )}
+            <div style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.45)', marginTop:16, lineHeight:1.5, borderTop:`1px solid rgba(255,255,255,0.15)`, paddingTop:12 }}>
+              ⚠ A website score reflects how well a builder presents online — it's a strong first filter, but not proof of build quality. Always verify Companies House registration, insurance, and references before you commit. This updates as you add more builders.
+            </div>
+          </Card>
+        );
+      })()}
 
       <Card style={{ background:P.surface }}>
         <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Good to know</div>

@@ -1205,6 +1205,7 @@ app.post('/api/share/:token/lead', async (req, res) => {
     const { name, email, company } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Please enter your name.' });
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    if (!company || !String(company).trim()) return res.status(400).json({ error: 'Please enter your company name.' });
 
     const a = await db.getAuditByShareToken(token);
     if (!a) return res.status(404).json({ error: 'This shared report link is invalid or has been revoked.' });
@@ -1749,3 +1750,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+       

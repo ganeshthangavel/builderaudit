@@ -61,6 +61,131 @@ const F = {
   body:    '"IBM Plex Sans", -apple-system, sans-serif',
 };
 
+// ── Background competitor-audit store ─────────────────────────────
+// Lives OUTSIDE the React tree so scans keep running (and their loading
+// state survives) even when you navigate to another dashboard page and the
+// page component unmounts. Components subscribe via useCompetitorStore().
+const CompetitorStore = (() => {
+  const NUM = { builder: 4, homeowner: 5 };
+  const blank = () => ({ draft:'', audited:false, loading:false, data:null, error:null, startedAt:null });
+  const state = {
+    builder:   Array.from({ length: NUM.builder },   blank),
+    homeowner: Array.from({ length: NUM.homeowner }, blank),
+  };
+  const loaded = { builder:false, homeowner:false };   // server load done once per role
+  const listeners = new Set();
+  const emit = () => listeners.forEach(fn => { try { fn(); } catch(e){} });
+
+  const get = (role) => state[role] || [];
+  const setSlot = (role, i, patch) => {
+    if (!state[role] || !state[role][i]) return;
+    state[role][i] = { ...state[role][i], ...patch };
+    emit();
+  };
+
+  const persist = (role, i, data) => {
+    fetch('/api/my/competitors', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ slotIndex:i, url:data.url, data, role }),
+    }).catch(()=>{});
+  };
+  const unpersist = (role, i) => {
+    fetch('/api/my/competitors/' + i + '?role=' + role, { method:'DELETE', credentials:'include' }).catch(()=>{});
+  };
+
+  /* Load saved competitor audits from the server once per role */
+  const loadFromServer = (role) => {
+    if (loaded[role]) return;
+    loaded[role] = true;
+    fetch('/api/my/competitors?role=' + role, { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.competitors?.length) return;
+        d.competitors.forEach(c => {
+          if (c.slotIndex >= 0 && c.slotIndex < (NUM[role]||0) && c.data && !state[role][c.slotIndex].loading) {
+            state[role][c.slotIndex] = { draft:'', audited:true, loading:false, data:c.data, error:null, startedAt:null };
+          }
+        });
+        emit();
+      })
+      .catch(()=>{});
+  };
+
+  const setDraft = (role, i, v) => setSlot(role, i, { draft:v });
+
+  /* Re-audit an existing slot: keep showing the old data until the new one
+     lands, but flip loading on so the spinner shows. */
+  const clear = (role, i) => { setSlot(role, i, { ...blank() }); unpersist(role, i); };
+
+  /* Fire-and-forget audit. Not tied to any component lifecycle. */
+  const runAudit = (role, i, rawUrl, { onLocked } = {}) => {
+    const raw = (rawUrl || '').trim();
+    if (!raw) return;
+    const fullUrl = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
+    setSlot(role, i, { loading:true, error:null, startedAt:Date.now() });
+
+    fetch('/api/competitor-check', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ url: fullUrl }),
+    })
+      .then(async (res) => {
+        const ct = res.headers.get('content-type') || '';
+        let data;
+        if (ct.includes('application/json')) {
+          data = await res.json().catch(() => null);
+        } else {
+          const text = await res.text().catch(() => '');
+          if (/upstream|timeout|gateway|502|503|504/i.test(text) || res.status >= 500) {
+            throw new Error('That audit took too long and timed out. Some large or slow sites can\'t finish in time — try again, it often works on a second attempt.');
+          }
+          throw new Error('Unexpected response from the server. Please try again.');
+        }
+        if (!data) throw new Error('The server sent back an empty response. Please try again.');
+        if (data.locked) {
+          setSlot(role, i, { loading:false, startedAt:null });
+          if (onLocked) onLocked(i);
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Audit failed');
+
+        const domain = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){ return raw; } })();
+        const cats = (data.categories || []).map(c => ({ name:c.name, s:c.score }));
+        const compData = role === 'builder'
+          ? { name:data.company_name||domain, url:domain, loc:'', score:data.score,
+              breakdown:cats, good:data.verdict||'', bad:(data.top_actions||[])[0]||'' }
+          : { name:data.company_name||domain, url:domain, score:data.score, cats, verdict:data.verdict||'' };
+
+        setSlot(role, i, { audited:true, loading:false, startedAt:null, data:compData, draft:'' });
+        persist(role, i, compData);
+      })
+      .catch((err) => {
+        setSlot(role, i, { loading:false, startedAt:null, error: err.message });
+      });
+  };
+
+  const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+
+  return { get, setDraft, setSlot, clear, runAudit, loadFromServer, subscribe, NUM };
+})();
+
+/* React hook: subscribe a component to the store for a given role. Returns the
+   live slots array (re-rendering on any change) plus bound actions. */
+function useCompetitorStore(role) {
+  const [, force] = React.useState(0);
+  React.useEffect(() => {
+    const unsub = CompetitorStore.subscribe(() => force(n => n + 1));
+    CompetitorStore.loadFromServer(role);
+    return unsub;
+  }, [role]);
+  return {
+    slots: CompetitorStore.get(role),
+    setDraft: (i, v) => CompetitorStore.setDraft(role, i, v),
+    runAudit: (i, url, opts) => CompetitorStore.runAudit(role, i, url, opts),
+    clear:    (i) => CompetitorStore.clear(role, i),
+    setSlot:  (i, patch) => CompetitorStore.setSlot(role, i, patch),
+  };
+}
+
 // ── Primitives ───────────────────────────────────────────────────
 function Card({ children, pad = 28, style = {} }) {
   return <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:10, padding:pad, boxShadow:`5px 5px 0 ${P.line}`, ...style }}>{children}</div>;
@@ -1487,109 +1612,27 @@ function BuilderCompetitors({ latestAudit, user }) {
     }
   };
 
-  /* ── Slots ── */
-  const NUM_SLOTS = 4;
-  const [slots, setSlots] = useState(
-    Array.from({length:NUM_SLOTS}, () => ({ draft:'', audited:false, data:null, loading:false, error:null }))
-  );
-  const setDraft  = (i,v)  => setSlots(s => s.map((sl,j) => j===i ? {...sl, draft:v} : sl));
-  const editAgain = (i)    => setSlots(s => s.map((sl,j) => j===i ? {...sl, audited:false, data:null, error:null, draft:sl.data?.url||sl.draft} : sl));
-
-  /* Load any competitor audits this user saved previously, so they persist across logins */
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/my/competitors?role=builder', { credentials:'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.competitors?.length) return;
-        setSlots(s => {
-          const next = s.map(sl => ({...sl}));
-          d.competitors.forEach(c => {
-            if (c.slotIndex >= 0 && c.slotIndex < NUM_SLOTS && c.data) {
-              next[c.slotIndex] = { draft:'', audited:true, loading:false, error:null, data:c.data };
-            }
-          });
-          return next;
-        });
-      })
-      .catch(()=>{});
-    return () => { cancelled = true; };
-  }, []);
-
-  /* Persist a competitor audit to the user's account */
-  const persistCompetitor = (slotIndex, data) => {
-    fetch('/api/my/competitors', {
-      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-      body: JSON.stringify({ slotIndex, url: data.url, data, role:'builder' }),
-    }).catch(()=>{});
-  };
-  const unpersistCompetitor = (slotIndex) => {
-    fetch('/api/my/competitors/' + slotIndex + '?role=builder', { method:'DELETE', credentials:'include' }).catch(()=>{});
-  };
+  /* ── Slots (backed by the background store so scans survive navigation) ── */
+  const NUM_SLOTS = CompetitorStore.NUM.builder;
+  const store = useCompetitorStore('builder');
+  const slots = store.slots;
+  const setDraft  = (i,v)  => store.setDraft(i, v);
+  /* Re-audit an existing slot: pre-fill the box with its URL and clear it so
+     the user can run a fresh audit over the top. */
+  const editAgain = (i)    => store.setSlot(i, { audited:false, data:null, error:null, draft: slots[i]?.data?.url || slots[i]?.draft || '' });
 
   /* Pass skipGate=true when called immediately after sign-up */
-  const runAudit = async (i, skipGate = false) => {
+  const runAudit = (i, skipGate = false) => {
     const url = (slots[i]?.draft || '').trim();
     if (!url) return;
-
     /* Show paywall if not unlocked */
     if (!unlocked && !skipGate) {
       setPendingSlot(i);
       setShowModal(true);
       return;
     }
-
-    const fullUrl = /^https?:\/\//i.test(url) ? url : 'https://' + url;
-    setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:true, error:null} : sl));
-
-    try {
-      const res = await fetch('/api/competitor-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ url: fullUrl }),
-      });
-
-      /* The response may not be JSON — e.g. Railway's proxy returns plain-text
-         "upstream error" / a gateway timeout if the audit runs too long. Parse
-         defensively so we show a useful message instead of a parser crash. */
-      let data;
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        data = await res.json().catch(() => null);
-      } else {
-        const text = await res.text().catch(() => '');
-        if (/upstream|timeout|gateway|502|503|504/i.test(text) || res.status >= 500) {
-          throw new Error('That audit took too long and timed out. Some large or slow sites can\'t finish in time — try again, it often works on a second attempt.');
-        }
-        throw new Error('Unexpected response from the server. Please try again.');
-      }
-      if (!data) throw new Error('The server sent back an empty response. Please try again.');
-
-      /* If the server still says locked (e.g. cookie expired) re-show modal */
-      if (data.locked) {
-        setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:false} : sl));
-        setPendingSlot(i);
-        setShowModal(true);
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || 'Audit failed');
-
-      const d = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){ return url; } })();
-      const compData = {
-        name:      data.company_name || d,
-        url:       d,
-        loc:       '',
-        score:     data.score,
-        breakdown: (data.categories||[]).map(c => ({ name:c.name, s:c.score })),
-        good:      data.verdict || '',
-        bad:       (data.top_actions||[])[0] || '',
-      };
-      setSlots(s => s.map((sl,j) => j===i ? { ...sl, audited:true, loading:false, data:compData } : sl));
-      persistCompetitor(i, compData);   // remember it for next login
-    } catch(err) {
-      setSlots(s => s.map((sl,j) => j===i ? {...sl, loading:false, error:err.message} : sl));
-    }
+    /* Fire-and-forget via the store — keeps running if you navigate away */
+    store.runAudit(i, url, { onLocked: (slot) => { setPendingSlot(slot); setShowModal(true); } });
   };
 
   const audited  = slots.filter(s => s.audited && s.data);
@@ -1666,12 +1709,13 @@ function BuilderCompetitors({ latestAudit, user }) {
     );
   };
 
-  const LoadingSlot = () => {
-    const [secs, setSecs] = React.useState(0);
+  const LoadingSlot = ({ startedAt }) => {
+    const [secs, setSecs] = React.useState(startedAt ? Math.floor((Date.now()-startedAt)/1000) : 0);
     React.useEffect(() => {
-      const t = setInterval(() => setSecs(s => s + 1), 1000);
+      const tick = () => setSecs(startedAt ? Math.floor((Date.now()-startedAt)/1000) : s => s + 1);
+      const t = setInterval(tick, 1000);
       return () => clearInterval(t);
-    }, []);
+    }, [startedAt]);
     const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
     const stage = secs < 20 ? 'Crawling their site…'
                 : secs < 60 ? 'Reading pages & photos…'
@@ -1798,7 +1842,7 @@ function BuilderCompetitors({ latestAudit, user }) {
           badge={audited.length ? (youRank === 1 ? '★ You\'re winning' : `Behind on ${ranked[0].score - you.score} pts — #${youRank} of ${ranked.length}`) : null}
           badgeColor={audited.length && youRank === 1 ? P.green : audited.length ? P.red : P.ink}/>
         {slots.map((slot, i) =>
-          slot.loading  ? <LoadingSlot key={i}/> :
+          slot.loading  ? <LoadingSlot key={i} startedAt={slot.startedAt}/> :
           slot.audited  ? <ScoreCard key={i} b={slot.data} label="Competitor" onEdit={()=>editAgain(i)}
                             badge={you.score >= slot.data.score ? 'You beat them' : 'They beat you'}
                             badgeColor={you.score >= slot.data.score ? P.green : P.red}/> :
@@ -2343,74 +2387,18 @@ function HomeownerCompare({ user }) {
     finally { setSubmitting(false); }
   };
 
-  /* Slots */
-  const HO_SLOTS = 5;
-  const [slots, setSlots] = useState(Array.from({length:HO_SLOTS}, ()=>({draft:'', audited:false, data:null, loading:false, error:null})));
-  const setDraft  = (i,v) => setSlots(s=>s.map((sl,j)=>j===i?{...sl,draft:v}:sl));
-  const clearSlot = (i)   => { setSlots(s=>s.map((sl,j)=>j===i?{...sl,audited:false,data:null,error:null,draft:''}:sl)); unpersistCompetitor(i); };
+  /* Slots (backed by the background store so scans survive navigation) */
+  const HO_SLOTS = CompetitorStore.NUM.homeowner;
+  const store = useCompetitorStore('homeowner');
+  const slots = store.slots;
+  const setDraft  = (i,v) => store.setDraft(i, v);
+  const clearSlot = (i)   => store.clear(i);
 
-  /* Load previously-saved compared builders so they persist across logins */
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/my/competitors?role=homeowner', { credentials:'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.competitors?.length) return;
-        setSlots(s => {
-          const next = s.map(sl => ({...sl}));
-          d.competitors.forEach(c => {
-            if (c.slotIndex >= 0 && c.slotIndex < HO_SLOTS && c.data) {
-              next[c.slotIndex] = { draft:'', audited:true, loading:false, error:null, data:c.data };
-            }
-          });
-          return next;
-        });
-      })
-      .catch(()=>{});
-    return () => { cancelled = true; };
-  }, []);
-
-  const persistCompetitor = (slotIndex, data) => {
-    fetch('/api/my/competitors', {
-      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-      body: JSON.stringify({ slotIndex, url: data.url, data, role:'homeowner' }),
-    }).catch(()=>{});
-  };
-  const unpersistCompetitor = (slotIndex) => {
-    fetch('/api/my/competitors/' + slotIndex + '?role=homeowner', { method:'DELETE', credentials:'include' }).catch(()=>{});
-  };
-
-  const runAudit = async (i, skipGate=false) => {
+  const runAudit = (i, skipGate=false) => {
     const raw = (slots[i]?.draft||'').trim();
     if (!raw) return;
     if (!unlocked && !skipGate) { setPendingSlot(i); setShowModal(true); return; }
-    const fullUrl = /^https?:\/\//i.test(raw) ? raw : 'https://'+raw;
-    setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:true,error:null}:sl));
-    try {
-      const res  = await fetch('/api/competitor-check', {
-        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-        body: JSON.stringify({ url: fullUrl }),
-      });
-      let data;
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        data = await res.json().catch(() => null);
-      } else {
-        const text = await res.text().catch(() => '');
-        if (/upstream|timeout|gateway|502|503|504/i.test(text) || res.status >= 500) {
-          throw new Error('That audit took too long and timed out. Some large or slow sites can\'t finish in time — try again, it often works on a second attempt.');
-        }
-        throw new Error('Unexpected response from the server. Please try again.');
-      }
-      if (!data) throw new Error('The server sent back an empty response. Please try again.');
-      if (data.locked) { setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:false}:sl)); setPendingSlot(i); setShowModal(true); return; }
-      if (!res.ok) throw new Error(data.error||'Audit failed');
-      const domain = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){return raw;} })();
-      const cats = (data.categories||[]).map(c=>({name:c.name, s:c.score}));
-      const compData = { name: data.company_name||domain, url:domain, score:data.score, cats, verdict:data.verdict||'' };
-      setSlots(s=>s.map((sl,j)=>j===i?{...sl, audited:true, loading:false, data:compData}:sl));
-      persistCompetitor(i, compData);
-    } catch(err) { setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:false,error:err.message}:sl)); }
+    store.runAudit(i, raw, { onLocked: (slot) => { setPendingSlot(slot); setShowModal(true); } });
   };
 
   const audited = slots.filter(s=>s.audited&&s.data);
@@ -2418,11 +2406,15 @@ function HomeownerCompare({ user }) {
   const topPick = ranked[0]?.data;
   const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
 
-  /* Loading tile with a live elapsed timer (called as a function, so it keeps
-     a stable identity and its timer isn't reset by parent re-renders) */
-  const CompareLoadingTile = () => {
-    const [secs, setSecs] = React.useState(0);
-    React.useEffect(() => { const t = setInterval(() => setSecs(s => s + 1), 1000); return () => clearInterval(t); }, []);
+  /* Loading tile with a live elapsed timer; reads startedAt so the clock is
+     correct even after navigating away and back mid-scan. */
+  const CompareLoadingTile = ({ startedAt }) => {
+    const [secs, setSecs] = React.useState(startedAt ? Math.floor((Date.now()-startedAt)/1000) : 0);
+    React.useEffect(() => {
+      const tick = () => setSecs(startedAt ? Math.floor((Date.now()-startedAt)/1000) : s => s + 1);
+      const t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }, [startedAt]);
     const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
     const stage = secs < 20 ? 'Crawling the site…' : secs < 60 ? 'Reading pages & photos…' : secs < 150 ? 'Scoring trust signals…' : 'Finishing up…';
     return (
@@ -2430,7 +2422,7 @@ function HomeownerCompare({ user }) {
         <div style={{ width:30,height:30,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
         <div style={{ fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.ink }}>{stage}</div>
         <div style={{ fontFamily:F.body, fontSize:19, fontWeight:700, color:P.accent, fontVariantNumeric:'tabular-nums' }}>{mm}:{ss}</div>
-        <div style={{ fontFamily:F.body, fontSize:10.5, color:P.muted, textAlign:'center' }}>A full audit takes a few minutes</div>
+        <div style={{ fontFamily:F.body, fontSize:10.5, color:P.muted, textAlign:'center' }}>A full audit takes a few minutes — you can keep browsing, it'll update when done</div>
       </div>
     );
   };
@@ -2439,7 +2431,7 @@ function HomeownerCompare({ user }) {
   /* Plain render function (not a nested component) so inputs keep focus across re-renders */
   const renderTile = (slot, i) => {
     /* Loading */
-    if (slot.loading) return <React.Fragment key={i}>{CompareLoadingTile()}</React.Fragment>;
+    if (slot.loading) return <React.Fragment key={i}>{CompareLoadingTile({ startedAt: slot.startedAt })}</React.Fragment>;
 
     /* Empty + LOCKED — clean placeholder, whole tile opens the modal */
     if (!slot.audited && !unlocked) return (

@@ -1021,7 +1021,7 @@ app.get('/api/my/latest-audit', auth.requireAuth, async (req, res) => {
         created_at: full.created_at,
         last_analyzed_at: full.last_analyzed_at,
         imageUrls,
-        overrides: full.image_overrides || {},
+        overrides: full.overrides || {},
       },
     });
   } catch (err) {
@@ -1680,4 +1680,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-     
+       

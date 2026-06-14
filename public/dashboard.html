@@ -2446,6 +2446,7 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
 const HO_TABS = [
   { k:'verdict',  label:'Safety verdict',    icon:'🛡' },
   { k:'redflags', label:'Red flags',         icon:'⚠' },
+  { k:'strengths',label:"What's good",       icon:'✅' },
   { k:'photos',   label:'Photo check',       icon:'📸' },
   { k:'questions',label:'Questions to ask',  icon:'❓' },
   { k:'company',  label:'Company check',     icon:'🏢' },
@@ -2619,6 +2620,105 @@ function HoRedFlags({ report }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── Tab: What's good about them ─────────────────────────────────────────────
+   The positive counterpart to Red flags. Built ENTIRELY from real audit data —
+   never fabricated. Sources, in order:
+     1. Trust questions the builder scored well on (the AI's own assessment).
+     2. Verified positive facts from their site (company number, address, years
+        trading, contactability).
+     3. Genuinely authentic project photos, if the photo check found any.
+   If nothing positive stands out, we say so honestly rather than inventing. ── */
+function HoStrengths({ report }) {
+  const tqRaw = report?.trust_questions || [];
+  const allTen = tqRaw.length > 0 && tqRaw.every(x => (x.score || 0) <= 10);
+  const norm = (s) => allTen ? Math.round((s || 0) * 10) : (s || 0);
+  /* Strengths = questions they scored 65+ on, best first */
+  const strengths = tqRaw
+    .map(q => ({ ...q, s: norm(q.score) }))
+    .filter(q => q.s >= 65)
+    .sort((a, b) => b.s - a.s);
+
+  /* Verified positive facts from their own site */
+  const bs = report?.business_snapshot || {};
+  const c = bs.contact || {};
+  const facts = [];
+  if (c.company_number)              facts.push("Company registration number shown on their site — easy to verify on Companies House");
+  if (c.address)                     facts.push("A physical business address is listed");
+  if (bs.years_trading || bs.established) facts.push(`States they've been trading ${bs.years_trading || ('since ' + bs.established)} — a track record to check`);
+  if (c.phone && c.email)            facts.push("Both a phone number and email are published — easy to reach");
+  else if (c.phone)                  facts.push("A contact phone number is published");
+  if (bs.service_area)               facts.push(`Clearly states their service area (${bs.service_area})`);
+
+  /* Authentic photos, if the photo check flagged any as genuine */
+  const pa = report?.photo_analysis;
+  const realPhotos = pa?.authentic_count ?? pa?.real_count ?? null;
+
+  const hasAny = strengths.length > 0 || facts.length > 0 || (realPhotos && realPhotos > 0);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      {/* Intro */}
+      <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden' }}>
+        <div style={{ background:P.green, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:15 }}>✅</span>
+          <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:'#fff', letterSpacing:'0.08em', textTransform:'uppercase' }}>What's good about them</span>
+        </div>
+        <div style={{ padding:'18px 22px' }}>
+          <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, lineHeight:1.55 }}>
+            {hasAny
+              ? "It's not all about red flags — here's what this builder appears to get right. Use these as reassurance, but still verify anything that matters to you."
+              : "We didn't find any standout strengths on their website this time. That's not proof they do bad work — a weak website doesn't always mean a weak builder — but it does mean you'll want to lean on the questions to ask and verify them properly before signing."}
+          </p>
+        </div>
+      </div>
+
+      {/* Strengths from trust questions */}
+      {strengths.length > 0 && (
+        <div>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Where they scored well ({strengths.length})</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {strengths.map((q, i) => (
+              <div key={i} style={{ border:`2px solid ${P.green}`, borderRadius:8, background:'rgba(31,138,91,0.05)', padding:'14px 16px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:q.explanation?8:0 }}>
+                  <span style={{ flex:'0 0 auto', width:24, height:24, borderRadius:'50%', background:P.green, color:'#fff', display:'grid', placeItems:'center', fontSize:14, fontWeight:800 }}>✓</span>
+                  <div style={{ flex:1, fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'0.01em' }}>{q.question}</div>
+                  <div style={{ flex:'0 0 auto', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.green, whiteSpace:'nowrap' }}>{q.s} / 100</div>
+                </div>
+                {q.explanation && <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5, paddingLeft:36 }}>{q.explanation}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Verified positive facts */}
+      {facts.length > 0 && (
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Also in their favour</h3>
+          <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 14px', lineHeight:1.5 }}>Positive signals we picked up from their own website.</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {facts.map((f, i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                <span style={{ color:P.green, fontWeight:800, flex:'0 0 auto' }}>✓</span>{f}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Authentic photos callout */}
+      {realPhotos > 0 && (
+        <div style={{ background:'rgba(31,138,91,0.05)', border:`2px solid ${P.green}`, borderRadius:8, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
+          <span style={{ fontSize:22 }}>📸</span>
+          <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}>
+            <b>{realPhotos} of their photos look like genuine, original work</b> — not stock or AI images. Real job photos are a good sign. See the Photo check tab for detail.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3758,6 +3858,7 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
         {/* Tab content */}
         {tab === 'verdict'   && <HoVerdict     report={report} domain={domain}/>}
         {tab === 'redflags'  && <HoRedFlags     report={report}/>}
+        {tab === 'strengths' && <HoStrengths    report={report}/>}
         {tab === 'photos'    && <HoPhotoCheck   report={report} imageUrls={auditData?.imageUrls||[]}/>}
         {tab === 'questions' && <HoQuestions    report={report} domain={domain}/>}
         {tab === 'company'   && <HoCompanyCheck report={report} latestAudit={latestAudit}/>}

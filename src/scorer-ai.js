@@ -45,6 +45,66 @@ async function ensureImageWithinLimits(base64Data) {
   }
 }
 
+/* Decide whether an image is likely a real PROJECT / property / construction
+   photo (worth sending to the vision model) vs a logo, badge, icon, headshot
+   or banner (not worth the tokens). Uses only the cheap metadata we already
+   have: filename in src, alt text, and dimensions. */
+function isLikelyProjectImage(img) {
+  const src = (img.src || '').toLowerCase();
+  const alt = (img.alt || '').toLowerCase();
+  const hay = src + ' ' + alt;
+  const w = img.width || 0, h = img.height || 0;
+
+  // Hard excludes — obvious non-project assets
+  if (/\.svg(\?|$)/.test(src)) return false;
+  if (/(logo|favicon|icon|sprite|badge|award|cert|accredit|trustmark|trustpilot|checkatrade|fmb|niceic|gas-?safe|which|google-?review|stars?|rating|banner|placeholder|avatar|headshot|profile|team|staff|partner|sponsor|paypal|visa|mastercard|map|pin|arrow|chevron|btn|button|bg-|background|pattern|texture|divider|swatch)/.test(hay)) return false;
+
+  // Dimension-based excludes (when we know them)
+  if (w && h) {
+    if (w < 300 || h < 200) return false;             // too small to be a project hero/gallery shot
+    const ratio = w / h;
+    if (ratio > 4 || ratio < 0.25) return false;       // banner/skyscraper strips, not photos
+  }
+
+  // Positive signals push it in even if dimensions are unknown
+  const projectHints = /(project|portfolio|gallery|work|job|build|construction|extension|renovat|refurb|conversion|loft|kitchen|bathroom|bedroom|interior|exterior|property|home|house|development|site|completed|before|after|case-?study|new-?build|landscap|driveway|patio|roof|brick|render)/;
+  if (projectHints.test(hay)) return true;
+
+  // Otherwise, keep only reasonably large images (likely content photos)
+  if (w && h) return (w >= 400 && h >= 300);
+  return true; // unknown dimensions, not excluded above — let it through
+}
+
+/* Fetch an image URL and return safe base64 + media type, resized/compressed to
+   stay within the vision API limits. Returns null on any failure (never throws,
+   so one bad image can't break a scan). */
+async function fetchImageAsBlock(url) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+    clearTimeout(timeout);
+    if (!resp.ok) return null;
+    const ctype = (resp.headers.get('content-type') || '').toLowerCase();
+    if (!/image\/(jpeg|jpg|png|webp|gif)/.test(ctype)) return null;
+    const arrayBuf = await resp.arrayBuffer();
+    const buf = Buffer.from(arrayBuf);
+    if (buf.length > 5 * 1024 * 1024 || buf.length < 1024) {
+      // Too big for the API (>5MB) or too tiny to be a real photo — resize if big
+      if (buf.length < 1024) return null;
+    }
+    // Normalise: cap at 1024px long edge, JPEG q80 — keeps tokens ~1000-1300/image
+    const sharp = require('sharp');
+    const out = await sharp(buf)
+      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return { type: 'base64', media_type: 'image/jpeg', data: out.toString('base64') };
+  } catch (err) {
+    return null;
+  }
+}
+
 async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext, audience) {
   const client = getClient();
   audience = audience || 'builder';
@@ -106,10 +166,47 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     })
   );
   const screenshotsToAnalyse = safeScreenshots.filter(Boolean);
-  const imageBlocks = screenshotsToAnalyse.map(p => ({
+  const screenshotBlocks = screenshotsToAnalyse.map(p => ({
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: p.screenshotB64 },
   }));
+
+  /* ── Individual project-photo analysis ───────────────────────────────────
+     Give every image in the sample a stable ref (img_1…), then pick only the
+     likely project/property/construction photos (skipping logos, badges,
+     headshots, icons, banners) and send those — up to 12 — to the vision model
+     as actual images, each labelled with its ref. This lets the AI describe
+     the real photo instead of guessing from filenames, and keeps cost down by
+     not sending the junk. */
+  const refImages = allImages.slice(0, 30).map((i, idx) => ({
+    ref: 'img_' + (idx + 1), src: i.src, alt: i.alt, width: i.width, height: i.height,
+  }));
+  const PROJECT_IMAGE_CAP = 12;
+  const projectCandidates = refImages.filter(isLikelyProjectImage).slice(0, PROJECT_IMAGE_CAP);
+  const fetchedProjectImages = (await Promise.all(
+    projectCandidates.map(async (im) => {
+      const source = await fetchImageAsBlock(im.src);
+      return source ? { ref: im.ref, source } : null;
+    })
+  )).filter(Boolean);
+  console.log(`[scorer-ai] Project photos: ${projectCandidates.length} selected, ${fetchedProjectImages.length} fetched for vision analysis`);
+
+  /* Interleave a ref label before each project image so the AI can tie its
+     description to the exact image (and thus the exact URL on the dashboard). */
+  const projectImageBlocks = [];
+  if (fetchedProjectImages.length) {
+    projectImageBlocks.push({
+      type: 'text',
+      text: 'INDIVIDUAL PROJECT/PROPERTY PHOTOS FROM THIS SITE — each labelled with its ref. '
+        + 'When you fill photo_analysis, set image_ref to the matching label and make the description match what you actually see in that image:',
+    });
+    fetchedProjectImages.forEach((fi) => {
+      projectImageBlocks.push({ type: 'text', text: fi.ref + ':' });
+      projectImageBlocks.push({ type: 'image', source: fi.source });
+    });
+  }
+
+  const imageBlocks = [...screenshotBlocks, ...projectImageBlocks];
 
   const imgVerifySummary = filteredVerification ? {
     imagesChecked: filteredVerification.checked,
@@ -141,7 +238,7 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     hasCompaniesHouse: allMeta.some(m => m.hasCompaniesHouse),
     hasExternalReviewLinks: allMeta.some(m => m.hasExternalReviewLinks),
     professionalEmail: allMeta.some(m => m.professionalEmail),
-    imageSample: allImages.slice(0, 20).map(i => ({ src: i.src, alt: i.alt, width: i.width, height: i.height })),
+    imageSample: refImages,
     imageVerification: imgVerifySummary,
   };
 
@@ -191,6 +288,7 @@ Every finding must reference something you actually found on THIS site:
 - Quote exact text from the site (wrapped in quotes)
 - Name specific URLs from pagesCrawled
 - Reference specific images by their alt text or description
+- PHOTO PAIRING (critical): The data includes imageSample — a numbered list of the actual images on the site, each with a "ref" (e.g. img_1, img_2), its src URL and alt text. For EVERY entry in photo_analysis.strong_images and weak_images you MUST set "image_ref" to the exact ref of the specific image you are describing. Match by what the image actually is — use the alt text and the filename in the src URL (e.g. a src containing "team" or "staff" is a person/team photo; "project", "reno", "extension", "kitchen" is project work; "logo", "badge", "award" is a badge). Your description MUST match the image at that ref. Do not invent a ref that is not in imageSample. If you genuinely cannot tie a point to one specific image, leave image_ref as an empty string rather than guessing.
 - Use exact numbers (e.g. "9 testimonials" not "some testimonials", "4.2s load time" not "slow")
 - Name the city/region from siteFacts, not generic "UK homeowners"
 
@@ -275,8 +373,8 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + context
   ],
   "photo_analysis": {
     "summary": "<verdict specific to THIS site — mention the actual count and which pages>",
-    "strong_images": [{"description": "<specific description of what the image shows>", "why_it_works": "<specific reason — mention visual trust signals it contains>"}],
-    "weak_images": [{"description": "<specific description>", "issue": "<exact problem — if stock, name where it was found>", "impact": "<specific homeowner consequence>", "confirmed_stock": false, "stock_source": "<if confirmed>"}]
+    "strong_images": [{"image_ref": "<the exact ref id from imageSample, e.g. img_3, of the image you are describing>", "description": "<specific description of what THIS image shows>", "why_it_works": "<specific reason — mention visual trust signals it contains>"}],
+    "weak_images": [{"image_ref": "<the exact ref id from imageSample, e.g. img_7, of the image you are describing>", "description": "<specific description of what THIS image shows>", "issue": "<exact problem — if stock, name where it was found>", "impact": "<specific homeowner consequence>", "confirmed_stock": false, "stock_source": "<if confirmed>"}]
   },
   "trust_questions": [
     {"question": "Can I verify this is a legitimate registered business?", "score": 0, "explanation": "<specific evidence from THIS site — company number, address, VAT etc>"},
@@ -349,25 +447,64 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
     criticalRules + '\n\n' +
     'FULL PAGE TEXT (' + pages.length + ' pages crawled, prioritising about/team/services/contact):\n' +
     allText.slice(0, 18000) + '\n\n' +
-    'I have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis.\n\n' +
+    'I have also provided ' + screenshotsToAnalyse.length + ' page screenshots for visual analysis, '
+      + 'plus ' + fetchedProjectImages.length + ' individual project/property photos each labelled with its ref (img_N) for precise photo pairing.\n\n' +
     imageVerifSection +
     'Return this exact JSON structure:\n\n' + jsonSchema + homeownerAddendum;
 
-  const response = await client.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 6000,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: userPrompt }] }],
-  });
+  async function callModel(maxTokens, blocks) {
+    return client.messages.create({
+      model: 'claude-opus-4-5',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: [...blocks, { type: 'text', text: userPrompt }] }],
+    });
+  }
 
-  const rawText = response.content.map(b => b.text || '').join('');
-  const clean = rawText.replace(/```json|```/g, '').trim();
-  let result;
-  try {
-    result = JSON.parse(clean);
-  } catch (e) {
-    console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', clean.slice(-300));
-    throw new Error('AI response was incomplete. Try again.');
+  /* Pull the JSON object out of the response even if the model wrapped it in
+     prose or fences — slices from the first { to the last } and parses that. */
+  function parseReport(resp) {
+    const rawText = resp.content.map(b => b.text || '').join('');
+    let clean = rawText.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(clean);
+    } catch (e) {
+      const first = clean.indexOf('{');
+      const last = clean.lastIndexOf('}');
+      if (first !== -1 && last > first) {
+        return JSON.parse(clean.slice(first, last + 1));
+      }
+      throw e;
+    }
+  }
+
+  const tail = (resp) => resp.content.map(b => b.text || '').join('').slice(-400);
+
+  let response, result;
+  /* Attempt order:
+     1) full prompt (screenshots + labelled project images) at 8000
+     2) same, bigger budget (14000) — handles truncation
+     3) screenshots only, no project images (12000) — handles a bad/confusing
+        image batch so the audit still succeeds, just with keyword pairing */
+  const attempts = [
+    { blocks: imageBlocks,    budget: 12000, label: 'full prompt @12000' },
+    { blocks: imageBlocks,    budget: 16000, label: 'full prompt @16000' },
+    { blocks: screenshotBlocks, budget: 16000, label: 'screenshots-only @16000 (no project images)' },
+  ];
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i];
+    try {
+      response = await callModel(a.budget, a.blocks);
+      result = parseReport(response);
+      if (i > 0) console.warn('[scorer-ai] Succeeded on fallback attempt: ' + a.label);
+      break;
+    } catch (err) {
+      console.warn('[scorer-ai] Attempt failed (' + a.label + '). stop_reason=' + (response?.stop_reason || 'n/a') + ' err=' + err.message + ' tail=' + (response ? tail(response) : 'no response'));
+      if (i === attempts.length - 1) {
+        console.error('[scorer-ai] All attempts failed.');
+        throw new Error('AI response was incomplete. Try again.');
+      }
+    }
   }
   result.imageVerification = imageVerification;
   return result;

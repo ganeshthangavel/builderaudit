@@ -75,6 +75,7 @@ app.get('/privacy', (req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')
 app.get('/terms', (req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
 app.get('/contact', (req, res) => res.sendFile(path.join(PUBLIC, 'contact.html')));
 app.get('/insights', (req, res) => res.sendFile(path.join(PUBLIC, 'insights.html')));
+app.get('/r/:token', (req, res) => res.sendFile(path.join(PUBLIC, 'share.html')));
 
 // SEO / crawler files
 app.get('/robots.txt', (req, res) => res.type('text/plain').sendFile(path.join(PUBLIC, 'robots.txt')));
@@ -1029,6 +1030,109 @@ app.get('/api/my/latest-audit', auth.requireAuth, async (req, res) => {
   }
 });
 
+/* ── Shareable report links ───────────────────────────────────────────────
+   Creating a link is GATED (owner + logged in). Viewing a link is PUBLIC. */
+const shareTokenId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 22);
+
+/* Create (or return existing) a public share link for one of the user's audits.
+   If no id is given, defaults to the user's most recent audit. */
+app.post('/api/my/audit/:id/share', auth.requireAuth, async (req, res) => {
+  try {
+    let id = req.params.id;
+    if (id === 'latest') {
+      const audits = await db.listAuditsForUser(req.user.id);
+      if (!audits.length) return res.status(404).json({ error: 'No audit to share yet — run a scan first.' });
+      id = audits[0].id;
+    }
+    const meta = await db.getAuditMeta(id);
+    if (!meta) return res.status(404).json({ error: 'Audit not found.' });
+    if (meta.user_id !== req.user.id) return res.status(403).json({ error: 'You can only share your own audit.' });
+
+    const token = await db.setShareToken(id, shareTokenId());   // COALESCE keeps an existing token
+    const base = `${req.protocol}://${req.get('host')}`;
+    res.json({ token, url: `${base}/r/${token}` });
+  } catch (err) {
+    console.error('[share:create] failed:', err.message);
+    res.status(500).json({ error: 'Could not create a share link. Please try again.' });
+  }
+});
+
+/* Revoke a share link */
+app.delete('/api/my/audit/:id/share', auth.requireAuth, async (req, res) => {
+  try {
+    let id = req.params.id;
+    if (id === 'latest') {
+      const audits = await db.listAuditsForUser(req.user.id);
+      if (!audits.length) return res.json({ success: true });
+      id = audits[0].id;
+    }
+    const meta = await db.getAuditMeta(id);
+    if (meta && meta.user_id !== req.user.id) return res.status(403).json({ error: 'Not your audit.' });
+    await db.clearShareToken(id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[share:revoke] failed:', err.message);
+    res.status(500).json({ error: 'Could not revoke the link.' });
+  }
+});
+
+/* PUBLIC: fetch the read-only summary data for a shared report. No auth. */
+app.get('/api/share/:token', async (req, res) => {
+  try {
+    const a = await db.getAuditByShareToken(req.params.token);
+    if (!a) return res.status(404).json({ error: 'This shared report link is invalid or has been revoked.' });
+    const report = a.report_json || {};
+
+    /* Apply saved fix/photo overrides so the shared score matches what the
+       owner sees on their dashboard (projected score with fixes applied). */
+    const ov = a.overrides || {};
+    const actions = report.top_actions || [];
+    const completedPts = actions.reduce((sum, act, i) =>
+      ov['fix_' + i] === 'completed'
+        ? sum + ((typeof act === 'object' && act && act.impact_pts) ? act.impact_pts : ([8,6,5,3,2][i] || 2))
+        : sum, 0);
+    const excludedPhotos = Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').length;
+    const baseScore = report.hero?.score || 0;
+    const adjustedScore = Math.min(100, baseScore + completedPts + excludedPhotos * 5);
+
+    /* Normalise trust_questions to 0-100 if the model returned 0-10 */
+    const tq = report.trust_questions || [];
+    const allTen = tq.length > 0 && tq.every(q => (q.score || 0) <= 10);
+    const norm = (s) => allTen ? Math.round((s || 0) * 10) : (s || 0);
+
+    let domain = a.url;
+    try { domain = new URL(a.url).hostname.replace(/^www\./, ''); } catch(e){}
+
+    res.json({
+      domain,
+      url: a.url,
+      audience: a.audience || 'builder',
+      scannedAt: a.created_at,
+      baseScore,
+      score: adjustedScore,
+      fixesApplied: actions.filter((_,i)=>ov['fix_'+i]==='completed').length,
+      company: report.business_snapshot?.company_name || domain,
+      headline: report.hero?.headline || '',
+      subtext: report.hero?.subtext || '',
+      categories: tq.map((q,i) => ({
+        name: ['Legitimacy','Real projects','Reviews','Credentials','Contactability','Trading'][i] || (q.question||'').replace('?',''),
+        score: norm(q.score),
+        note: q.explanation || '',
+      })),
+      strengths: (report.competitor_gap?.you_have || report.strengths || []).slice(0, 5),
+      breakpoints: (report.trust_breakpoints || []).slice(0, 5).map(b => typeof b === 'string' ? b : (b.title || b.issue || '')),
+      topActions: actions.slice(0, 10).map((act,i) => ({
+        title: typeof act === 'object' ? (act.title || '') : act,
+        impact: (typeof act === 'object' && act.impact_pts) ? act.impact_pts : ([8,6,5,3,2][i] || 2),
+        done: ov['fix_' + i] === 'completed',
+      })),
+    });
+  } catch (err) {
+    console.error('[share:data] failed:', err.message);
+    res.status(500).json({ error: 'Could not load this report.' });
+  }
+});
+
 /* ── Persisted competitor audits ──────────────────────────────────────────── */
 app.get('/api/my/competitors', auth.requireAuth, async (req, res) => {
   const role = req.query.role === 'homeowner' ? 'homeowner' : 'builder';
@@ -1495,4 +1599,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-         
+     

@@ -214,6 +214,25 @@ async function initSchema() {
   await step('index competitors.user', `CREATE INDEX IF NOT EXISTS idx_competitors_user ON competitors(user_id, role)`);
   await step('uniq competitors.slot',  `CREATE UNIQUE INDEX IF NOT EXISTS uniq_competitors_slot ON competitors(user_id, role, slot_index)`);
 
+  /* Lead capture: who viewed a shared report. Stored separately from users/audits
+     so it's a clean leads list (name, email, company) the report owner can see. */
+  await step('table report_leads', `
+    CREATE TABLE IF NOT EXISTS report_leads (
+      id TEXT PRIMARY KEY,
+      share_token TEXT NOT NULL,
+      audit_id TEXT,
+      owner_user_id TEXT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      company TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await step('index report_leads.token', `CREATE INDEX IF NOT EXISTS idx_report_leads_token ON report_leads(share_token, created_at DESC)`);
+  await step('index report_leads.owner', `CREATE INDEX IF NOT EXISTS idx_report_leads_owner ON report_leads(owner_user_id, created_at DESC)`);
+
   console.log('✓ Database schema ready');
 }
 
@@ -253,6 +272,33 @@ async function deleteCompetitor(userId, role, slotIndex) {
     [userId, role, slotIndex]
   );
   return { ok: true };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REPORT LEADS — who viewed a shared report (name / email / company)
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function saveReportLead({ shareToken, auditId, ownerUserId, name, email, company, ip, userAgent }) {
+  if (!getPool()) throw new Error('Database not configured');
+  const id = 'lead_' + Math.random().toString(36).slice(2, 12);
+  await getPool().query(
+    `INSERT INTO report_leads (id, share_token, audit_id, owner_user_id, name, email, company, ip, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, shareToken, auditId || null, ownerUserId || null, name, email, company || null, ip || null, userAgent || null]
+  );
+  return { id };
+}
+
+/* All leads captured against reports owned by this user — newest first. */
+async function listReportLeadsForUser(ownerUserId, limit = 200) {
+  if (!getPool() || !ownerUserId) return [];
+  const { rows } = await getPool().query(
+    `SELECT name, email, company, share_token, created_at
+     FROM report_leads WHERE owner_user_id = $1
+     ORDER BY created_at DESC LIMIT $2`,
+    [ownerUserId, limit]
+  );
+  return rows;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -528,7 +574,7 @@ async function getAuditByShareToken(token) {
   if (!getPool() || !token) return null;
   try {
     const { rows } = await getPool().query(
-      `SELECT id, url, score, report_json, overrides, audience, created_at, share_token
+      `SELECT id, user_id, url, score, report_json, overrides, audience, created_at, share_token
        FROM audits WHERE share_token = $1`,
       [token]
     );
@@ -724,6 +770,8 @@ module.exports = {
   // competitors
   listCompetitorsForUser,
   saveCompetitor,
+  saveReportLead,
+  listReportLeadsForUser,
   deleteCompetitor,
   // snapshots (score history)
   createSnapshot,

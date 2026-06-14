@@ -141,7 +141,7 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     hasCompaniesHouse: allMeta.some(m => m.hasCompaniesHouse),
     hasExternalReviewLinks: allMeta.some(m => m.hasExternalReviewLinks),
     professionalEmail: allMeta.some(m => m.professionalEmail),
-    imageSample: allImages.slice(0, 20).map(i => ({ src: i.src, alt: i.alt, width: i.width, height: i.height })),
+    imageSample: allImages.slice(0, 30).map((i, idx) => ({ ref: 'img_' + (idx + 1), src: i.src, alt: i.alt, width: i.width, height: i.height })),
     imageVerification: imgVerifySummary,
   };
 
@@ -191,6 +191,7 @@ Every finding must reference something you actually found on THIS site:
 - Quote exact text from the site (wrapped in quotes)
 - Name specific URLs from pagesCrawled
 - Reference specific images by their alt text or description
+- PHOTO PAIRING (critical): The data includes imageSample — a numbered list of the actual images on the site, each with a "ref" (e.g. img_1, img_2), its src URL and alt text. For EVERY entry in photo_analysis.strong_images and weak_images you MUST set "image_ref" to the exact ref of the specific image you are describing. Match by what the image actually is — use the alt text and the filename in the src URL (e.g. a src containing "team" or "staff" is a person/team photo; "project", "reno", "extension", "kitchen" is project work; "logo", "badge", "award" is a badge). Your description MUST match the image at that ref. Do not invent a ref that is not in imageSample. If you genuinely cannot tie a point to one specific image, leave image_ref as an empty string rather than guessing.
 - Use exact numbers (e.g. "9 testimonials" not "some testimonials", "4.2s load time" not "slow")
 - Name the city/region from siteFacts, not generic "UK homeowners"
 
@@ -275,8 +276,8 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + context
   ],
   "photo_analysis": {
     "summary": "<verdict specific to THIS site — mention the actual count and which pages>",
-    "strong_images": [{"description": "<specific description of what the image shows>", "why_it_works": "<specific reason — mention visual trust signals it contains>"}],
-    "weak_images": [{"description": "<specific description>", "issue": "<exact problem — if stock, name where it was found>", "impact": "<specific homeowner consequence>", "confirmed_stock": false, "stock_source": "<if confirmed>"}]
+    "strong_images": [{"image_ref": "<the exact ref id from imageSample, e.g. img_3, of the image you are describing>", "description": "<specific description of what THIS image shows>", "why_it_works": "<specific reason — mention visual trust signals it contains>"}],
+    "weak_images": [{"image_ref": "<the exact ref id from imageSample, e.g. img_7, of the image you are describing>", "description": "<specific description of what THIS image shows>", "issue": "<exact problem — if stock, name where it was found>", "impact": "<specific homeowner consequence>", "confirmed_stock": false, "stock_source": "<if confirmed>"}]
   },
   "trust_questions": [
     {"question": "Can I verify this is a legitimate registered business?", "score": 0, "explanation": "<specific evidence from THIS site — company number, address, VAT etc>"},
@@ -319,7 +320,11 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
 3. If aboutPageContent is non-null, use it to identify the company story, year founded, and key milestones.
 4. Before claiming the site lacks any page, CHECK pagesCrawled. If a relevant URL exists, the page DOES exist.
 5. siteFacts is AUTHORITATIVE — the truncated text below is just for tone and missed nuance.
-6. DO NOT contradict siteFacts. If siteFacts says the team has named members, do NOT call the business "anonymous".`;
+6. DO NOT contradict siteFacts. If siteFacts says the team has named members, do NOT call the business "anonymous".
+7. ANIMATED COUNTER WARNING: Many builder sites use JavaScript count-up animations for stats ("5.0 Google Rating", "1,500+ Happy Clients", "56 Years Experience"). The scraped HTML often captures these counters at their PRE-ANIMATION value of "0" or "0.0". Therefore:
+   - NEVER claim a review rating, client count, or years figure is "0", "0.0", or "broken" based on scraped text alone. A zero next to a stats label is almost always an animation artifact, not the real value.
+   - If you see "0.0" or "0" beside labels like "Google Rating", "Reviews", "Happy Clients", "Years", treat the real value as UNVERIFIED — say "the rating shown on the site could not be captured by our scan; verify it directly on Google" rather than asserting it is zero or broken.
+   - Only treat a low review score as real if it comes from an external review link or explicit written text (e.g. "rated 2 stars"), never from a bare number that could be a counter.`;
 
   const imageVerifSection = (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0))
     ? 'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n'

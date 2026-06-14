@@ -1281,15 +1281,15 @@ body {
   <!-- ═══════════ FREE ACCOUNT EXTRAS ═══════════ -->
   <section class="section surface">
     <div class="section-head">
-      <div class="kicker">Free with an account</div>
-      <h2 class="section-h2">Your report doesn't stop at the score</h2>
-      <p class="section-sub">Create a free account and the audit becomes a tool you keep coming back to — share it, track it, and act on it. No card, ever.</p>
+      <div class="kicker" id="acctKicker">Free with an account</div>
+      <h2 class="section-h2" id="acctH2">Your report doesn't stop at the score</h2>
+      <p class="section-sub" id="acctSub">Create a free account and the audit becomes a tool you keep coming back to — share it, track it, and act on it. No card, ever.</p>
     </div>
 
     <div class="what-grid">
-      <div class="what-card"><img src="/assets/icons/clipboard.png" alt=""><div><div class="what-title">Share &amp; export your report</div><div class="what-desc">Turn your audit into one shareable link — or a clean PDF — to send to your team, your web designer, or your marketing agency. They see the full report; no login needed to view it.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/ladder.png" alt=""><div><div class="what-title">Track your score over time</div><div class="what-desc">Tick off fixes, save your progress, and re-scan any time to watch your score climb. Add an optional weekly check-in by email.</div></div></div>
-      <div class="what-card"><img src="/assets/icons/gear.png" alt=""><div><div class="what-title">Size up the competition</div><div class="what-desc">Builders: audit your local rivals on the same nine checks. Homeowners: compare up to five builders side by side before you pick up the phone.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/clipboard.png" alt=""><div><div class="what-title" id="acctT1">Share &amp; export your report</div><div class="what-desc" id="acctD1">Turn your audit into one shareable link — or a clean PDF — to send to your team, your web designer, or your marketing agency. They see the full report; no login needed to view it.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/ladder.png" alt=""><div><div class="what-title" id="acctT2">Track your score over time</div><div class="what-desc" id="acctD2">Tick off fixes, save your progress, and re-scan any time to watch your score climb. Add an optional weekly check-in by email.</div></div></div>
+      <div class="what-card"><img src="/assets/icons/gear.png" alt=""><div><div class="what-title" id="acctT3">Size up the competition</div><div class="what-desc" id="acctD3">Builders: audit your local rivals on the same nine checks. Homeowners: compare up to five builders side by side before you pick up the phone.</div></div></div>
     </div>
   </section>
 
@@ -1378,6 +1378,15 @@ var COPY = {
     finalH2: "Right then. Paste your URL.",
     finalSub: "No sign-up to try. Free, forever — your full fix-list, ready in a few minutes.",
     finalPlaceholder: "yourbuildingcompany.co.uk",
+
+    acctKicker: "Free with an account",
+    acctH2: "Your report doesn't stop at the score",
+    acctSub: "Create a free account and the audit becomes a tool you keep coming back to — share it, track it, and act on it. No card, ever.",
+    acctCards: [
+      { t: "Share & export your report", d: "Turn your audit into one shareable link — or a clean PDF — to send to your team, your web designer, or your marketing agency. They see the full report; no login needed to view it." },
+      { t: "Track your score over time", d: "Tick off fixes, save your progress, and re-scan any time to watch your score climb. Add an optional weekly check-in by email." },
+      { t: "Size up your competition", d: "Audit your local rivals on the same nine checks — and see exactly who a homeowner would call first." },
+    ],
   },
   homeowner: {
     heroH1: "Vet a builder's website before you ring them up",
@@ -1431,6 +1440,15 @@ var COPY = {
     finalH2: "Got a builder in mind? Run them through it.",
     finalSub: "No sign-up to try. The builder never knows you checked.",
     finalPlaceholder: "thebuilderyouvebeentoldabout.co.uk",
+
+    acctKicker: "Free with an account",
+    acctH2: "Your check doesn't stop at one builder",
+    acctSub: "Create a free account and vetting builders becomes effortless — save every check, compare your quotes, and keep a report you can share with whoever's helping you decide. No card, ever.",
+    acctCards: [
+      { t: "Save & export any builder's report", d: "Download a builder's full trust report as a clean PDF, or save a shareable link — handy for comparing notes with your partner, family, or anyone helping you choose." },
+      { t: "Keep all your checks in one place", d: "Every builder you vet is saved to your account, so when a new quote lands you can pull up their report and pick up right where you left off." },
+      { t: "Compare up to five builders", d: "Run all your quotes through BuilderAudit and line them up side by side on the same checks — so you're comparing like for like, not just gut feeling, before you pick up the phone." },
+    ],
   }
 };
 
@@ -1485,6 +1503,17 @@ function setMode(next) {
   document.getElementById('finalSub').textContent = c.finalSub;
   document.getElementById('finalUrlInput').placeholder = c.finalPlaceholder;
   document.getElementById('finalAuditBtn').textContent = c.heroCta + ' →';
+
+  /* Free-with-an-account section */
+  if (c.acctH2) {
+    var ak = document.getElementById('acctKicker'); if (ak) ak.textContent = c.acctKicker;
+    document.getElementById('acctH2').textContent = c.acctH2;
+    document.getElementById('acctSub').textContent = c.acctSub;
+    (c.acctCards || []).forEach(function(card, i) {
+      var t = document.getElementById('acctT' + (i+1)); if (t) t.textContent = card.t;
+      var d = document.getElementById('acctD' + (i+1)); if (d) d.textContent = card.d;
+    });
+  }
 
   /* Reorder the two-sided cards — active audience first */
   var grid = document.getElementById('twoGrid');

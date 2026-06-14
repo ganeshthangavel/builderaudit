@@ -2960,31 +2960,39 @@ function HomeownerCompare({ user }) {
             : `${best.name} and ${runnerUp.name} are level on ${best.score}/100. The websites can't separate them — speak to both, get written quotes, and judge them on responsiveness and references.`;
 
         return (
-          <Card style={{ background:P.ink, marginBottom:24 }}>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.5)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>
-              Which should you go with? · {list.length} builder{list.length>1?'s':''} compared
+          <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+            {/* Yellow header strip */}
+            <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:15 }}>🏆</span>
+              <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Which should you go with? · {list.length} builder{list.length>1?'s':''} compared</span>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
-              <div>
-                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
-                  {single ? `${best.name} — your only audit so far` : `Best option: ${best.name}`}
-                </h3>
-                <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.85)', margin:'0 0 12px', lineHeight:1.6 }}>{recommendation}</p>
-                {list.length > 1 && (
-                  <div style={{ fontFamily:F.body, fontSize:13, color:'rgba(255,255,255,0.6)', lineHeight:1.6 }}>
-                    Full ranking: {list.map((r,idx)=>`#${idx+1} ${r.name} (${r.score})`).join('  ·  ')}
-                  </div>
-                )}
+            <div style={{ padding:'22px 24px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
+                <div>
+                  <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.05 }}>
+                    {single ? `${best.name} — your only audit so far` : `Best option: ${best.name}`}
+                  </h3>
+                  <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:'0 0 12px', lineHeight:1.6 }}>{recommendation}</p>
+                  {list.length > 1 && (
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                      {list.map((r,idx)=>(
+                        <span key={idx} style={{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink, background:idx===0?P.surface:'#fff', border:`1.5px solid ${P.line}`, borderRadius:999, padding:'4px 11px' }}>
+                          <b style={{ color:P.accent }}>#{idx+1}</b> {r.name} <span style={{ color:P.muted }}>({r.score})</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign:'center', flexShrink:0, background:P.surface, border:`2.5px solid ${P.line}`, borderRadius:12, padding:'12px 18px', boxShadow:`3px 3px 0 ${P.line}` }}>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:46, color:bestColor, lineHeight:1 }}>{best.score}</div>
+                  <div style={{ fontFamily:F.body, fontSize:9.5, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:2, fontWeight:700 }}>Top score / 100</div>
+                </div>
               </div>
-              <div style={{ textAlign:'center', flexShrink:0 }}>
-                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:52, color:bestColor, lineHeight:1 }}>{best.score}</div>
-                <div style={{ fontFamily:F.body, fontSize:10, color:'rgba(255,255,255,0.5)', textTransform:'uppercase', letterSpacing:'0.07em', marginTop:2 }}>Top score / 100</div>
+              <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:16, lineHeight:1.5, borderTop:`1.5px dashed ${P.line}`, paddingTop:12 }}>
+                ⚠ A website score reflects how well a builder presents online — it's a strong first filter, but not proof of build quality. Always verify Companies House registration, insurance, and references before you commit. This updates as you add more builders.
               </div>
             </div>
-            <div style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.45)', marginTop:16, lineHeight:1.5, borderTop:`1px solid rgba(255,255,255,0.15)`, paddingTop:12 }}>
-              ⚠ A website score reflects how well a builder presents online — it's a strong first filter, but not proof of build quality. Always verify Companies House registration, insurance, and references before you commit. This updates as you add more builders.
-            </div>
-          </Card>
+          </div>
         );
       })()}
 
@@ -3467,6 +3475,8 @@ function DashboardApp() {
   const [excludedPhotoIds, setExcludedPhotoIds] = useState(new Set());
   const [completedFixIds, setCompletedFixIds] = useState(new Set());
   const [adjustedScore, setAdjustedScore] = useState(null);
+  const [activeSection, setActiveSection] = useState(params.get('page') || 'dashboard');  // builder single-scroll active tab
+  const didInitialScroll = React.useRef(false);
 
   /* Save an override to the server and update the adjusted score */
   const saveOverride = useCallback(async (payload) => {
@@ -3574,6 +3584,31 @@ function DashboardApp() {
     loadData();
   }, []);
 
+  /* Builder dashboard is one continuous scroll; the top tabs jump to sections
+     and the active tab tracks whichever section is in view. */
+  const BUILDER_ORDER = ['dashboard','about','review','photos','fixes','competitors'];
+  const scrollToSection = (k) => {
+    setActiveSection(k);
+    const el = document.getElementById('sec-' + k);
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+  };
+  useEffect(() => {
+    if (role !== 'builder' || loading || !authChecked) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id.replace('sec-','')); });
+    }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
+    BUILDER_ORDER.forEach(k => { const el = document.getElementById('sec-' + k); if (el) obs.observe(el); });
+    /* If deep-linked to a section (?page=fixes), jump there once on first paint. */
+    if (!didInitialScroll.current) {
+      didInitialScroll.current = true;
+      const initial = params.get('page');
+      if (initial && initial !== 'dashboard' && BUILDER_ORDER.includes(initial)) {
+        setTimeout(() => { const el = document.getElementById('sec-' + initial); if (el) el.scrollIntoView({ block:'start' }); }, 60);
+      }
+    }
+    return () => obs.disconnect();
+  }, [role, loading, authChecked, latestAudit]);
+
   if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/><Loading/></div>;
 
   const pages = role==='builder' ? {
@@ -3593,8 +3628,22 @@ function DashboardApp() {
 
   return (
     <div style={{ minHeight:'100vh', background:P.surface }}>
-      <Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/>
-      {pages[page] || pages['dashboard']}
+      {role === 'builder' ? (
+        <>
+          <Nav role={role} page={activeSection} setPage={scrollToSection} user={user} website={latestAudit?.url}/>
+          {BUILDER_ORDER.map((k, i) => (
+            <section key={k} id={'sec-' + k}
+              style={{ scrollMarginTop:84, borderTop: i>0 ? `2px solid ${P.line}` : 'none' }}>
+              {pages[k]}
+            </section>
+          ))}
+        </>
+      ) : (
+        <>
+          <Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/>
+          {pages[page] || pages['dashboard']}
+        </>
+      )}
     </div>
   );
 }

@@ -306,6 +306,13 @@ function parsePageContent(html, pageUrl, origin) {
     hasGoogleMaps: /google\.com\/maps/i.test(html),
     hasExternalReviewLinks: /checkatrade|trustpilot|google.*review|houzz|rated\.people/i.test(text),
     professionalEmail: !/gmail|hotmail|yahoo|outlook\.com/i.test(text),
+    /* Detect moving/embedded media so the AI doesn't mistake a paused/poster
+       video frame in a static screenshot for a "broken" video. These are
+       deterministic facts from the HTML — the element genuinely exists. */
+    hasVideo: /<video[\s>]|\.mp4|\.webm|\.mov\b/i.test(html),
+    hasVideoEmbed: /youtube\.com\/embed|youtu\.be\/|player\.vimeo\.com|vimeo\.com\/video|wistia|<iframe[^>]+(youtube|vimeo|wistia)/i.test(html),
+    hasSliderOrCarousel: /swiper|slick-slider|owl-carousel|carousel|glide__|splide|flickity/i.test(html),
+    hasAnimation: /lottie|aos-init|data-aos|animate__|wow\s|gsap|framer-motion/i.test(html),
   };
 
   return { textContent, images, meta, links };
@@ -598,5 +605,5 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
-  version: '2026-06-14-competitor-crawl-fix',
+  version: '2026-06-14-media-detection',
 };

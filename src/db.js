@@ -1,822 +1,4067 @@
-/**
- * db.js
- * Postgres connection + schema + query helpers.
- * Tables: users, audits (linked by user_id)
- *
- * IMPORTANT: pool is initialised lazily via getPool() because Railway injects
- * env var references AFTER module load. Reading process.env.DATABASE_URL at
- * module load returns undefined; reading it at first use returns the resolved
- * connection string. See: Railway Agent diagnosis, Apr 2026.
- *
- * Now uses config.js snapshot to bypass Railway Runtime V2 env stripping.
- */
-
-const { Pool } = require('pg');
-const config = require('./config');
-
-let _pool = null;
-let _initLogged = false;
-
-function getPool() {
-  if (_pool) return _pool;
-
-  const connectionString = config.DATABASE_URL;
-  if (!connectionString) {
-    if (!_initLogged) {
-      console.warn('⚠  DATABASE_URL not set — database features disabled.');
-      _initLogged = true;
-    }
-    return null;
-  }
-
-  _pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-  });
-
-  if (!_initLogged) {
-    console.log('✓ Postgres pool initialised (DATABASE_URL length: ' + connectionString.length + ')');
-    _initLogged = true;
-  }
-
-  /* Kick off schema migration once the pool exists. This handles the Railway
-     case where DATABASE_URL is injected after module load — the startup
-     initSchema() call no-op'd, so we trigger migration on first real DB use.
-     Don't await here; just fire-and-forget so callers don't hang. */
-  ensureSchema();
-
-  return _pool;
-}
-
-/* Ensure the schema has been migrated. Runs once per process. Triggered
-   automatically on first DB access via the helpers below — so we self-heal
-   the case where Railway hadn't injected DATABASE_URL yet at module load
-   and the startup initSchema() call silently no-op'd. */
-let _schemaPromise = null;
-function ensureSchema() {
-  if (_schemaPromise) return _schemaPromise;
-  if (!getPool()) return Promise.resolve(); /* no DB anyway */
-  _schemaPromise = initSchema().catch(err => {
-    console.error('Lazy schema init failed:', err.message);
-    _schemaPromise = null; /* allow retry on next call */
-  });
-  return _schemaPromise;
-}
-
-// ── Schema setup ──────────────────────────────────────────────────────────────
-async function initSchema() {
-  if (!getPool()) return;
-
-  /* Each migration step is wrapped independently. If one fails, the others still run.
-     This prevents a single quirk (e.g. a pre-existing constraint with a different name)
-     from leaving the DB partially migrated — which is what caused the 500 errors. */
-  async function step(label, sql) {
-    try {
-      await getPool().query(sql);
-      // console.log('✓ migration:', label);
-    } catch (err) {
-      console.warn('⚠ migration skipped [' + label + ']:', err.message);
-    }
-  }
-
-  /* Step 1: users table (referenced by audits FK) */
-  await step('create users table', `
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      company_name TEXT,
-      business_type TEXT,
-      region TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      last_login_at TIMESTAMPTZ
-    )
-  `);
-  await step('index users.email', `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
-
-  /* Step 2: audits table (no FK at create time — we add it later defensively) */
-  await step('create audits table', `
-    CREATE TABLE IF NOT EXISTS audits (
-      id TEXT PRIMARY KEY,
-      url TEXT NOT NULL,
-      email TEXT,
-      score INTEGER,
-      report_json JSONB NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      unlocked_at TIMESTAMPTZ
-    )
-  `);
-  await step('index audits.email',      `CREATE INDEX IF NOT EXISTS idx_audits_email ON audits(email)`);
-  await step('index audits.created_at', `CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at DESC)`);
-
-  /* Step 3: add every optional column individually. One failure cannot block another. */
-  await step('audits.overrides',         `ALTER TABLE audits ADD COLUMN IF NOT EXISTS overrides JSONB DEFAULT '{}'::jsonb`);
-  await step('audits.raw_data',          `ALTER TABLE audits ADD COLUMN IF NOT EXISTS raw_data JSONB`);
-  await step('audits.last_analyzed_at',  `ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ`);
-  await step('audits.user_id',           `ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
-  await step('audits.audience',          `ALTER TABLE audits ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'builder'`);
-  await step('audits.share_token',       `ALTER TABLE audits ADD COLUMN IF NOT EXISTS share_token TEXT`);
-  await step('index audits.share_token', `CREATE UNIQUE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token) WHERE share_token IS NOT NULL`);
-
-  /* User preferences for retention emails */
-  await step('users.weekly_email_opt_in',  `ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_opt_in BOOLEAN DEFAULT FALSE`);
-  await step('users.last_weekly_email_at', `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_email_at TIMESTAMPTZ`);
-
-  /* Phone number (required at signup, never displayed publicly) */
-  await step('users.phone',                 `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
-
-  /* GDPR consent flags + timestamps. We store both whether the user consented
-     AND when, because UK GDPR Art 7(1) requires we be able to demonstrate consent.
-     The consent_log table below has the immutable audit trail. */
-  await step('users.consent_tos',           `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_tos BOOLEAN DEFAULT FALSE`);
-  await step('users.consent_tos_at',        `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_tos_at TIMESTAMPTZ`);
-  await step('users.consent_auth',          `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_auth BOOLEAN DEFAULT FALSE`);
-  await step('users.consent_auth_at',       `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_auth_at TIMESTAMPTZ`);
-  await step('users.consent_agency',        `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_agency BOOLEAN DEFAULT FALSE`);
-  await step('users.consent_agency_at',     `ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_agency_at TIMESTAMPTZ`);
-
-  /* Immutable audit log of every consent event (granted, withdrawn, updated).
-     Required by GDPR for demonstrability if challenged. */
-  await step('create consent_log table', `
-    CREATE TABLE IF NOT EXISTS consent_log (
-      id SERIAL PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      consent_type TEXT NOT NULL,
-      granted BOOLEAN NOT NULL,
-      ip_address TEXT,
-      user_agent TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await step('index consent_log', `CREATE INDEX IF NOT EXISTS idx_consent_log_user ON consent_log(user_id, created_at DESC)`);
-
-  /* Step 4: indexes on new columns */
-  await step('index audits.user_id', `CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
-
-  /* Step 5: FK constraint — wrapped in DO $$ to be idempotent + failure-tolerant */
-  await step('audits FK to users', `
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'audits_user_id_fkey'
-          AND table_name = 'audits'
-      ) THEN
-        ALTER TABLE audits
-          ADD CONSTRAINT audits_user_id_fkey
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-      END IF;
-    END $$;
-  `);
-
-  /* Step 6a: audit_snapshots table — for score history + delta detection */
-  await step('create audit_snapshots table', `
-    CREATE TABLE IF NOT EXISTS audit_snapshots (
-      id SERIAL PRIMARY KEY,
-      audit_id TEXT NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
-      score INTEGER,
-      summary JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await step('index audit_snapshots', `CREATE INDEX IF NOT EXISTS idx_snapshots_audit ON audit_snapshots(audit_id, created_at DESC)`);
-
-  /* Step 6: enquiries table */
-  await step('create enquiries table', `
-    CREATE TABLE IF NOT EXISTS enquiries (
-      id TEXT PRIMARY KEY,
-      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-      audit_id TEXT REFERENCES audits(id) ON DELETE SET NULL,
-      service TEXT NOT NULL,
-      notes TEXT,
-      status TEXT DEFAULT 'new',
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      responded_at TIMESTAMPTZ
-    )
-  `);
-  await step('index enquiries.user',       `CREATE INDEX IF NOT EXISTS idx_enquiries_user ON enquiries(user_id)`);
-  await step('index enquiries.audit',      `CREATE INDEX IF NOT EXISTS idx_enquiries_audit ON enquiries(audit_id)`);
-  await step('index enquiries.created_at', `CREATE INDEX IF NOT EXISTS idx_enquiries_created_at ON enquiries(created_at DESC)`);
-
-  /* Competitor audits a user has run, so they persist across logins.
-     slot_index keeps them in the same position on the compare grid. */
-  await step('table competitors', `
-    CREATE TABLE IF NOT EXISTS competitors (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      role TEXT NOT NULL DEFAULT 'builder',
-      slot_index INTEGER NOT NULL,
-      url TEXT NOT NULL,
-      data_json JSONB NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await step('index competitors.user', `CREATE INDEX IF NOT EXISTS idx_competitors_user ON competitors(user_id, role)`);
-  await step('uniq competitors.slot',  `CREATE UNIQUE INDEX IF NOT EXISTS uniq_competitors_slot ON competitors(user_id, role, slot_index)`);
-
-  /* Lead capture: who viewed a shared report. Stored separately from users/audits
-     so it's a clean leads list (name, email, company) the report owner can see. */
-  await step('table report_leads', `
-    CREATE TABLE IF NOT EXISTS report_leads (
-      id TEXT PRIMARY KEY,
-      share_token TEXT NOT NULL,
-      audit_id TEXT,
-      owner_user_id TEXT,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      company TEXT,
-      ip TEXT,
-      user_agent TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await step('index report_leads.token', `CREATE INDEX IF NOT EXISTS idx_report_leads_token ON report_leads(share_token, created_at DESC)`);
-  await step('index report_leads.owner', `CREATE INDEX IF NOT EXISTS idx_report_leads_owner ON report_leads(owner_user_id, created_at DESC)`);
-
-  /* Feedback / error flags from the in-app widget on every page. */
-  await step('table feedback', `
-    CREATE TABLE IF NOT EXISTS feedback (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      kind TEXT NOT NULL DEFAULT 'feedback',
-      name TEXT,
-      message TEXT NOT NULL,
-      email TEXT,
-      page_url TEXT,
-      ip TEXT,
-      user_agent TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await step('feedback.name', `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS name TEXT`);
-  await step('index feedback.created', `CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC)`);
-
-  console.log('✓ Database schema ready');
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// COMPETITORS — persisted competitor audits per user, per role
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function listCompetitorsForUser(userId, role = 'builder') {
-  if (!getPool()) return [];
-  const { rows } = await getPool().query(
-    `SELECT slot_index, url, data_json, created_at
-     FROM competitors WHERE user_id = $1 AND role = $2
-     ORDER BY slot_index ASC`,
-    [userId, role]
-  );
-  return rows;
-}
-
-async function saveCompetitor({ userId, role = 'builder', slotIndex, url, data }) {
-  if (!getPool()) throw new Error('Database not configured');
-  const id = 'cmp_' + Math.random().toString(36).slice(2, 12);
-  /* Upsert on (user, role, slot) so re-auditing the same slot replaces it */
-  await getPool().query(
-    `INSERT INTO competitors (id, user_id, role, slot_index, url, data_json)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (user_id, role, slot_index)
-     DO UPDATE SET url = EXCLUDED.url, data_json = EXCLUDED.data_json, created_at = NOW()`,
-    [id, userId, role, slotIndex, url, data]
-  );
-  return { slotIndex, url };
-}
-
-async function deleteCompetitor(userId, role, slotIndex) {
-  if (!getPool()) throw new Error('Database not configured');
-  await getPool().query(
-    `DELETE FROM competitors WHERE user_id = $1 AND role = $2 AND slot_index = $3`,
-    [userId, role, slotIndex]
-  );
-  return { ok: true };
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// REPORT LEADS — who viewed a shared report (name / email / company)
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function saveReportLead({ shareToken, auditId, ownerUserId, name, email, company, ip, userAgent }) {
-  if (!getPool()) throw new Error('Database not configured');
-  const id = 'lead_' + Math.random().toString(36).slice(2, 12);
-  await getPool().query(
-    `INSERT INTO report_leads (id, share_token, audit_id, owner_user_id, name, email, company, ip, user_agent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [id, shareToken, auditId || null, ownerUserId || null, name, email, company || null, ip || null, userAgent || null]
-  );
-  return { id };
-}
-
-/* All leads captured against reports owned by this user — newest first. */
-async function listReportLeadsForUser(ownerUserId, limit = 200) {
-  if (!getPool() || !ownerUserId) return [];
-  const { rows } = await getPool().query(
-    `SELECT name, email, company, share_token, created_at
-     FROM report_leads WHERE owner_user_id = $1
-     ORDER BY created_at DESC LIMIT $2`,
-    [ownerUserId, limit]
-  );
-  return rows;
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// FEEDBACK — in-app feedback / error flags from the widget on every page
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function saveFeedback({ userId, kind, name, message, email, pageUrl, ip, userAgent }) {
-  if (!getPool()) throw new Error('Database not configured');
-  const id = 'fb_' + Math.random().toString(36).slice(2, 12);
-  await getPool().query(
-    `INSERT INTO feedback (id, user_id, kind, name, message, email, page_url, ip, user_agent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [id, userId || null, kind || 'feedback', name || null, message, email || null, pageUrl || null, ip || null, userAgent || null]
-  );
-  return { id };
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// ENQUIRIES
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function createEnquiry({ id, userId, auditId, service, notes }) {
-  if (!getPool()) throw new Error('Database not configured');
-
-  await getPool().query(
-    `INSERT INTO enquiries (id, user_id, audit_id, service, notes)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [id, userId, auditId || null, service, notes || null]
-  );
-  return { id };
-}
-
-async function listEnquiriesForUser(userId) {
-  if (!getPool()) return [];
-  const { rows } = await getPool().query(
-    `SELECT id, audit_id, service, notes, status, created_at, responded_at
-     FROM enquiries
-     WHERE user_id = $1
-     ORDER BY created_at DESC`,
-    [userId]
-  );
-  return rows;
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// USERS
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function createUser({ id, email, passwordHash, companyName, businessType, region, phone,
-                            consentTos, consentAuth, consentAgency, consentWeekly }) {
-  if (!getPool()) throw new Error('Database not configured');
-
-  /* GDPR requires consent timestamps to demonstrate when consent was given.
-     We set them to NOW() if the user gave that specific consent. */
-  const now = new Date();
-
-  try {
-    await getPool().query(
-      `INSERT INTO users (
-         id, email, password_hash, company_name, business_type, region, phone,
-         consent_tos, consent_tos_at,
-         consent_auth, consent_auth_at,
-         consent_agency, consent_agency_at,
-         weekly_email_opt_in
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [
-        id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region,
-        phone || null,
-        !!consentTos, consentTos ? now : null,
-        !!consentAuth, consentAuth ? now : null,
-        !!consentAgency, consentAgency ? now : null,
-        !!consentWeekly,
-      ]
-    );
-    return { id, email, companyName, businessType, region };
-  } catch (err) {
-    if (err.code === '23505') {
-      throw new Error('An account with this email already exists');
-    }
-    /* If the user table doesn't have the new consent columns yet (legacy DB),
-       fall back to a basic insert so signup still works. We log a warning so
-       you can spot it. */
-    if (err.code === '42703') {
-      console.warn('createUser fallback: consent columns missing, inserting basic user.');
-      await getPool().query(
-        `INSERT INTO users (id, email, password_hash, company_name, business_type, region)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [id, email.toLowerCase().trim(), passwordHash, companyName, businessType, region]
-      );
-      return { id, email, companyName, businessType, region };
-    }
-    throw err;
-  }
-}
-
-/* Append a row to the consent_log audit trail. Called whenever a user's consent
-   state changes (signup, settings change, withdrawal). Required by GDPR Art 7(1)
-   so we can demonstrate when each consent was given/withdrawn. */
-async function logConsent({ userId, consentType, granted, ipAddress, userAgent }) {
-  if (!getPool()) return;
-  try {
-    await getPool().query(
-      `INSERT INTO consent_log (user_id, consent_type, granted, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [userId, consentType, !!granted, ipAddress || null, userAgent || null]
-    );
-  } catch (err) {
-    /* Non-fatal — log but don't throw, signup should still succeed */
-    console.warn('logConsent failed:', err.message);
-  }
-}
-
-async function getUserByEmail(email) {
-  if (!getPool()) return null;
-  try {
-    const { rows } = await getPool().query(
-      `SELECT id, email, password_hash, company_name, business_type, region, created_at,
-              phone, weekly_email_opt_in, last_weekly_email_at,
-              consent_agency, consent_agency_at
-       FROM users WHERE email = $1`,
-      [email.toLowerCase().trim()]
-    );
-    return rows[0] || null;
-  } catch (err) {
-    if (err.code === '42703') {
-      console.warn('getUserByEmail fallback: new columns missing');
-      const { rows } = await getPool().query(
-        `SELECT id, email, password_hash, company_name, business_type, region, created_at
-         FROM users WHERE email = $1`,
-        [email.toLowerCase().trim()]
-      );
-      return rows[0] || null;
-    }
-    throw err;
-  }
-}
-
-async function getUserById(id) {
-  if (!getPool()) return null;
-  try {
-    const { rows } = await getPool().query(
-      `SELECT id, email, company_name, business_type, region, created_at,
-              phone, weekly_email_opt_in, last_weekly_email_at,
-              consent_agency, consent_agency_at
-       FROM users WHERE id = $1`,
-      [id]
-    );
-    return rows[0] || null;
-  } catch (err) {
-    if (err.code === '42703') {
-      console.warn('getUserById fallback: new columns missing');
-      const { rows } = await getPool().query(
-        `SELECT id, email, company_name, business_type, region, created_at
-         FROM users WHERE id = $1`,
-        [id]
-      );
-      return rows[0] || null;
-    }
-    throw err;
-  }
-}
-
-async function recordLogin(userId) {
-  if (!getPool()) return;
-  await getPool().query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userId]);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// AUDITS
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function saveAudit({ id, userId, url, report, rawData, audience }) {
-  if (!getPool()) throw new Error('Database not configured');
-
-  const score = report?.hero?.score || null;
-
-  try {
-    await getPool().query(
-      `INSERT INTO audits (id, user_id, url, score, report_json, raw_data, audience, last_analyzed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [id, userId || null, url, score, report, rawData || null, audience || 'builder']
-    );
-  } catch (err) {
-    /* If a new column is missing in the DB (e.g. audience, raw_data, or last_analyzed_at),
-       fall back to the minimum viable INSERT so the audit is at least saved. */
-    if (err.code === '42703' /* undefined_column */) {
-      console.warn('saveAudit fallback — new column missing, inserting minimal row:', err.message);
-      await getPool().query(
-        `INSERT INTO audits (id, user_id, url, score, report_json)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [id, userId || null, url, score, report]
-      );
-    } else {
-      throw err;
-    }
-  }
-
-  return { id, url, score };
-}
-
-async function updateAnalysis(id, report) {
-  if (!getPool()) throw new Error('Database not configured');
-  const score = report?.hero?.score || null;
-  await getPool().query(
-    `UPDATE audits
-     SET report_json = $1, score = $2, last_analyzed_at = NOW()
-     WHERE id = $3`,
-    [report, score, id]
-  );
-  return { id, score };
-}
-
-async function getAudit(id) {
-  if (!getPool()) throw new Error('Database not configured');
-  try {
-    const { rows } = await getPool().query(
-      `SELECT id, user_id, url, email, score, report_json, raw_data, overrides, audience,
-              created_at, last_analyzed_at, unlocked_at
-       FROM audits WHERE id = $1`,
-      [id]
-    );
-    return rows[0] || null;
-  } catch (err) {
-    /* If a new column (e.g. audience) is missing from the DB, fall back to legacy columns
-       so we don't return 500s to users with old databases. Logs the problem for ops. */
-    if (err.code === '42703' /* undefined_column */) {
-      console.warn('getAudit fallback: column missing, retrying without new columns —', err.message);
-      const { rows } = await getPool().query(
-        `SELECT id, user_id, url, email, score, report_json, raw_data, overrides,
-                created_at, last_analyzed_at, unlocked_at
-         FROM audits WHERE id = $1`,
-        [id]
-      );
-      if (rows[0]) rows[0].audience = 'builder'; /* default for old audits */
-      return rows[0] || null;
-    }
-    throw err;
-  }
-}
-
-async function getAuditMeta(id) {
-  if (!getPool()) return null;
-  try {
-    const { rows } = await getPool().query(
-      `SELECT id, user_id, url, email, score, audience, created_at, last_analyzed_at, unlocked_at,
-              (raw_data IS NOT NULL) AS has_raw_data
-       FROM audits WHERE id = $1`,
-      [id]
-    );
-    return rows[0] || null;
-  } catch (err) {
-    if (err.code === '42703' /* undefined_column */) {
-      console.warn('getAuditMeta fallback: column missing —', err.message);
-      const { rows } = await getPool().query(
-        `SELECT id, user_id, url, email, score, created_at, last_analyzed_at, unlocked_at,
-                (raw_data IS NOT NULL) AS has_raw_data
-         FROM audits WHERE id = $1`,
-        [id]
-      );
-      if (rows[0]) rows[0].audience = 'builder';
-      return rows[0] || null;
-    }
-    throw err;
-  }
-}
-
-/* Generate (or return existing) a public share token for an audit.
-   Only the owner should be allowed to call this (enforced in the route). */
-async function setShareToken(auditId, token) {
-  if (!getPool()) throw new Error('Database not configured');
-  const { rows } = await getPool().query(
-    `UPDATE audits SET share_token = COALESCE(share_token, $2) WHERE id = $1
-     RETURNING share_token`,
-    [auditId, token]
-  );
-  return rows[0]?.share_token || null;
-}
-
-/* Remove a share token (revoke the public link). */
-async function clearShareToken(auditId) {
-  if (!getPool()) throw new Error('Database not configured');
-  await getPool().query(`UPDATE audits SET share_token = NULL WHERE id = $1`, [auditId]);
-}
-
-/* Public lookup by share token — returns the data needed for a read-only summary. */
-async function getAuditByShareToken(token) {
-  if (!getPool() || !token) return null;
-  try {
-    const { rows } = await getPool().query(
-      `SELECT id, user_id, url, score, report_json, overrides, audience, created_at, share_token
-       FROM audits WHERE share_token = $1`,
-      [token]
-    );
-    return rows[0] || null;
-  } catch (err) {
-    if (err.code === '42703') return null;
-    throw err;
-  }
-}
-
-// List all audits for a user — newest first
-async function listAuditsForUser(userId) {
-  if (!getPool()) return [];
-  const { rows } = await getPool().query(
-    `SELECT id, url, score, created_at, last_analyzed_at
-     FROM audits
-     WHERE user_id = $1
-     ORDER BY created_at DESC`,
-    [userId]
-  );
-  return rows;
-}
-
-async function unlockAudit(id, email) {
-  if (!getPool()) throw new Error('Database not configured');
-  await getPool().query(
-    `UPDATE audits SET email = $1, unlocked_at = NOW() WHERE id = $2`,
-    [email.toLowerCase().trim(), id]
-  );
-}
-
-// Link an existing anonymous audit to a user (when they sign up after running an audit)
-async function claimAudit(auditId, userId) {
-  if (!getPool()) throw new Error('Database not configured');
-  await getPool().query(
-    `UPDATE audits SET user_id = $1 WHERE id = $2 AND user_id IS NULL`,
-    [userId, auditId]
-  );
-}
-
-async function setImageOverride(auditId, imageSrc, decision) {
-  if (!getPool()) throw new Error('Database not configured');
-  const validDecisions = ['accepted', 'rejected', null];
-  if (!validDecisions.includes(decision)) throw new Error('Invalid decision');
-
-  const { rows } = await getPool().query(`SELECT overrides FROM audits WHERE id = $1`, [auditId]);
-  if (rows.length === 0) throw new Error('Audit not found');
-
-  const current = rows[0].overrides || {};
-  if (decision === null) delete current[imageSrc];
-  else current[imageSrc] = decision;
-
-  await getPool().query(
-    `UPDATE audits SET overrides = $1::jsonb WHERE id = $2`,
-    [JSON.stringify(current), auditId]
-  );
-  return current;
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// USER PREFERENCES (weekly email opt-in, etc.)
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function updateUserSettings(userId, settings) {
-  if (!getPool()) throw new Error('Database not configured');
-  var fields = [];
-  var values = [];
-  var idx = 1;
-  if (typeof settings.weeklyEmailOptIn === 'boolean') {
-    fields.push(`weekly_email_opt_in = $${idx++}`);
-    values.push(settings.weeklyEmailOptIn);
-  }
-  if (typeof settings.consentAgency === 'boolean') {
-    fields.push(`consent_agency = $${idx++}`);
-    values.push(settings.consentAgency);
-    fields.push(`consent_agency_at = $${idx++}`);
-    values.push(settings.consentAgency ? new Date() : null);
-  }
-  if (fields.length === 0) return;
-  values.push(userId);
-  await getPool().query(
-    `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`,
-    values
-  );
-}
-
-async function markWeeklyEmailSent(userId) {
-  if (!getPool()) return;
-  await getPool().query(`UPDATE users SET last_weekly_email_at = NOW() WHERE id = $1`, [userId]);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// AUDIT SNAPSHOTS (score history)
-// ═════════════════════════════════════════════════════════════════════════════
-
-async function createSnapshot({ auditId, score, summary }) {
-  if (!getPool()) return;
-  await getPool().query(
-    `INSERT INTO audit_snapshots (audit_id, score, summary) VALUES ($1, $2, $3)`,
-    [auditId, score, summary || null]
-  );
-}
-
-async function getLatestSnapshot(auditId) {
-  if (!getPool()) return null;
-  const { rows } = await getPool().query(
-    `SELECT id, audit_id, score, summary, created_at
-     FROM audit_snapshots
-     WHERE audit_id = $1
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [auditId]
-  );
-  return rows[0] || null;
-}
-
-async function listSnapshots(auditId, limit) {
-  if (!getPool()) return [];
-  const { rows } = await getPool().query(
-    `SELECT id, audit_id, score, summary, created_at
-     FROM audit_snapshots
-     WHERE audit_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [auditId, limit || 20]
-  );
-  return rows;
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// BATCH: fetch users due for weekly email
-// ═════════════════════════════════════════════════════════════════════════════
-
-/* Returns users who:
-   - have weekly_email_opt_in = true
-   - have at least one saved audit with raw_data (so we can re-analyse)
-   - have not received a weekly email in the last 6 days (to avoid duplicates on manual runs)
-*/
-async function getUsersDueForWeeklyEmail() {
-  if (!getPool()) return [];
-  const { rows } = await getPool().query(
-    `SELECT DISTINCT u.id, u.email, u.company_name, u.business_type, u.region, u.last_weekly_email_at
-     FROM users u
-     WHERE u.weekly_email_opt_in = TRUE
-       AND EXISTS (
-         SELECT 1 FROM audits a
-         WHERE a.user_id = u.id AND a.raw_data IS NOT NULL
-       )
-       AND (u.last_weekly_email_at IS NULL
-            OR u.last_weekly_email_at < NOW() - INTERVAL '6 days')
-     ORDER BY u.id`
-  );
-  return rows;
-}
-
-/* For a given user, returns their most-recent audit that has raw_data */
-async function getPrimaryAuditForUser(userId) {
-  if (!getPool()) return null;
-  const { rows } = await getPool().query(
-    `SELECT id, user_id, url, score, report_json, raw_data, overrides, audience,
-            created_at, last_analyzed_at
-     FROM audits
-     WHERE user_id = $1 AND raw_data IS NOT NULL
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [userId]
-  );
-  return rows[0] || null;
-}
-
-module.exports = {
-  initSchema,
-  // users
-  createUser,
-  getUserByEmail,
-  getUserById,
-  recordLogin,
-  updateUserSettings,
-  markWeeklyEmailSent,
-  logConsent,
-  // audits
-  saveAudit,
-  updateAnalysis,
-  getAudit,
-  getAuditMeta,
-  setShareToken,
-  clearShareToken,
-  getAuditByShareToken,
-  listAuditsForUser,
-  unlockAudit,
-  claimAudit,
-  setImageOverride,
-  // competitors
-  listCompetitorsForUser,
-  saveCompetitor,
-  saveReportLead,
-  listReportLeadsForUser,
-  saveFeedback,
-  deleteCompetitor,
-  // snapshots (score history)
-  createSnapshot,
-  getLatestSnapshot,
-  listSnapshots,
-  // weekly email batch helpers
-  getUsersDueForWeeklyEmail,
-  getPrimaryAuditForUser,
-  // enquiries
-  createEnquiry,
-  listEnquiriesForUser,
-  isEnabled: () => !!getPool(),
-  pool: () => getPool(),
+<!doctype html>
+<!-- BA3 DASHBOARD · 6 pages · Builder + Homeowner · React/CDN -->
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Dashboard — BuilderAudit</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #FBF5E1; min-height: 100vh; }
+  body { font-family: 'IBM Plex Sans', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { -webkit-tap-highlight-color: transparent; }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #FBF5E1; }
+  ::-webkit-scrollbar-thumb { background: #1B1A17; border-radius: 3px; }
+  /* Global spinner animation — used by all loading spinners across the app */
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+/* ════════════════════════════════════════════════════════════════════
+   BUILDERAUDIT DASHBOARD — Production port of BA3 dashboard.jsx
+   Faithful port of the 1595-line React prototype.
+   Role read from JWT (falls back to ?role= param or 'builder').
+   Pages: Dashboard · About · Scores & Review · Photo Review ·
+          Top 10 Fixes · Competitor Audits (builder)
+          Dashboard · Saved builders (homeowner)
+   ════════════════════════════════════════════════════════════════════ */
+
+const { useState, useEffect, useCallback } = React;
+
+// ── Design tokens (BA3 palette) ──────────────────────────────────
+const P = {
+  fill:    '#FFD24D',
+  accent:  '#5247B8',
+  surface: '#FBF5E1',
+  ink:     '#1B1A17',
+  line:    '#1B1A17',
+  muted:   '#5C5851',
+  green:   '#1F8A5B',
+  good:    '#1F8A5B',
+  red:     '#D9534F',
+  amber:   '#D97706',
 };
+const F = {
+  display: '"Hanken Grotesk", -apple-system, sans-serif',
+  body:    '"IBM Plex Sans", -apple-system, sans-serif',
+};
+
+/* Conservative projected-score model — mirrors the server's computeAdjustedScore.
+   Self-reported fixes + photo corrections give a PROJECTED lift with diminishing
+   returns, capped so ticking boxes can never reach a perfect score. A real
+   re-scan is what verifies the work and unlocks higher scores. */
+function projectScore(report, completedFixIds, excludedPhotoCount) {
+  const base = report?.hero?.score || 0;
+  const actions = report?.top_actions || [];
+  const fixPts = actions.reduce((s,a,i) =>
+    (completedFixIds && completedFixIds.has(i))
+      ? s + ((typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2))
+      : s, 0);
+  const photoPts = Math.min(excludedPhotoCount || 0, 4);   // photo corrections are a small nudge, capped
+  const raw = fixPts + photoPts;
+  if (raw <= 0) return base;
+  const gap = Math.max(0, 100 - base);
+  const maxLift = Math.min(Math.round(gap * 0.5), 18);      // close at most half the gap to 100
+  const eff = Math.round(maxLift * (1 - Math.exp(-raw / 12))); // diminishing returns
+  return Math.min(base + eff, base + maxLift);
+}
+
+// ── Background competitor-audit store ─────────────────────────────
+// Lives OUTSIDE the React tree so scans keep running (and their loading
+// state survives) even when you navigate to another dashboard page and the
+// page component unmounts. Components subscribe via useCompetitorStore().
+const CompetitorStore = (() => {
+  const NUM = { builder: 4, homeowner: 5 };
+  const blank = () => ({ draft:'', audited:false, loading:false, data:null, error:null, startedAt:null });
+  const state = {
+    builder:   Array.from({ length: NUM.builder },   blank),
+    homeowner: Array.from({ length: NUM.homeowner }, blank),
+  };
+  const loaded = { builder:false, homeowner:false };   // server load done once per role
+  const loadPromise = { builder:null, homeowner:null };
+  const listeners = new Set();
+  const emit = () => listeners.forEach(fn => { try { fn(); } catch(e){} });
+
+  const get = (role) => state[role] || [];
+  const setSlot = (role, i, patch) => {
+    if (!state[role] || !state[role][i]) return;
+    state[role][i] = { ...state[role][i], ...patch };
+    emit();
+  };
+
+  const persist = (role, i, data) => {
+    fetch('/api/my/competitors', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ slotIndex:i, url:data.url, data, role }),
+    }).catch(()=>{});
+  };
+  const unpersist = (role, i) => {
+    fetch('/api/my/competitors/' + i + '?role=' + role, { method:'DELETE', credentials:'include' }).catch(()=>{});
+  };
+
+  /* Load saved competitor audits from the server once per role */
+  const loadFromServer = (role) => {
+    if (loaded[role]) return loadPromise[role] || Promise.resolve();
+    loaded[role] = true;
+    loadPromise[role] = fetch('/api/my/competitors?role=' + role, { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.competitors?.length) return;
+        d.competitors.forEach(c => {
+          if (c.slotIndex >= 0 && c.slotIndex < (NUM[role]||0) && c.data && !state[role][c.slotIndex].loading) {
+            state[role][c.slotIndex] = { draft:'', audited:true, loading:false, data:c.data, error:null, startedAt:null };
+          }
+        });
+        emit();
+      })
+      .catch(()=>{});
+    return loadPromise[role];
+  };
+
+  /* Seed an empty slot with a known audit (e.g. the homeowner's own first audit
+     from the homepage) once the server load has settled — and persist it so it's
+     remembered on return. No-op if the slot already has something. */
+  const ensureSeed = (role, i, data) => {
+    const run = () => {
+      const s = state[role] && state[role][i];
+      if (s && !s.audited && !s.loading && !(s.draft && s.draft.trim())) {
+        state[role][i] = { draft:'', audited:true, loading:false, data, error:null, startedAt:null };
+        persist(role, i, data);
+        emit();
+      }
+    };
+    const p = loadPromise[role];
+    if (p && typeof p.then === 'function') p.then(run); else run();
+  };
+
+  const setDraft = (role, i, v) => setSlot(role, i, { draft:v });
+
+  /* Re-audit an existing slot: keep showing the old data until the new one
+     lands, but flip loading on so the spinner shows. */
+  const clear = (role, i) => { setSlot(role, i, { ...blank() }); unpersist(role, i); };
+
+  /* Fire-and-forget audit. Not tied to any component lifecycle. */
+  const runAudit = (role, i, rawUrl, { onLocked } = {}) => {
+    const raw = (rawUrl || '').trim();
+    if (!raw) return;
+    const fullUrl = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
+    setSlot(role, i, { loading:true, error:null, startedAt:Date.now() });
+
+    fetch('/api/competitor-check', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ url: fullUrl }),
+    })
+      .then(async (res) => {
+        const ct = res.headers.get('content-type') || '';
+        let data;
+        if (ct.includes('application/json')) {
+          data = await res.json().catch(() => null);
+        } else {
+          const text = await res.text().catch(() => '');
+          if (/upstream|timeout|gateway|502|503|504/i.test(text) || res.status >= 500) {
+            throw new Error('That audit took too long and timed out. Some large or slow sites can\'t finish in time — try again, it often works on a second attempt.');
+          }
+          throw new Error('Unexpected response from the server. Please try again.');
+        }
+        if (!data) throw new Error('The server sent back an empty response. Please try again.');
+        if (data.locked) {
+          setSlot(role, i, { loading:false, startedAt:null });
+          if (onLocked) onLocked(i);
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Audit failed');
+
+        const domain = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){ return raw; } })();
+        const cats = (data.categories || []).map(c => ({ name:c.name, s:c.score }));
+        const compData = role === 'builder'
+          ? { name:data.company_name||domain, url:domain, loc:'', score:data.score,
+              breakdown:cats, good:data.verdict||'', bad:(data.top_actions||[])[0]||'' }
+          : { name:data.company_name||domain, url:domain, score:data.score, cats, verdict:data.verdict||'' };
+
+        setSlot(role, i, { audited:true, loading:false, startedAt:null, data:compData, draft:'' });
+        persist(role, i, compData);
+      })
+      .catch((err) => {
+        setSlot(role, i, { loading:false, startedAt:null, error: err.message });
+      });
+  };
+
+  const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+
+  return { get, setDraft, setSlot, clear, runAudit, loadFromServer, ensureSeed, subscribe, NUM };
+})();
+
+/* React hook: subscribe a component to the store for a given role. Returns the
+   live slots array (re-rendering on any change) plus bound actions. */
+function useCompetitorStore(role) {
+  const [, force] = React.useState(0);
+  React.useEffect(() => {
+    const unsub = CompetitorStore.subscribe(() => force(n => n + 1));
+    CompetitorStore.loadFromServer(role);
+    return unsub;
+  }, [role]);
+  return {
+    slots: CompetitorStore.get(role),
+    setDraft: (i, v) => CompetitorStore.setDraft(role, i, v),
+    runAudit: (i, url, opts) => CompetitorStore.runAudit(role, i, url, opts),
+    clear:    (i) => CompetitorStore.clear(role, i),
+    setSlot:  (i, patch) => CompetitorStore.setSlot(role, i, patch),
+    seedPrimary: (i, data) => CompetitorStore.ensureSeed(role, i, data),
+  };
+}
+
+/* ── Exportable report helper ──────────────────────────────────────────────
+   Opens a clean, print-optimised BA3 document in a new window and triggers the
+   browser's print dialog (save as PDF). Purely client-side — reads whatever is
+   passed at click time, so it always reflects the latest data. */
+function exportReport(title, innerHtml) {
+  const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups to download your report.'); return; }
+  const css = `
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif;color:#1B1A17;background:#FBF5E1;padding:36px;line-height:1.5}
+    .doc{max-width:780px;margin:0 auto;background:#fff;border:2.5px solid #1B1A17;border-radius:14px;overflow:hidden}
+    .head{background:#FFD24D;border-bottom:2.5px solid #1B1A17;padding:22px 28px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+    .brandblock{display:flex;align-items:center;gap:12px}
+    .logo{width:42px;height:42px;display:block;flex-shrink:0}
+    .brand{font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:20px;letter-spacing:-0.01em}
+    .brand .a{color:#5247B8}
+    .eyebrow{font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#5C5851}
+    .body{padding:26px 28px}
+    h1{font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;text-transform:uppercase;letter-spacing:-0.02em;margin:4px 0 6px;line-height:1.05}
+    h2{font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:0.02em;margin:24px 0 10px;color:#1B1A17}
+    .muted{color:#5C5851}
+    .pill{display:inline-block;border:1.5px solid #1B1A17;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 5px 5px 0}
+    .scorebox{display:inline-flex;flex-direction:column;align-items:center;border:2.5px solid #1B1A17;border-radius:12px;padding:10px 18px;box-shadow:3px 3px 0 #1B1A17}
+    .scorebox .n{font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:40px;line-height:1}
+    .scorebox .l{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:#5C5851;font-weight:700;margin-top:2px}
+    .card{border:2px solid #1B1A17;border-radius:10px;padding:16px;margin-bottom:14px}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
+    .row:last-child{border-bottom:none}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:9px 10px;border-bottom:1.5px solid #1B1A17}
+    th{font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;background:#FBF5E1}
+    .badge{display:inline-block;font-weight:900;font-family:'Hanken Grotesk',sans-serif;border:2px solid #1B1A17;border-radius:6px;padding:2px 9px}
+    .foot{margin-top:24px;padding-top:14px;border-top:1.5px dashed #1B1A17;font-size:11.5px;color:#5C5851;line-height:1.5}
+    .actions{text-align:center;margin:0 auto 22px;max-width:780px}
+    .actions button{font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:14px;border:2px solid #1B1A17;border-radius:8px;padding:10px 20px;cursor:pointer;box-shadow:3px 3px 0 #1B1A17;margin:0 6px}
+    .actions .print{background:#5247B8;color:#fff}
+    .actions .close{background:#fff;color:#1B1A17}
+    @media print{ body{background:#fff;padding:0} .doc{border:none;border-radius:0} .actions{display:none} .head{border-radius:0} }
+  `;
+  w.document.write(
+    '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title>' +
+    '<link rel="icon" type="image/svg+xml" href="' + window.location.origin + '/assets/logo/builderaudit-mark.svg">' +
+    '<link rel="icon" type="image/png" sizes="32x32" href="' + window.location.origin + '/assets/logo/favicon-32.png">' +
+    '<link rel="apple-touch-icon" href="' + window.location.origin + '/assets/logo/apple-touch-180.png">' +
+    '<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700;800;900&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">' +
+    '<style>' + css + '</style></head><body>' +
+    '<div class="actions"><button class="print" onclick="window.print()">⬇ Save as PDF / Print</button><button class="close" onclick="window.close()">Close</button></div>' +
+    '<div class="doc">' +
+      '<div class="head"><div class="brandblock"><img class="logo" src="' + window.location.origin + '/assets/logo/builderaudit-mark-mono.svg" alt=""><div><div class="eyebrow">Independent trust report</div><div class="brand">Builder<span class="a">Audit</span></div></div></div>' +
+      '<div class="muted" style="font-size:12px">' + esc(new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})) + '</div></div>' +
+      '<div class="body">' + innerHtml + '</div>' +
+    '</div></body></html>'
+  );
+  w.document.close();
+}
+
+// ── Primitives ───────────────────────────────────────────────────
+function Card({ children, pad = 28, style = {} }) {
+  return <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:10, padding:pad, boxShadow:`5px 5px 0 ${P.line}`, ...style }}>{children}</div>;
+}
+function Kicker({ children, color }) {
+  return <div style={{ display:'inline-block', padding:'4px 10px', background:color||P.accent, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{children}</div>;
+}
+function Btn({ children, primary, onClick, style = {} }) {
+  return <button onClick={onClick} style={{ padding:'12px 18px', background:primary?P.accent:'#fff', color:primary?'#fff':P.ink, border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:primary?`4px 4px 0 ${P.line}`:'none', whiteSpace:'nowrap', ...style }}>{children}</button>;
+}
+function Label({ children }) {
+  return <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{children}</div>;
+}
+function BigNum({ n, sub, yellow }) {
+  return <div>
+    <div style={{ fontFamily:F.display, fontWeight:900, fontSize:40, color:P.ink, lineHeight:1 }}>{n}</div>
+    {sub && <div style={{ fontFamily:F.body, fontSize:13, color:yellow?P.ink:P.muted, marginTop:4 }}>{sub}</div>}
+  </div>;
+}
+
+// ── Score Donut (SVG) ────────────────────────────────────────────
+function Donut({ score, size = 160 }) {
+  const sw = size * 0.1, r = (size - sw) / 2 - 2, c = 2 * Math.PI * r;
+  const color = score >= 80 ? P.green : score >= 60 ? P.fill : P.red;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={P.line} strokeWidth={sw} opacity="0.12"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw}
+        strokeDasharray={`${c*score/100} ${c}`} strokeDashoffset={c/4}
+        transform={`rotate(-90 ${size/2} ${size/2})`} strokeLinecap="round"/>
+      <text x={size/2} y={size/2-size*0.02} textAnchor="middle" dominantBaseline="middle"
+        style={{ fontFamily:F.display, fontWeight:900, fontSize:size*0.3, fill:P.ink, letterSpacing:'-0.02em' }}>{score}</text>
+      <text x={size/2} y={size/2+size*0.18} textAnchor="middle" dominantBaseline="middle"
+        style={{ fontFamily:F.body, fontWeight:700, fontSize:size*0.09, fill:P.muted, letterSpacing:'0.1em' }}>/ 100</text>
+    </svg>
+  );
+}
+
+// ── BAMark logo (inline SVG) ─────────────────────────────────────
+function BAMark({ size = 38 }) {
+  const h = Math.round(size * 248/240);
+  return (
+    <svg width={size} height={h} viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style={{ display:'block', flexShrink:0 }}>
+      <rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/>
+      <circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" strokeWidth="14"/>
+      <path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" strokeWidth="9" strokeLinecap="round"/>
+      <rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8"/>
+      <path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8" strokeLinejoin="round"/>
+      <rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" strokeWidth="8"/>
+      <path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" strokeWidth="9" strokeLinecap="round"/>
+      <path d="M114 46 V90" fill="none" stroke="#1B1A17" strokeWidth="6" strokeLinecap="round"/>
+      <path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" strokeWidth="5.5" strokeLinecap="round"/>
+      <path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" strokeWidth="5.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ── URL scan bar ─────────────────────────────────────────────────
+function ScanBar({ placeholder = 'yourothersite.co.uk', cta = 'Run audit', onSubmit }) {
+  const [val, setVal] = useState('');
+  const go = () => { const u = val.trim(); if (u) { onSubmit ? onSubmit(u) : window.location.href = `/audit?url=https://${u.replace(/^https?:\/\//,'')}&audience=builder`; } };
+  return (
+    <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:6, maxWidth:560, boxShadow:`4px 4px 0 ${P.line}` }}>
+      <div style={{ padding:'0 14px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</div>
+      <input value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()}
+        placeholder={placeholder}
+        style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:16, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+      <button onClick={go} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 18px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap' }}>{cta} →</button>
+    </div>
+  );
+}
+
+// ── Top Nav ──────────────────────────────────────────────────────
+const BUILDER_PAGES = [
+  { k:'dashboard', label:'Dashboard' },
+  { k:'about',     label:'About your business' },
+  { k:'review',    label:'Scores & review' },
+  { k:'photos',    label:'Photo review' },
+  { k:'fixes',     label:'Your top 10 fixes' },
+  { k:'competitors', label:'Competitor audits' },
+];
+const HOMEOWNER_PAGES = [
+  { k:'dashboard', label:'Safety verdict' },
+  { k:'compare',   label:'Compare builders' },
+  { k:'advice',    label:'Homeowner advice' },
+  { k:'match',     label:'Find a trusted builder' },
+];
+
+function Nav({ role, page, setPage, user, website }) {
+  const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
+  const initials = (() => {
+    const source = user?.companyName || user?.company_name || user?.name || '';
+    if (source.trim()) {
+      const words = source.trim().split(/\s+/).filter(Boolean);
+      const picked = words.length >= 2
+        ? (words[0][0] + words[1][0])           // first letters of first two words
+        : source.trim().slice(0, 2);            // or first two letters of one word
+      return picked.toUpperCase();
+    }
+    if (user?.email) return user.email.slice(0, 2).toUpperCase();
+    return role === 'builder' ? 'BA' : 'BA';
+  })();
+
+  /* ── Account menu + gated preferences modal ── */
+  const [menuOpen,    setMenuOpen]    = useState(false);
+  const [prefsModal,  setPrefsModal]  = useState(false);   /* the gated settings panel */
+  const [confirmOff,  setConfirmOff]  = useState(false);   /* confirm turning marketing OFF */
+  const [prefs, setPrefs]       = useState({ consentAgency:false, weeklyEmailOptIn:false });
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsSaved,  setPrefsSaved]  = useState(false);
+  useEffect(() => {
+    if (user) setPrefs({ consentAgency: !!user.consentAgency, weeklyEmailOptIn: !!user.weeklyEmailOptIn });
+  }, [user]);
+  /* Close menu on outside click */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e) => { if (!e.target.closest('[data-account-menu]')) setMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const savePref = async (key, value) => {
+    const prev = prefs;
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    setPrefsSaving(true); setPrefsSaved(false);
+    try {
+      await fetch('/api/auth/settings', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({ [key]: value }),
+      });
+      setPrefsSaved(true);
+      setTimeout(()=>setPrefsSaved(false), 2000);
+    } catch(e) { setPrefs(prev); }
+    finally { setPrefsSaving(false); }
+  };
+
+  /* Marketing consent is the valuable signal — turning it OFF requires a confirm step.
+     Turning it ON is immediate. */
+  const handleAgencyToggle = (value) => {
+    if (value === false) { setConfirmOff(true); }
+    else { savePref('consentAgency', true); }
+  };
+
+  /* Proper sign out — actually clears the session, then returns home. */
+  const signOut = async () => {
+    try { await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); } catch(e){}
+    window.location.href = '/';
+  };
+
+  /* Display helpers for the profile panel */
+  const prettyType = (t) => ({ sole_trader:'Sole trader', limited_company:'Limited company', partnership:'Partnership', llp:'LLP', other:'Other' }[t] || (t ? t.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) : null));
+  const prettyRegion = (r) => r ? r.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) : null;
+  const siteHost = (() => { try { return website ? new URL(website).hostname.replace(/^www\./,'') : null; } catch(e){ return website || null; } })();
+  const displayName = user?.companyName || user?.company_name || user?.name || null;
+
+  const Toggle = ({ on, onChange }) => (
+    <button onClick={()=>onChange(!on)}
+      style={{ flex:'0 0 auto', width:42, height:24, borderRadius:999, border:`2px solid ${P.line}`, background:on?P.green:P.surface, position:'relative', cursor:'pointer', padding:0, transition:'background .15s', outline:'none' }}>
+      <span style={{ position:'absolute', top:1, left:on?19:1, width:18, height:18, borderRadius:'50%', background:'#fff', border:`1.5px solid ${P.line}`, transition:'left .15s' }}/>
+    </button>
+  );
+
+  return (
+    <header style={{ background:'#fff', borderBottom:`3px solid ${P.line}`, padding:'16px 36px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, position:'sticky', top:0, zIndex:100 }}>
+      <a href="/" style={{ display:'flex', alignItems:'center', gap:12, textDecoration:'none', flexShrink:0 }}>
+        <BAMark size={38}/>
+        <span style={{ fontFamily:F.display, fontWeight:800, fontSize:20, color:P.ink, letterSpacing:'-0.01em', lineHeight:1, whiteSpace:'nowrap' }}>
+          <span>Builder</span><span style={{ color:P.accent }}>Audit</span>
+        </span>
+      </a>
+
+      <nav style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:13.5, color:P.ink, fontWeight:600, overflowX:'auto', alignItems:'center' }}>
+        {pages.map(it => {
+          const on = page === it.k;
+          return (
+            <a key={it.k} href="#" onClick={e=>{e.preventDefault();setPage(it.k);}}
+              aria-current={on ? 'page' : undefined}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:6,
+                color: on ? P.ink : P.muted,
+                fontWeight: on ? 800 : 600,
+                textDecoration:'none', whiteSpace:'nowrap',
+                padding:'7px 13px', borderRadius:8,
+                background: on ? P.fill : 'transparent',
+                border: on ? `2px solid ${P.line}` : '2px solid transparent',
+                boxShadow: on ? `2px 2px 0 ${P.line}` : 'none',
+                transition:'background .12s, color .12s',
+              }}
+              onMouseEnter={e=>{ if(!on){ e.currentTarget.style.color = P.ink; e.currentTarget.style.background = P.surface; } }}
+              onMouseLeave={e=>{ if(!on){ e.currentTarget.style.color = P.muted; e.currentTarget.style.background = 'transparent'; } }}>
+              {on && <span style={{ width:6, height:6, borderRadius:'50%', background:P.ink, display:'inline-block' }}/>}
+              {it.label}
+            </a>
+          );
+        })}
+      </nav>
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 12px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontWeight:700, fontSize:12.5, color:P.ink, whiteSpace:'nowrap' }}>
+          <span style={{ width:7, height:7, borderRadius:'50%', background:role==='builder'?P.accent:P.green, display:'inline-block' }}/>
+          {role==='builder'?'Builder account':'Homeowner account'}
+        </div>
+
+        {/* Avatar → compact account menu */}
+        <div data-account-menu style={{ position:'relative' }}>
+          <button onClick={()=>setMenuOpen(o=>!o)}
+            style={{ width:36, height:36, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, cursor:'pointer', outline:'none', boxShadow:menuOpen?`2px 2px 0 ${P.line}`:'none' }}>
+            {initials}
+          </button>
+
+          {menuOpen && (
+            <div style={{ position:'absolute', top:'calc(100% + 10px)', right:0, width:280, background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`6px 6px 0 ${P.line}`, zIndex:200, overflow:'hidden' }}>
+              <div style={{ padding:'14px 18px', background:P.surface, borderBottom:`2px solid ${P.line}` }}>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Signed in as</div>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{displayName || user?.email || 'Not signed in'}</div>
+                {displayName && user?.email && <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>}
+              </div>
+              {user ? (
+                <>
+                  {/* Quick profile preview */}
+                  <div style={{ padding:'12px 18px', borderBottom:`1.5px solid ${P.surface}`, display:'flex', flexDirection:'column', gap:7 }}>
+                    {siteHost && <div style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:12.5 }}><span style={{ color:P.muted, width:58, flexShrink:0 }}>Website</span><span style={{ color:P.ink, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{siteHost}</span></div>}
+                    {user.phone && <div style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:12.5 }}><span style={{ color:P.muted, width:58, flexShrink:0 }}>Phone</span><span style={{ color:P.ink, fontWeight:600 }}>{user.phone}</span></div>}
+                    {prettyType(user.businessType) && <div style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:12.5 }}><span style={{ color:P.muted, width:58, flexShrink:0 }}>Type</span><span style={{ color:P.ink, fontWeight:600 }}>{prettyType(user.businessType)}</span></div>}
+                  </div>
+                  <button onClick={()=>{ setMenuOpen(false); setPrefsModal(true); }}
+                    style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'13px 18px', background:'transparent', border:'none', borderBottom:`1.5px solid ${P.surface}`, cursor:'pointer', textAlign:'left', fontFamily:F.body, fontSize:14, fontWeight:600, color:P.ink, outline:'none' }}>
+                    <span style={{ fontSize:15 }}>⚙</span> Account &amp; settings
+                  </button>
+                  <a href="/privacy" style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 18px', borderBottom:`1.5px solid ${P.surface}`, fontFamily:F.body, fontSize:13, fontWeight:600, color:P.muted, textDecoration:'none' }}><span style={{ fontSize:14 }}>🔒</span> Privacy &amp; terms</a>
+                  <button onClick={signOut}
+                    style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'13px 18px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left', fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.red, outline:'none' }}>
+                    <span style={{ fontSize:14 }}>↩</span> Sign out
+                  </button>
+                </>
+              ) : (
+                <a href="/login" style={{ display:'block', padding:'13px 18px', fontFamily:F.body, fontSize:14, fontWeight:600, color:P.accent, textDecoration:'none' }}>Sign in →</a>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Gated preferences modal */}
+        {prefsModal && user && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
+            onClick={e=>{ if(e.target===e.currentTarget && !confirmOff) setPrefsModal(false); }}>
+            <div style={{ background:'#fff', border:`3px solid ${P.line}`, borderRadius:10, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:460, width:'100%', overflow:'hidden' }}>
+              <div style={{ padding:'20px 24px', background:P.surface, borderBottom:`2px solid ${P.line}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Account & preferences</div>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>{user.companyName || user.company_name || user.email}</div>
+                  {(user.companyName || user.company_name) && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:2 }}>{user.email}</div>}
+                </div>
+                <button onClick={()=>setPrefsModal(false)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:22, color:P.muted, lineHeight:1, padding:4 }}>×</button>
+              </div>
+
+              <div style={{ padding:'22px 24px', display:'flex', flexDirection:'column', gap:18 }}>
+                {/* Your details */}
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Your details</div>
+                  <div style={{ border:`2px solid ${P.line}`, borderRadius:10, overflow:'hidden' }}>
+                    {[
+                      ['Company', displayName],
+                      ['Website', siteHost],
+                      ['Email', user.email],
+                      ['Phone', user.phone],
+                      ['Business type', prettyType(user.businessType)],
+                      ['Region', prettyRegion(user.region)],
+                    ].map(([label, val], i, arr) => (
+                      <div key={label} style={{ display:'flex', gap:12, padding:'10px 14px', borderBottom:i<arr.length-1?`1.5px solid ${P.surface}`:'none', background:i%2?'#fff':'rgba(251,245,225,0.4)' }}>
+                        <span style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, width:104, flexShrink:0 }}>{label}</span>
+                        <span style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontWeight:val?600:400, wordBreak:'break-word' }}>{val || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, marginTop:8, lineHeight:1.45 }}>
+                    Need to change your company name, phone or website? <a href="/contact?topic=account" style={{ color:P.accent, fontWeight:600 }}>Get in touch</a> and we'll update it.
+                  </div>
+                </div>
+
+                <div style={{ borderTop:`1.5px solid ${P.surface}`, paddingTop:18, fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Contact preferences</div>
+
+                <div style={{ display:'flex', gap:14, alignItems:'flex-start', justifyContent:'space-between' }}>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                    <b style={{ display:'block' }}>{role==='builder' ? 'Recommendations & marketing help' : 'Builder recommendations & help'}</b>
+                    <span style={{ color:P.muted, fontSize:12.5 }}>{role==='builder' ? 'BuilderAudit can contact me about recommendations and marketing services.' : 'BuilderAudit can contact me with trusted builder recommendations and help.'}</span>
+                  </div>
+                  <Toggle on={prefs.consentAgency} onChange={handleAgencyToggle}/>
+                </div>
+
+                <div style={{ display:'flex', gap:14, alignItems:'flex-start', justifyContent:'space-between' }}>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                    <b style={{ display:'block' }}>Weekly email check-ins</b>
+                    <span style={{ color:P.muted, fontSize:12.5 }}>Score updates and progress by email.</span>
+                  </div>
+                  <Toggle on={prefs.weeklyEmailOptIn} onChange={v=>savePref('weeklyEmailOptIn', v)}/>
+                </div>
+
+                <div style={{ minHeight:16, fontFamily:F.body, fontSize:12, color:prefsSaved?P.green:P.muted }}>
+                  {prefsSaving ? 'Saving…' : prefsSaved ? '✓ Preferences saved' : ''}
+                </div>
+
+                {/* Confirm turning marketing OFF */}
+                {confirmOff && (
+                  <div style={{ padding:'14px 16px', background:'rgba(217,119,6,0.08)', border:`2px solid #D97706`, borderRadius:8 }}>
+                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, marginBottom:6 }}>Turn off {role==='builder' ? 'recommendations' : 'builder help'}?</div>
+                    <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5, marginBottom:14 }}>
+                      {role==='builder'
+                        ? "You'll no longer hear from us about competitor insights, website improvements, or ways to win more work. You can turn this back on anytime."
+                        : "We won't be able to send you trusted builder recommendations or help with your project. You can turn this back on anytime."}
+                    </div>
+                    <div style={{ display:'flex', gap:10 }}>
+                      <button onClick={()=>{ savePref('consentAgency', false); setConfirmOff(false); }}
+                        style={{ background:'transparent', color:P.red, border:`2px solid ${P.red}`, borderRadius:6, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer' }}>
+                        Yes, turn off
+                      </button>
+                      <button onClick={()=>setConfirmOff(false)}
+                        style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'9px 16px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:`2px 2px 0 ${P.line}` }}>
+                        Keep it on
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ borderTop:`1.5px solid ${P.line}`, padding:'14px 24px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <button onClick={signOut}
+                  style={{ background:'transparent', color:P.red, border:`2px solid ${P.red}`, borderRadius:6, padding:'10px 18px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer' }}>
+                  Sign out
+                </button>
+                <button onClick={()=>{ if(!confirmOff) setPrefsModal(false); }}
+                  style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 20px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:confirmOff?'not-allowed':'pointer', opacity:confirmOff?0.5:1, boxShadow:`3px 3px 0 ${P.line}` }}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </header>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// BUILDER PAGES
+// ════════════════════════════════════════════════════════════════
+
+// ── Builder Dashboard (main) ────────────────────────────────────
+
+/* Gated shareable-report card. The button only works for signed-in owners;
+   the public link it produces (/r/<token>) needs no account to view. */
+function ShareReport({ user, latestAudit }) {
+  const isLoggedIn = !!user;
+  const [state, setState] = React.useState('idle');   // idle | loading | ready | error
+  const [url, setUrl]     = React.useState('');
+  const [err, setErr]     = React.useState('');
+  const [copied, setCopied] = React.useState(false);
+
+  const create = async () => {
+    if (!isLoggedIn) return;
+    setState('loading'); setErr('');
+    try {
+      const id = latestAudit?.id || 'latest';
+      const res = await fetch('/api/my/audit/' + id + '/share', { method:'POST', credentials:'include' });
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(()=>null) : null;
+      if (!res.ok || !data?.url) throw new Error(data?.error || 'Could not create a link.');
+      setUrl(data.url); setState('ready');
+    } catch(e) { setErr(e.message); setState('error'); }
+  };
+  const copy = () => {
+    try { navigator.clipboard.writeText(url); setCopied(true); setTimeout(()=>setCopied(false), 1800); } catch(e){}
+  };
+
+  return (
+    <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+      {/* Yellow header strip */}
+      <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontSize:15 }}>🔗</span>
+        <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Share your audit report</span>
+      </div>
+      <div style={{ padding:'22px 24px', display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+        <div>
+          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.05 }}>One link. Your whole report, ready to send.</h3>
+          <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 12px', maxWidth:600, lineHeight:1.55 }}>
+            Turn this audit into a polished, read-only web page you can hand to anyone — your <b style={{color:P.ink}}>team</b>, your <b style={{color:P.ink}}>web designer</b>, or your <b style={{color:P.ink}}>marketing agency</b>. They see your score, the six trust checks, what's working, where you're losing enquiries, the priority fixes, and how you stack up against competitors — without needing a BuilderAudit login.
+          </p>
+          {/* Sell points */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:state==='ready'?14:0 }}>
+            {[
+              ['🧑‍🤝‍🧑','Brief your team in one click'],
+              ['🎨','Hand your agency a clear spec'],
+              ['📊','No login needed to view'],
+            ].map((p,i)=>(
+              <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, padding:'5px 12px' }}>
+                <span>{p[0]}</span>{p[1]}
+              </span>
+            ))}
+          </div>
+          {state === 'ready' && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4, flexWrap:'wrap' }}>
+              <input readOnly value={url} onFocus={e=>e.target.select()}
+                style={{ flex:1, minWidth:220, fontFamily:F.body, fontSize:13.5, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 12px', background:P.surface }}/>
+              <Btn primary onClick={copy} style={{ padding:'10px 16px' }}>{copied ? '✓ Copied' : 'Copy link'}</Btn>
+              <a href={url} target="_blank" rel="noopener" style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.accent }}>Open ↗</a>
+            </div>
+          )}
+          {state === 'error' && <div style={{ marginTop:12, fontFamily:F.body, fontSize:13, color:P.red }}>{err}</div>}
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8 }}>
+          {isLoggedIn ? (
+            state !== 'ready' && (
+              <Btn primary onClick={create} disabled={state==='loading'} style={{ padding:'16px 26px', fontSize:16, whiteSpace:'nowrap' }}>
+                {state==='loading' ? 'Creating…' : '🔗 Create shareable link'}
+              </Btn>
+            )
+          ) : (
+            <>
+              <div style={{ display:'flex', alignItems:'center', gap:7, fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.muted }}>
+                <span style={{ fontSize:15 }}>🔒</span> Free account required
+              </div>
+              <a href="/signup" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'14px 22px', fontSize:15, whiteSpace:'nowrap' }}>Create free account →</Btn></a>
+              <span style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, maxWidth:170, textAlign:'right', lineHeight:1.4 }}>Takes 30 seconds — then share unlimited reports.</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{}, requireAccount = ()=>{}, isLoggedIn = false }) {
+  const report = latestAudit?.report_json || null;
+  const baseScore = report?.hero?.score ?? 64;
+
+  const fixDefs = report?.top_actions?.slice(0,5).map((a,i)=>{
+    const icons = ['hammer','gear','screwdriver','roller','tape'];
+    const text = typeof a === 'string' ? a : (a.title || a.why || JSON.stringify(a));
+    const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i];
+    return { id:i, icon:icons[i%icons.length], text, pts, impact:`+${pts} pts` };
+  }) || [
+    { id:0, icon:'hammer',     text:'Swap in real before/after shots from your phone',         pts:8, impact:'+8 pts' },
+    { id:1, icon:'gear',       text:'Add FMB / TrustMark badges near the top of every page',  pts:6, impact:'+6 pts' },
+    { id:2, icon:'screwdriver',text:'Cut the quote form down to: name, postcode, job',         pts:5, impact:'+5 pts' },
+    { id:3, icon:'roller',     text:'Compress your homepage hero image (currently 2.1MB)',     pts:3, impact:'+3 pts' },
+    { id:4, icon:'tape',       text:'Add a phone number to the header on mobile',              pts:2, impact:'+2 pts' },
+  ];
+
+  const toggleFix = (id) => {
+    const nowDone = !completedFixIds.has(id);
+    const next = new Set(completedFixIds);
+    if (nowDone) next.add(id); else next.delete(id);
+    setCompletedFixIds(next);
+    saveOverride({ fixId: id, completed: nowDone });
+  };
+
+  /* Score: use server-adjusted score if available, else project locally with
+     the same conservative, capped model (diminishing returns; can't hit 100). */
+  const allActions = report?.top_actions || [];
+  const completedPts = allActions.reduce((s,a,i) => {
+    if (!completedFixIds.has(i)) return s;
+    const pts = (typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2);
+    return s + pts;
+  }, 0);
+  const score = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, excludedPhotoIds.size);
+  const scoreLift = Math.max(0, score - baseScore);
+
+  /* Real headroom: the most your score could still rise if you completed every
+     remaining fix — under the same capped projection model, so it can never
+     push you past what's actually achievable (and never out of 0-100). */
+  const allFixIds = new Set(allActions.map((_,i) => i));
+  const potentialScore = projectScore(report, allFixIds, excludedPhotoIds.size);
+  const pointsAvailable = Math.max(0, potentialScore - score);
+
+  const previousScore = baseScore; // base is the "last scan" reference
+  const change = score - previousScore;
+
+  const domain = (() => { try { return new URL(latestAudit?.url||'https://yoursite.co.uk').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'yoursite.co.uk';} })();
+
+  const tqRaw = report?.trust_questions || [];
+  const tqAllLooksLikeTen = tqRaw.length > 0 && tqRaw.every(q => (q.score || 0) <= 10);
+  const normTQ = (s) => tqAllLooksLikeTen ? Math.round((s || 0) * 10) : (s || 50);
+
+  const categories = report?.trust_questions ? report.trust_questions.map((q,i)=>{
+    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
+    /* Boost photo score if some flagged photos were excluded */
+    let s = normTQ(q.score);
+    if (i === 1 && excludedPhotoIds.size > 0) {
+      /* Correcting mis-flagged photos nudges the "Real projects" read, but only
+         a little and capped — the real lift comes from adding genuine project
+         photos, which a re-scan would detect. */
+      s = Math.min(s + Math.min(excludedPhotoIds.size, 4) * 2, Math.max(s, 70));
+    }
+    return { name: names[i]||q.question.slice(0,20), s, status: s>=75?'ok':s>=55?'warn':'risk' };
+  }) : [
+    { name:'Photo quality',    s:48, status:'risk' },
+    { name:'Trust signals',    s:72, status:'ok' },
+    { name:'Mobile friendly',  s:86, status:'ok' },
+    { name:'Site speed',       s:54, status:'risk' },
+    { name:'Services clarity', s:58, status:'warn' },
+    { name:'Quote flow',       s:68, status:'warn' },
+    { name:'SEO & Google',     s:62, status:'warn' },
+    { name:'Copy & tone',      s:70, status:'ok' },
+  ];
+
+  const history = auditData?.history || [
+    { date:'Feb 14', score:42 }, { date:'Feb 28', score:51 },
+    { date:'Mar 18', score:58 }, { date:'Apr 02', score:baseScore },
+  ];
+
+  const auditsRun = auditData?.count || history.length;
+  const fixesDone = completedFixIds.size;
+
+  function rescan() { window.location.href = `/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`; }
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Welcome back</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{auditData?.company||'Your company'}</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>{domain} · Last scanned {latestAudit?'recently':'never'} · {fixDefs.length - completedFixIds.size} fixes outstanding</p>
+      </div>
+
+      {/* Share report — key feature, top of page, gated to account holders */}
+      <ShareReport user={user} latestAudit={latestAudit}/>
+
+      {/* Top row: score + stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:28, alignItems:'center' }}>
+            <Donut score={score} size={170}/>
+            <div>
+              <Label>Latest audit {scoreLift > 0 && <span style={{ marginLeft:6, padding:'2px 8px', background:P.green, color:'#fff', borderRadius:999, fontSize:10, fontWeight:700 }}>+{scoreLift} projected</span>}</Label>
+              <div style={{ fontFamily:F.display, fontWeight:800, fontSize:22, color:P.ink, marginBottom:6 }}>
+                {score>=80?'Looking solid':score>=60?'Could be better — climbing fast':'Needs work'}
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontFamily:F.body, fontSize:14, fontWeight:600 }}>
+                {scoreLift > 0 ? (
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.green, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
+                    ↑ +{scoreLift} projected from {fixesDone} fix{fixesDone>1?'es':''}
+                  </span>
+                ) : (
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.muted, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
+                    Score from last audit
+                  </span>
+                )}
+                <span style={{ color:P.muted }}>· tick fixes below to see score climb</span>
+              </div>
+              <Btn primary onClick={rescan}>Re-scan now</Btn>
+            </div>
+          </div>
+        </Card>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audit score</Label><BigNum n={score} sub="out of 100"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audits run</Label><BigNum n={auditsRun} sub="total"/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixDefs.length - fixesDone} still outstanding`}/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${pointsAvailable}`} sub={pointsAvailable > 0 ? `could reach ${potentialScore}` : 'all fixes done'} yellow/></Card>
+        </div>
+      </div>
+
+      {/* Score history + Category breakdown */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:22 }}>
+            <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Score history</h3>
+            <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Last {history.length} scans</span>
+          </div>
+          <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-around', gap:12, height:180, padding:'0 8px', borderBottom:`2px solid ${P.line}` }}>
+            {history.map((h,i) => {
+              const isLatest = i === history.length-1;
+              const color = h.score>=80?P.green:h.score>=60?P.fill:P.red;
+              return <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1, height:'100%', justifyContent:'flex-end', position:'relative' }}>
+                <div style={{ position:'absolute', top:`${100-h.score}%`, transform:'translateY(-100%)', fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, marginBottom:6 }}>{h.score}</div>
+                <div style={{ width:'100%', maxWidth:56, height:`${h.score}%`, background:isLatest?color:'#e0dcce', border:`2px solid ${P.line}`, borderBottom:'none', borderRadius:'6px 6px 0 0' }}/>
+              </div>;
+            })}
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-around', gap:12, padding:'10px 8px 0' }}>
+            {history.map((h,i)=><div key={i} style={{ flex:1, textAlign:'center', fontFamily:F.body, fontSize:12, color:P.muted, fontWeight:600 }}>{h.date}</div>)}
+          </div>
+        </Card>
+
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Score by category</h3>
+          <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
+            {categories.map((c,i)=>{
+              const color = c.s>=75?P.green:c.s>=55?P.fill:P.red;
+              return <div key={i} style={{ display:'grid', gridTemplateColumns:'150px 1fr 36px', alignItems:'center', gap:14 }}>
+                <div style={{ fontFamily:F.body, fontWeight:600, fontSize:13.5, color:P.ink }}>{c.name}</div>
+                <div style={{ height:12, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}>
+                  <div style={{ width:`${c.s}%`, height:'100%', background:color }}/>
+                </div>
+                <div style={{ fontFamily:F.body, fontWeight:700, fontSize:13, color:P.ink, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{c.s}</div>
+              </div>;
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* Fix-it list */}
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your fix-it list</h3>
+          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>{fixDefs.length - completedFixIds.size} outstanding · {fixesDone} done</span>
+        </div>
+        <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+          {fixDefs.map((f,i)=>(
+            <li key={i} onClick={()=>toggleFix(f.id)} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', background:completedFixIds.has(f.id)?P.surface:'#fff', border:`2px solid ${P.line}`, borderRadius:6, opacity:completedFixIds.has(f.id)?0.55:1, cursor:'pointer', transition:'opacity .2s, background .2s' }}>
+              <div style={{ flex:'0 0 auto', width:22, height:22, borderRadius:5, background:completedFixIds.has(f.id)?P.green:'#fff', border:`2.4px solid ${completedFixIds.has(f.id)?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13 }}>{completedFixIds.has(f.id)?'✓':''}</div>
+              <div style={{ flex:'0 0 auto', width:36, height:36, display:'grid', placeItems:'center' }}>
+                <img src={`/assets/icons/${f.icon}.png`} alt="" width={36} height={36} style={{ width:36, height:36, objectFit:'contain' }}/>
+              </div>
+              <div style={{ flex:1, fontFamily:F.body, fontSize:14.5, color:P.ink, textDecoration:completedFixIds.has(f.id)?'line-through':'none' }}>{f.text}</div>
+              <span style={{ fontFamily:F.body, fontWeight:700, fontSize:12, color:completedFixIds.has(f.id)?P.muted:P.green, background:completedFixIds.has(f.id)?P.surface:'rgba(31,138,91,0.1)', padding:'4px 10px', borderRadius:999 }}>{f.impact}</span>
+            </li>
+          ))}
+        </ul>
+        {fixesDone > 0 && <div style={{ marginTop:14, padding:'10px 14px', background:'rgba(31,138,91,0.08)', border:`1.5px solid ${P.green}`, borderRadius:6, fontFamily:F.body, fontSize:13.5, color:P.green, fontWeight:600 }}>
+          ↑ Your projected score with these fixes applied: <b style={{ fontFamily:F.display, fontSize:16 }}>{score}</b> / 100. Re-scan to make it official.
+        </div>}
+      </Card>
+
+      {/* Track your score over time — prompt to create an account (logged out) */}
+      {!isLoggedIn && (
+        <Card style={{ background:P.accent, color:'#fff', borderColor:P.line }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', opacity:0.8, marginBottom:8 }}>📈 Free account</div>
+              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Track your score over time</h3>
+              <p style={{ fontFamily:F.body, fontSize:14.5, margin:0, opacity:0.88, lineHeight:1.5, maxWidth:560 }}>Create a free account to watch your score climb as you make fixes, save your progress, and get an optional weekly check-in by email.</p>
+            </div>
+            <Btn primary onClick={()=>requireAccount({ title:'Track your score over time', benefit:'Create a free account to save your progress and get an optional weekly check-in as your score improves.', cta:'Start tracking' })} style={{ whiteSpace:'nowrap', flexShrink:0 }}>Start tracking →</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* New scan CTA — re-scan is gated to account holders */}
+      <Card style={{ background:P.fill, borderColor:P.line }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+          <div>
+            <Kicker color={P.ink}>Ready for a fresh scan?</Kicker>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Re-scan your site</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste your URL to run a new audit and see if your fixes have improved your score.{!isLoggedIn ? ' Re-scanning is free with an account.' : ''}</p>
+          </div>
+          <ScanBar placeholder="yoursite.co.uk" cta="Run audit"
+            onSubmit={(u)=>{
+              const dest = `/audit?url=https://${u.replace(/^https?:\/\//,'')}&audience=builder`;
+              if (isLoggedIn) { window.location.href = dest; }
+              else { requireAccount({ title:'Re-scan your site', benefit:'Create a free account to re-run your audit and track how your score changes as you make fixes.', cta:'Create free account', onSuccess: () => { window.location.href = dest; } }); }
+            }}/>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Builder: About your business ────────────────────────────────
+// ── Shared: Companies House Lookup ──────────────────────────────
+// Used by both BuilderAbout (builder links their own company) and
+// HoVerdict / HoCompanyCheck (homeowner verifies a builder).
+// Props:
+//   companyName  — search seed from site
+//   domain       — fallback search seed
+//   audience     — 'builder' | 'homeowner'  (controls copy)
+//   onLinked     — optional callback(profile) when a company is confirmed
+function CompaniesHouseLookup({ companyName, domain, audience = 'builder', onLinked }) {
+  const isBuilder = audience === 'builder';
+  const [searchState,  setSearchState]  = useState('idle');
+  const [profileState, setProfileState] = useState('idle');
+  const [candidates,   setCandidates]   = useState([]);
+  const [profile,      setProfile]      = useState(null);
+  const [charges,      setCharges]      = useState(null);
+  const [selectedNum,  setSelectedNum]  = useState(null);
+  const [searchTerm,   setSearchTerm]   = useState('');
+  const [manualSearch, setManualSearch] = useState('');
+  const [errorMsg,     setErrorMsg]     = useState('');
+
+  const statusLabel = { active:'Active ✓', dissolved:'DISSOLVED ⚠', liquidation:'In liquidation ⚠', administration:'In administration ⚠' };
+  const statusColor = { active:P.green, dissolved:P.red, liquidation:P.red, administration:P.red };
+
+  async function runSearch(overrideName) {
+    const term = (overrideName || companyName || domain?.split('.')[0] || '').trim();
+    if (!term) return;
+    setSearchTerm(term);
+    setSearchState('loading');
+    setProfile(null); setCharges(null); setSelectedNum(null); setProfileState('idle');
+    try {
+      const params = new URLSearchParams({ name: term });
+      if (domain) params.set('domain', domain);
+      const res  = await fetch('/api/company-check?' + params.toString(), { credentials:'include' });
+      const data = await res.json();
+      if (!data.available) throw new Error(data.reason || 'Unavailable');
+      setCandidates(data.companies || []);
+      setSearchState('done');
+    } catch(e) { setErrorMsg(e.message); setSearchState('error'); }
+  }
+
+  async function pickCandidate(number) {
+    setSelectedNum(number);
+    setProfileState('loading');
+    try {
+      const [profRes, chargesRes] = await Promise.all([
+        fetch('/api/company-profile/' + number, { credentials:'include' }),
+        fetch('/api/company-charges/' + number, { credentials:'include' }),
+      ]);
+      const profData    = await profRes.json();
+      const chargesData = chargesRes.ok ? await chargesRes.json() : null;
+      if (!profRes.ok || !profData.profile) throw new Error(profData.error || 'Profile fetch failed');
+      setProfile(profData.profile);
+      setCharges(chargesData);
+      setProfileState('done');
+      if (onLinked) onLinked(profData.profile);
+    } catch(e) { setErrorMsg(e.message); setProfileState('error'); }
+  }
+
+  /* ── Filing health verdict ── */
+  const FilingHealth = ({ p, ch }) => {
+    const today = new Date();
+    const checks = [];
+
+    /* Active status */
+    checks.push({ ok: p.status === 'active', label: 'Company status', detail: p.status === 'active' ? 'Active and trading' : `Status: ${p.status}` });
+
+    /* Accounts filed within 18 months */
+    if (p.lastAccounts) {
+      const accountsAge = (today - new Date(p.lastAccounts)) / (1000*60*60*24*365);
+      checks.push({ ok: accountsAge < 1.5, label: 'Accounts filed', detail: accountsAge < 1.5 ? `Last filed ${p.lastAccounts} — up to date` : `Last filed ${p.lastAccounts} — overdue` });
+    } else {
+      checks.push({ ok: false, label: 'Accounts filed', detail: 'No accounts on record' });
+    }
+
+    /* Confirmation statement not overdue */
+    if (p.nextConfirmation) {
+      const overdue = new Date(p.nextConfirmation) < today;
+      checks.push({ ok: !overdue, label: 'Confirmation statement', detail: overdue ? `Overdue (was due ${p.nextConfirmation})` : `Next due ${p.nextConfirmation}` });
+    }
+
+    /* Charges */
+    if (ch?.available) {
+      const hasOutstanding = ch.outstanding > 0;
+      checks.push({ ok: !hasOutstanding, label: 'Registered charges', detail: ch.outstanding === 0 ? 'No outstanding charges' : `${ch.outstanding} outstanding charge${ch.outstanding>1?'s':''} registered` });
+    }
+
+    const allClear = checks.every(c => c.ok);
+    const warnings = checks.filter(c => !c.ok);
+
+    return (
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>
+          Filing health check
+        </div>
+
+        {/* Overall verdict pill */}
+        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 14px', background:allClear?'rgba(31,138,91,0.1)':'rgba(217,119,6,0.1)', border:`2px solid ${allClear?P.green:'#D97706'}`, borderRadius:6, marginBottom:14 }}>
+          <span style={{ fontSize:16 }}>{allClear ? '✅' : '⚠️'}</span>
+          <span style={{ fontFamily:F.body, fontWeight:700, fontSize:13.5, color:allClear?P.green:'#92400E' }}>
+            {allClear
+              ? isBuilder ? 'All clear — your filings are up to date' : 'All clear — filings are up to date'
+              : isBuilder ? `${warnings.length} filing issue${warnings.length>1?'s':''} need your attention` : `${warnings.length} filing issue${warnings.length>1?'s':''} worth raising`}
+          </span>
+        </div>
+
+        {/* Individual checks */}
+        <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+          {checks.map((c,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 12px', background:c.ok?'rgba(31,138,91,0.05)':'rgba(217,83,79,0.05)', border:`1.5px solid ${c.ok?P.green:P.red}`, borderRadius:6 }}>
+              <span style={{ fontFamily:F.body, fontSize:14, fontWeight:800, color:c.ok?P.green:P.red, flex:'0 0 auto', marginTop:1 }}>{c.ok?'✓':'!'}</span>
+              <div>
+                <div style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.ink }}>{c.label}</div>
+                <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:1 }}>{c.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Homeowner action prompt on warnings */}
+        {!isBuilder && warnings.length > 0 && (
+          <div style={{ marginTop:12, padding:'10px 14px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+            <b>Ask them about this before signing anything.</b> Filing issues don't necessarily mean a problem, but a legitimate company should be able to explain them.
+          </div>
+        )}
+        {isBuilder && warnings.length > 0 && (
+          <div style={{ marginTop:12, padding:'10px 14px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+            <b>Sort these out with your accountant.</b> Overdue filings and outstanding charges are visible to any homeowner who checks you on Companies House.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /* ── Profile display ── */
+  const ProfileDisplay = ({ p }) => (
+    <div>
+      <FilingHealth p={p} ch={charges}/>
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:p.status==='active'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.08)', border:`2px solid ${p.status==='active'?P.green:P.red}`, borderRadius:8, marginBottom:14 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:17, color:P.ink, marginBottom:2 }}>{p.name}</div>
+          <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>#{p.number} · Incorporated {p.incorporated}</div>
+        </div>
+        <span style={{ padding:'4px 11px', background:statusColor[p.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, whiteSpace:'nowrap' }}>
+          {statusLabel[p.status] || p.status}
+        </span>
+      </div>
+
+      {p.status !== 'active' && (
+        <div style={{ padding:'12px 14px', background:'rgba(217,83,79,0.1)', border:`2px solid ${P.red}`, borderRadius:8, fontFamily:F.body, fontSize:14, color:P.red, fontWeight:700, marginBottom:14 }}>
+          🚨 {isBuilder ? 'Your company status is not "active" — contact your accountant immediately.' : `This company's status is "${p.status}" — do NOT pay them anything until you understand what this means.`}
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+        {[
+          ['Registered address',    p.registeredAddress],
+          ['Last accounts filed',   p.lastAccounts || 'Not found'],
+          ['Company type',          p.type],
+          ['Next confirmation due', p.nextConfirmation || 'Unknown'],
+        ].map(([label,val],i) => (
+          <div key={i} style={{ padding:'9px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+            <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>{label}</div>
+            <div style={{ fontFamily:F.body, fontSize:13, color:val?P.ink:P.muted }}>{val||'—'}</div>
+          </div>
+        ))}
+      </div>
+
+      {p.officers?.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Current directors & officers</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            {p.officers.map((o,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6 }}>
+                <div style={{ width:30,height:30,borderRadius:'50%',background:P.fill,border:`2px solid ${P.line}`,display:'grid',placeItems:'center',fontFamily:F.display,fontWeight:800,fontSize:12,flex:'0 0 auto' }}>{o.name.charAt(0)}</div>
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:700, color:P.ink }}>{o.name}</div>
+                  <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted }}>{o.role} · Appointed {o.appointed}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {p.sicCodes?.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Registered business activities</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+            {p.sicCodes.map((s,i) => <span key={i} style={{ padding:'3px 9px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11.5, color:P.ink }}>{s}</span>)}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+        <a href={p.chUrl} target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'9px 16px', background:'transparent', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:13.5, color:P.ink, textDecoration:'none' }}>
+          View on Companies House ↗
+        </a>
+        <button onClick={()=>{ setProfile(null); setSelectedNum(null); setProfileState('idle'); setCharges(null); }}
+          style={{ background:'transparent', border:'none', cursor:'pointer', fontFamily:F.body, fontSize:12.5, color:P.muted, textDecoration:'underline', padding:0 }}>
+          ← {isBuilder ? 'Search again' : 'Pick a different company'}
+        </button>
+      </div>
+    </div>
+  );
+
+  /* ── Candidate list ── */
+  const CandidateList = () => (
+    <div style={{ marginTop:14 }}>
+      <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55, padding:'9px 12px', background:'rgba(217,119,6,0.07)', border:`1.5px solid #D97706`, borderRadius:6, marginBottom:12 }}>
+        {isBuilder
+          ? <><b>Builder websites often use a trading name, not the registered company name.</b> Pick the one that matches your company.</>
+          : <><b>Builder websites often use a trading name, not their registered name.</b> Pick the one that looks right based on address and incorporation date.</>}
+      </div>
+
+      {candidates.length === 0
+        ? <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, fontStyle:'italic', marginBottom:12 }}>No matches found for "{searchTerm}".</div>
+        : <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:14 }}>
+            {candidates.map((c,i) => {
+              const isSelected = selectedNum === c.number;
+              return (
+                <button key={i} onClick={()=>pickCandidate(c.number)}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'12px 14px', background:isSelected?P.fill:'#fff', border:`2px solid ${P.line}`, borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%', boxShadow:isSelected?`3px 3px 0 ${P.line}`:'none', outline:'none' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14.5, color:P.ink }}>{c.name}</div>
+                    <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:2 }}>#{c.number} · Incorporated {c.incorporated||'—'} · {c.address||'No address'}</div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
+                    <span style={{ padding:'3px 8px', background:statusColor[c.status]||P.muted, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:10.5, fontWeight:700 }}>{c.status}</span>
+                    {profileState==='loading'&&isSelected
+                      ? <div style={{ width:14,height:14,border:`2.5px solid ${P.surface}`,borderTop:`2.5px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.7s linear infinite' }}/>
+                      : <span style={{ fontFamily:F.body, fontSize:12, color:P.accent, fontWeight:700 }}>Select →</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>}
+
+      {/* Manual search */}
+      <div style={{ borderTop:`1px solid ${P.line}`, paddingTop:12, marginTop:4 }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:7 }}>
+          {isBuilder ? 'Not your company? Try a different name' : 'Not seeing the right company? Search by another name'}
+        </div>
+        <div style={{ display:'flex', gap:7 }}>
+          <input value={manualSearch} onChange={e=>setManualSearch(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&manualSearch.trim()&&runSearch(manualSearch.trim())}
+            placeholder={isBuilder ? 'Try your registered company name…' : `Try "${companyName} Ltd" or a trading name…`}
+            style={{ flex:1, border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 12px', fontFamily:F.body, fontSize:14, color:P.ink, outline:'none' }}/>
+          <button onClick={()=>manualSearch.trim()&&runSearch(manualSearch.trim())}
+            style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'9px 14px', fontFamily:F.body, fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>
+            Search →
+          </button>
+        </div>
+        <a href={`https://find-and-update.company-information.service.gov.uk/search?q=${encodeURIComponent(searchTerm||companyName||'')}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-block', marginTop:9, fontFamily:F.body, fontSize:12.5, color:P.accent, fontWeight:700, textDecoration:'none' }}>
+          Search Companies House directly ↗
+        </a>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {searchState === 'idle' && (
+        <button onClick={()=>runSearch()}
+          style={{ padding:'12px 22px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 ${P.line}` }}>
+          {isBuilder ? 'Link my company on Companies House →' : 'Search Companies House →'}
+        </button>
+      )}
+
+      {searchState === 'loading' && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px', background:P.surface, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.muted }}>
+          <div style={{ width:18,height:18,border:`3px solid ${P.surface}`,borderTop:`3px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
+          Searching for "{searchTerm}"…
+        </div>
+      )}
+
+      {searchState === 'error' && (
+        <div style={{ padding:'12px 14px', background:'rgba(217,83,79,0.08)', border:`1.5px solid ${P.red}`, borderRadius:6, fontFamily:F.body, fontSize:14, color:P.red }}>
+          {errorMsg}. <button onClick={()=>runSearch()} style={{ background:'none', border:'none', cursor:'pointer', color:P.accent, fontWeight:700, fontFamily:F.body }}>Try again</button>
+        </div>
+      )}
+
+      {searchState === 'done' && (
+        profileState === 'done' && profile ? ProfileDisplay({ p: profile }) : CandidateList()
+      )}
+    </div>
+  );
+}
+
+function BuilderAbout({ latestAudit }) {
+  const report = latestAudit?.report_json;
+  const facts = report?.business_snapshot || {};
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'—';} })();
+
+  const Field = ({ label, value, note }) => (
+    <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:18, padding:'12px 0', borderBottom:`1px solid ${P.surface}` }}>
+      <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, letterSpacing:'0.06em', textTransform:'uppercase' }}>{label}</div>
+      <div>
+        <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, fontWeight:500 }}>{value||'—'}</div>
+        {note && <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:2 }}>{note}</div>}
+      </div>
+    </div>
+  );
+
+  /* Build accreditations list from real data + defaults */
+  const realAccreds = (facts.accreditations || []).map(a => ({ name: a, held: true }));
+  const defaultAccreds = ['TrustMark', 'FMB (Federation of Master Builders)', 'CHAS', 'NICEIC (electrical works)'];
+  const accreditations = realAccreds.length > 0
+    ? [...realAccreds, ...defaultAccreds.filter(d => !realAccreds.some(r => r.name.toLowerCase().includes(d.toLowerCase().split(' ')[0]))).map(d => ({ name: d, held: false }))]
+    : defaultAccreds.map(d => ({ name: d, held: false }));
+
+  const teamDisplay = [
+    ...(facts.team?.owners || []),
+    ...(facts.team?.key_people || []),
+  ].filter(Boolean);
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>About your business</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What we know about you</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0 }}>
+          This is what BuilderAudit picks up from {domain}. Items showing "—" are missing from your site — fixing them lifts your trust score.
+        </p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:24, marginBottom:24 }}>
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Business details</h3>
+          <Field label="Trading name"  value={facts.company_name}/>
+          <Field label="Website"       value={domain}/>
+          <Field label="Location"      value={facts.location}/>
+          <Field label="Service area"  value={facts.service_area}/>
+          <Field label="Founded"       value={facts.established} note={facts.years_trading ? `(${facts.years_trading})` : null}/>
+          <Field label="Team size"     value={facts.team?.team_size}/>
+          <Field label="Services"      value={facts.work_types?.join(', ')}/>
+          <Field label="Project range" value={facts.project_value_range}/>
+          <Field label="One-liner"     value={facts.one_liner}/>
+        </Card>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <Card pad={22}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Accreditations</div>
+            <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:8 }}>
+              {accreditations.map((a,i) => (
+                <li key={i} style={{ display:'flex', alignItems:'center', gap:10, fontFamily:F.body, fontSize:14, color:P.ink }}>
+                  <span style={{ flex:'0 0 auto', display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:a.held?P.green:'transparent', border:`2px solid ${a.held?P.green:P.red}`, color:a.held?'#fff':P.red, fontSize:13, fontWeight:800 }}>{a.held?'✓':'✗'}</span>
+                  <span style={{ color:a.held?P.ink:P.muted }}>{a.name}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          {teamDisplay.length > 0 && (
+            <Card pad={22}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Team</div>
+              {teamDisplay.map((p,i) => (
+                <div key={i} style={{ fontFamily:F.body, fontSize:14, color:P.ink, padding:'4px 0', borderBottom:i<teamDisplay.length-1?`1px solid ${P.surface}`:'none' }}>{p}</div>
+              ))}
+            </Card>
+          )}
+
+          {facts.contact && (facts.contact.phone || facts.contact.email || facts.contact.address) && (
+            <Card pad={22}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Contact details on site</div>
+              {facts.contact.phone   && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>📞 {facts.contact.phone}</div>}
+              {facts.contact.email   && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, marginBottom:4 }}>✉ {facts.contact.email}</div>}
+              {facts.contact.address && <div style={{ fontFamily:F.body, fontSize:14, color:P.ink }}>📍 {facts.contact.address}</div>}
+            </Card>
+          )}
+
+          {facts.awards?.length > 0 && (
+            <Card pad={22} style={{ background:'rgba(82,71,184,0.06)', borderColor:P.accent }}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>🏆 Awards & recognition</div>
+              {facts.awards.map((a,i) => <div key={i} style={{ fontFamily:F.body, fontSize:14, color:P.ink, padding:'3px 0' }}>{a}</div>)}
+            </Card>
+          )}
+
+          {facts.what_we_could_not_find?.length > 0 && (
+            <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red, boxShadow:`4px 4px 0 ${P.line}` }}>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>⚠ Missing from your site</div>
+              <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:6 }}>
+                {facts.what_we_could_not_find.map((item,i)=>(
+                  <li key={i} style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, display:'flex', gap:8 }}>
+                    <span style={{ color:P.red, fontWeight:700 }}>·</span>{item}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </div>
+      </div>
+
+
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, marginBottom:18 }}>
+          <div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House</h3>
+            <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5, maxWidth:560 }}>
+              Link your registered company. This confirms you're a legitimate registered business and shows homeowners your filing health — accounts up to date, no outstanding charges.
+            </p>
+          </div>
+          <span style={{ flex:'0 0 auto', padding:'4px 10px', background:'rgba(31,138,91,0.1)', border:`1.5px solid ${P.green}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, color:P.green, whiteSpace:'nowrap' }}>+Trust score</span>
+        </div>
+        <CompaniesHouseLookup
+          companyName={facts.company_name}
+          domain={domain}
+          audience="builder"
+        />
+      </Card>
+
+      <Card style={{ background:P.fill }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:22, alignItems:'center' }}>
+          <div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Something not right?</h3>
+            <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Re-scan your site to refresh what we know about you.</p>
+          </div>
+          <Btn primary onClick={()=>window.location.href=`/audit?url=${encodeURIComponent(latestAudit?.url||'')}&audience=builder`}>Re-scan now</Btn>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Builder: Scores & Review ─────────────────────────────────────
+function CategoryRow({ c, idx }) {
+  const [open, setOpen] = useState(idx === 0);
+  const color = c.s>=75?P.green:c.s>=55?P.fill:P.red;
+  return (
+    <div style={{ border:`2px solid ${P.line}`, borderRadius:6, background:open?P.surface:'#fff', overflow:'hidden' }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ width:'100%', display:'grid', gridTemplateColumns:'170px 60px 1fr auto', gap:18, alignItems:'center', padding:'14px 16px', background:'transparent', border:'none', textAlign:'left', cursor:'pointer', fontFamily:'inherit' }}>
+        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{c.name}</div>
+        <div style={{ width:50, padding:'6px 4px', background:color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:16, textAlign:'center' }}>{c.s}</div>
+        <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, fontStyle:'italic', lineHeight:1.4, paddingRight:12 }}>{c.verdict}</div>
+        <div style={{ flex:'0 0 auto', width:28, height:28, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, transition:'transform .15s', transform:open?'rotate(45deg)':'rotate(0deg)' }}>+</div>
+      </button>
+      {open && (
+        <div style={{ padding:'4px 18px 20px 198px', display:'flex', flexDirection:'column', gap:14 }}>
+          {c.why && <div><div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Why this score</div><p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, lineHeight:1.55 }}>{c.why}</p></div>}
+          {c.evidence?.length > 0 && (
+            <div>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>What we found</div>
+              <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:6 }}>
+                {c.evidence.map((e,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}><span style={{ flex:'0 0 auto', color:P.muted, fontWeight:700 }}>·</span>{e}</li>)}
+              </ul>
+            </div>
+          )}
+          {c.fix && (
+            <div style={{ background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
+              <span style={{ flex:'0 0 auto', display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:P.accent, color:'#fff', fontSize:12, fontWeight:800 }}>↑</span>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}>
+                <b style={{ textTransform:'uppercase', letterSpacing:'0.05em', fontSize:11, color:P.muted, display:'block', marginBottom:4 }}>How to climb</b>
+                {c.fix}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuilderReview({ latestAudit }) {
+  const report = latestAudit?.report_json;
+
+  const categories = report?.trust_breakpoints?.slice(0,8).map((tb,i)=>{
+    const scores = [48,72,86,54,58,68,62,70];
+    return {
+      name: tb.title||`Category ${i+1}`,
+      s: scores[i]||60,
+      verdict: `"${tb.homeowner_reaction||'...'}"`,
+      why: tb.evidence,
+      evidence: [],
+      fix: tb.fix,
+    };
+  }) || [
+    { name:'Photo quality',   s:48, verdict:'"Looks a bit dodgy — most of these photos are clearly stock images."', why:'We scanned 9 photos labelled as past work. 6 appear in reverse-image searches on stock sites.', evidence:['6 of 9 photos detected as stock','2 of 9 detected as AI-generated','No before/after pairs anywhere'], fix:'Replace at least 5 portfolio photos with phone shots from real jobs.' },
+    { name:'Trust signals',   s:72, verdict:'"They show insurance, but no FMB or TrustMark."', why:'Public liability insurance is clearly disclosed. However, no trade body badges are shown.', evidence:['Insurance visible on contact page','No FMB or TrustMark badges','Reviews hidden behind a 3rd-page link'], fix:'Apply for FMB or TrustMark and surface reviews on your homepage.' },
+    { name:'Mobile friendly', s:86, verdict:'"Works great on my phone. Buttons are easy to tap."', why:'Site renders cleanly at all common phone sizes.', evidence:['All tap targets ≥ 44px','No layout breaks at 360px','Menu collapses correctly'], fix:'Tiny win: keep field labels visible during focus on forms.' },
+    { name:'Site speed',      s:54, verdict:'"Hangs for a few seconds when I land."', why:'Homepage takes 4.2s to become interactive on a typical 4G phone.', evidence:['Largest Contentful Paint: 4.2s','Hero image: 2.1MB'], fix:'Compress the hero image and convert to WebP.' },
+  ];
+
+  const strengths = report ? ['Mobile experience is solid','Copy sounds like a person, not corporate fluff'] : ['Mobile experience is genuinely good','Copy sounds like a person, not corporate fluff','Insurance amount shown clearly'];
+  const risks = report ? (report.trust_breakpoints?.slice(0,4).map(tb=>tb.homeowner_reaction||tb.title)||[]) : ['Six of nine "past jobs" are stock photos','No FMB or TrustMark badge','Quote form is too long','Homepage takes 4 seconds to load'];
+  const heroScore = report?.hero?.score || 64;
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Homeowner's view</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>What would a homeowner think of your website?</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
+          We ran your site through the eyes of a fussy homeowner with a £40k extension to spend. Here's their honest take, category by category.
+        </p>
+      </div>
+
+      <Card style={{ background:P.fill, marginBottom:24 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'170px 1fr', gap:24, alignItems:'center' }}>
+          <Donut score={heroScore} size={150}/>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>The overall feel</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>
+              {report?.hero?.headline ? `"${report.hero.headline}"` : '"I\'d ring them — but I\'d also ring two more first."'}
+            </h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, lineHeight:1.5, opacity:0.85 }}>
+              {report?.hero?.subtext || 'You don\'t look like a cowboy, but you don\'t quite look like the safe choice either. A homeowner shortlisting three builders would put you in the middle.'}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:18 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Category-by-category</h3>
+          <span style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Tap any row for the deep dive</span>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {categories.map((c,i)=><CategoryRow key={i} c={c} idx={i}/>)}
+        </div>
+      </Card>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
+        <Card pad={24} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.green, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>✓ What they'd like about you</div>
+          <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+            {strengths.map((s,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}><span style={{ flex:'0 0 auto', color:P.green, fontWeight:800 }}>✓</span>{s}</li>)}
+          </ul>
+        </Card>
+        <Card pad={24} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>⚠ Red flags they'd notice</div>
+          <ul style={{ margin:0, padding:0, listStyle:'none', display:'flex', flexDirection:'column', gap:10 }}>
+            {risks.map((s,i)=><li key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.5 }}><span style={{ flex:'0 0 auto', color:P.red, fontWeight:800 }}>!</span>{s}</li>)}
+          </ul>
+        </Card>
+      </div>
+    </main>
+  );
+}
+
+// ── Builder: Photo Review ────────────────────────────────────────
+function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{}, saveOverride = ()=>{}, requireAccount = ()=>{}, isLoggedIn = false }) {
+  const report = latestAudit?.report_json;
+  const pa = report?.photo_analysis;
+  const promptedSavePhoto = React.useRef(false);
+  const excludePhoto = (id) => {
+    setExcludedPhotoIds(ex => new Set([...ex, id])); saveOverride({ photoId: id, excluded: true });
+    if (!isLoggedIn && !promptedSavePhoto.current) {
+      promptedSavePhoto.current = true;
+      requireAccount({ title:'Save your changes', benefit:'Create a free account to save your photo corrections and keep your updated score.', cta:'Save my changes' });
+    }
+  };
+  const includePhoto = (id) => { setExcludedPhotoIds(ex => { const n = new Set(ex); n.delete(id); return n; }); saveOverride({ photoId: id, excluded: false }); };
+
+  /* Smart pairing — match AI descriptions to image URLs using keyword overlap.
+     The AI analyses images in the order it sees them in page text; the crawler
+     stores them in DOM order. These rarely align 1:1, so position-based pairing
+     produces mismatches. Instead we score each description against each URL's
+     alt text and pick the best match. Falls back to positional if no match. */
+  function findBestUrl(description, usedIndices, urlList) {
+    if (!urlList.length) return null;
+    const descWords = (description || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    let bestIdx = -1, bestScore = 0;
+    urlList.forEach((img, i) => {
+      if (usedIndices.has(i)) return;
+      const altWords = ((img && img.alt) || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
+      const srcWords = ((img && img.src) || '').toLowerCase().split(/[\W_]+/).filter(w => w.length > 3);
+      const combined = [...altWords, ...srcWords];
+      const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    });
+    /* Fall back to first unused URL if no keyword match */
+    if (bestIdx === -1) {
+      for (let i = 0; i < urlList.length; i++) {
+        if (!usedIndices.has(i)) { bestIdx = i; break; }
+      }
+    }
+    return bestIdx;
+  }
+
+  const photos = (() => {
+    const usedIndices = new Set();
+    const allUrls = imageUrls;
+
+    /* Prefer the AI's direct image_ref (e.g. "img_3") → exact URL. Only fall
+       back to keyword guessing if the AI didn't supply a usable ref. */
+    const resolveIdx = (p) => {
+      if (p.image_ref) {
+        const byRef = allUrls.findIndex(u => u && u.ref === p.image_ref);
+        if (byRef !== -1 && !usedIndices.has(byRef)) return byRef;
+      }
+      return findBestUrl(p.description, usedIndices, allUrls);
+    };
+
+    const strong = (pa?.strong_images || []).map((p, i) => {
+      const idx = resolveIdx(p);
+      if (idx !== null && idx !== -1) usedIndices.add(idx);
+      const img = idx !== null && idx !== -1 ? allUrls[idx] : null;
+      return {
+        id: i + 1,
+        src: img?.src || null,
+        pageUrl: img?.pageUrl || null,
+        alt: img?.alt || '',
+        label: p.description || 'Real photo',
+        detail: p.why_it_works || '',
+        tags: ['Real', 'Portfolio'],
+        verdict: 'real',
+        hint: 'Keep this photo — it shows real work.',
+      };
+    });
+
+    const weak = (pa?.weak_images || []).map((p, i) => {
+      const idx = resolveIdx(p);
+      if (idx !== null && idx !== -1) usedIndices.add(idx);
+      const img = idx !== null && idx !== -1 ? allUrls[idx] : null;
+      return {
+        id: strong.length + i + 1,
+        src: img?.src || null,
+        pageUrl: img?.pageUrl || null,
+        alt: img?.alt || '',
+        label: p.description || 'Flagged photo',
+        detail: p.issue || '',
+        tags: [p.confirmed_stock ? 'Stock detected' : 'AI-flagged', 'Review'],
+        verdict: 'stock',
+        hint: p.impact || 'Consider replacing this with a real job photo.',
+      };
+    });
+
+    if (strong.length + weak.length > 0) return [...strong, ...weak];
+
+    /* Fallback: show all raw imageUrls without AI analysis */
+    if (allUrls.length > 0) {
+      return allUrls.slice(0, 16).map((img, i) => ({
+        id: i + 1, src: img.src, pageUrl: img.pageUrl, alt: img.alt || '',
+        label: img.alt || `Photo ${i + 1}`, detail: 'Found on your site',
+        tags: ['Unclassified'], verdict: 'unknown',
+        hint: 'Run a fresh re-scan to get AI analysis of this photo.',
+      }));
+    }
+
+    return [
+      { id:1, src:null, pageUrl:null, alt:'', label:'Extension rear view', detail:'Real photo.', tags:['Real'], verdict:'real', hint:'Keep this photo.' },
+      { id:2, src:null, pageUrl:null, alt:'', label:'Kitchen refit', detail:'Stock image detected.', tags:['Stock detected'], verdict:'stock', hint:'Replace with a real job photo.' },
+    ];
+  })();
+
+  const visible = photos.filter(p => !excludedPhotoIds.has(p.id));
+  const realCount = visible.filter(p => p.verdict === 'real').length;
+  const stockCount = visible.filter(p => p.verdict === 'stock').length;
+  const excludedCount = excludedPhotoIds.size;
+
+  const verdictMap = {
+    real:    { label:'Real',        color:P.green },
+    stock:   { label:'Flagged',     color:P.red },
+    ai:      { label:'AI',          color:P.red },
+    unknown: { label:'Unclassified', color:P.muted },
+  };
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Photo review</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Are your photos working for you?</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>
+          Every photo labelled as past work was checked — reverse-image search, AI detection, and EXIF metadata. Click any image to visit the page it's on.
+        </p>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
+        <Card pad={22}><Label>Total photos</Label><BigNum n={visible.length} sub={excludedCount > 0 ? `${excludedCount} excluded` : 'photos on your site'}/></Card>
+        <Card pad={22} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green }}><Label>Real photos</Label><BigNum n={realCount} sub="confirmed authentic"/></Card>
+        <Card pad={22} style={{ background:'rgba(217,83,79,0.08)', borderColor:P.red }}><Label>Flagged photos</Label><BigNum n={stockCount} sub="stock or AI detected"/></Card>
+      </div>
+
+      {pa?.summary && (
+        <Card style={{ marginBottom:24, background:P.fill }}>
+          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>
+            <b style={{ fontFamily:F.display, fontSize:13, textTransform:'uppercase', letterSpacing:'0.06em', display:'block', marginBottom:8 }}>Overall verdict</b>
+            {pa.summary}
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 18px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Photo-by-photo breakdown</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16 }}>
+          {visible.map((p) => {
+            const v = verdictMap[p.verdict] || verdictMap.unknown;
+            return (
+              <div key={p.id} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+                <a href={p.pageUrl || p.src || '#'} target="_blank" rel="noopener noreferrer"
+                   style={{ display:'block', height:160, background:'#e8e4d8', position:'relative', borderBottom:`2px solid ${P.line}`, textDecoration:'none', overflow:'hidden' }}>
+                  {p.src && <img src={p.src} alt={p.alt} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} onError={e=>{ e.target.style.display='none'; }}/>}
+                  {!p.src && <div style={{ position:'absolute', inset:0, backgroundImage:'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0 10px, transparent 10px 20px)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <span style={{ fontFamily:'ui-monospace, monospace', fontSize:11, color:'rgba(0,0,0,0.45)' }}>photo-{String(p.id).padStart(2,'0')}.jpg</span>
+                  </div>}
+                  <span style={{ position:'absolute', top:10, left:10, padding:'4px 10px', background:v.color, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{v.label}</span>
+                  {(p.pageUrl || p.src) && <span style={{ position:'absolute', bottom:8, right:8, padding:'3px 8px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>{p.pageUrl ? '↗ View on site' : '↗ View image'}</span>}
+                </a>
+                <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8, flex:1 }}>
+                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:P.ink, textTransform:'uppercase', letterSpacing:'0.02em' }}>{p.label}</div>
+                  {p.detail && <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.4 }}>{p.detail}</div>}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:4 }}>
+                    {p.tags.map((t,i) => <span key={i} style={{ padding:'2px 8px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.ink, letterSpacing:'0.04em', textTransform:'uppercase' }}>{t}</span>)}
+                  </div>
+                  <div style={{ flex:1 }}/>
+                  {p.verdict !== 'unknown' && (
+                    <div style={{ background:p.verdict==='real'?'rgba(31,138,91,0.08)':'rgba(217,83,79,0.06)', border:`1.5px solid ${p.verdict==='real'?P.green:P.red}`, borderRadius:4, padding:'8px 10px', fontFamily:F.body, fontSize:12.5, color:P.ink, lineHeight:1.4 }}>
+                      <b style={{ display:'block', fontSize:10.5, color:p.verdict==='real'?P.green:P.red, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:2 }}>{p.verdict==='real'?'✓ Keep it':'↑ Replace it'}</b>
+                      {p.hint}
+                    </div>
+                  )}
+                  {/* Exclude button — lets builder mark award badges, logos etc as "not a project photo" */}
+                  <button
+                    onClick={() => excludePhoto(p.id)}
+                    style={{ marginTop:8, padding:'7px 12px', background:'transparent', border:`1.5px solid ${P.muted}`, borderRadius:4, fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted, cursor:'pointer', textAlign:'left' }}
+                  >✕ Not a project photo — exclude from scoring</button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Excluded photos — shown collapsed so user can undo */}
+          {excludedCount > 0 && (
+            <div style={{ gridColumn:'1/-1', marginTop:8, padding:'14px 18px', background:P.surface, border:`1.5px dashed ${P.muted}`, borderRadius:8 }}>
+              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.muted, marginBottom:10, textTransform:'uppercase', letterSpacing:'0.06em' }}>{excludedCount} photo{excludedCount>1?'s':''} excluded from scoring</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {photos.filter(p => excludedPhotoIds.has(p.id)).map(p => (
+                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', background:'#fff', border:`1.5px solid ${P.line}`, borderRadius:6, fontFamily:F.body, fontSize:13 }}>
+                    <span style={{ color:P.muted }}>{p.label}</span>
+                    <button onClick={() => includePhoto(p.id)}
+                      style={{ background:'transparent', border:'none', cursor:'pointer', color:P.accent, fontFamily:F.body, fontSize:11, fontWeight:700, padding:0 }}>Undo</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Builder: Top 10 Fixes ────────────────────────────────────────
+function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{}, requireAccount = ()=>{}, isLoggedIn = false }) {
+  const report = latestAudit?.report_json;
+  const baseScore = report?.hero?.score ?? 64;
+
+  const iconForCategory = (cat) => {
+    const m = { 'Photos':'hammer','Trust':'gear','Quote':'screwdriver','Speed':'roller','Clarity':'hardhat','SEO':'cone','Copy':'clipboard','Mobile':'tape' };
+    for (const [k,v] of Object.entries(m)) { if (cat?.toLowerCase().includes(k.toLowerCase())) return v; }
+    return 'wrench';
+  };
+
+  /* IDs are 0-indexed to match the server (fix_0, fix_1…) and the main
+     dashboard, so completing a fix here moves the score there too. */
+  const baseFixes = report?.top_actions?.map((a,i)=>{
+    const cats = ['Photos','Trust','Quote flow','Speed','Clarity','SEO','Copy','Mobile','Trust','Speed'];
+    const cat = cats[i%cats.length];
+    const isObj = typeof a === 'object' && a !== null;
+    return {
+      id: i,
+      icon: iconForCategory(isObj ? (a.title || '') : a),
+      title: isObj ? (a.title || `Action ${i+1}`) : a,
+      impact: isObj ? (a.impact_pts || [8,6,5,3,2][i] || 2) : ([8,6,5,3,2][i] || 2),
+      difficulty: 'Medium',
+      est: isObj ? (a.time || '—') : '—',
+      category: cat,
+      why: isObj ? (a.why || 'This fix directly addresses a trust concern homeowners notice.') : 'This fix directly addresses a trust concern homeowners notice.',
+      how: isObj ? (a.how || null) : null,
+    };
+  }) || [
+    { id:0,  icon:'hammer',     title:'Replace 6 stock photos with real before/after job shots',             impact:8, difficulty:'Medium', est:'1 hour',    category:'Photos',     why:'Six of your nine portfolio images are flagged as stock. Real photos are the single biggest score lift.' },
+    { id:1,  icon:'gear',       title:'Apply for FMB or TrustMark accreditation',                           impact:6,  difficulty:'Medium', est:'2-3 weeks', category:'Trust',      why:'You show insurance but no trade body badges. Homeowners on £20k+ jobs now expect at least one.' },
+    { id:2,  icon:'screwdriver',title:'Cut quote form to 4 fields: name, postcode, job type, note',         impact:5,  difficulty:'Easy',   est:'20 min',    category:'Quote flow', why:'Your form has 11 fields. Drop-off testing shows abandonment doubles past 6.' },
+    { id:3,  icon:'roller',     title:'Compress homepage hero image (currently 2.1MB)',                      impact:3,  difficulty:'Easy',   est:'10 min',    category:'Speed',      why:'Convert to WebP and target under 200KB. Cuts load time from 4.2s to ~1.8s.' },
+    { id:4,  icon:'hardhat',    title:'Create one landing page per service',                                 impact:2,  difficulty:'Hard',   est:'1 day',     category:'Clarity',    why:'Per-service pages help homeowners self-identify AND lift local SEO.' },
+    { id:5,  icon:'cone',       title:'Claim & link Google Business Profile from contact page',              impact:2,  difficulty:'Easy',   est:'20 min',    category:'SEO',        why:'You\'re ranking #14 for your area. A linked GBP is the fastest way into the local 3-pack.' },
+    { id:6,  icon:'clipboard',  title:'Surface 3 best reviews on the homepage',                             impact:2,  difficulty:'Easy',   est:'30 min',    category:'Trust',      why:'Reviews are buried. Move three to the homepage above the fold.' },
+    { id:7,  icon:'wrench',     title:'Rewrite hero headline around the homeowner outcome',                  impact:2,  difficulty:'Medium', est:'45 min',    category:'Copy',       why:'Hero currently says "We build X." Try "Add a kitchen-diner without losing your garden."' },
+    { id:8,  icon:'tape',       title:'Add a phone number to the header on mobile',                         impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'On mobile, the phone number isn\'t visible above the fold. Homeowners want quick contact.' },
+    { id:9,  icon:'level',      title:'Add visible field labels during focus on quote form',                 impact:2,  difficulty:'Easy',   est:'10 min',    category:'Mobile',     why:'Labels disappear when typing on mobile. People forget what each field is.' },
+  ];
+
+  /* Done-state lives in the shared, persisted completedFixIds (survives
+     navigation + reload, and updates the score). Request-the-team flow stays
+     local UI state. */
+  const isDone = (id) => completedFixIds.has(id);
+  const promptedSave = React.useRef(false);
+  const toggleDone = (id) => {
+    const nowDone = !completedFixIds.has(id);
+    const next = new Set(completedFixIds);
+    if (nowDone) next.add(id); else next.delete(id);
+    setCompletedFixIds(next);
+    saveOverride({ fixId: id, completed: nowDone });
+    /* Logged-out: progress lives only in this browser tab — nudge them to make
+       a free account so it's saved. Prompt once, on the first tick. */
+    if (!isLoggedIn && nowDone && !promptedSave.current) {
+      promptedSave.current = true;
+      requireAccount({ title:'Save your progress', benefit:'Create a free account to save the fixes you tick off and keep your score next time you visit.', cta:'Save my progress' });
+    }
+  };
+  const [reqState, setReqState] = useState({});   // { [id]: { open, requested } }
+  const toggleReq  = (id) => setReqState(s => ({ ...s, [id]: { ...s[id], open: !s[id]?.open } }));
+  const submitReq  = (id) => setReqState(s => ({ ...s, [id]: { requested:true, open:false } }));
+
+  const fixes = baseFixes;
+  const doneCount      = fixes.filter(f=>isDone(f.id)).length;
+  const reqCount       = Object.values(reqState).filter(r=>r.requested).length;
+  const completedPts   = fixes.filter(f=>isDone(f.id)).reduce((a,b)=>a+b.impact,0);
+  const liveScore      = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, 0);
+  /* Real achievable headroom under the capped model — not the raw point sum. */
+  const allFixIds      = new Set((report?.top_actions || []).map((_,i) => i));
+  const potentialScore = projectScore(report, allFixIds, 0);
+  const remaining      = Math.max(0, potentialScore - liveScore);
+  const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
+
+  /* When every fix is ticked off, the projection has done all it can — that's
+     the moment to offer a personal consultation to close the gap to 100. */
+  const allDone = fixes.length > 0 && doneCount === fixes.length;
+  const [showConsult, setShowConsult] = useState(false);
+  const [consultDismissed, setConsultDismissed] = useState(false);
+  const prevAllDone = React.useRef(false);
+  React.useEffect(() => {
+    if (allDone && !prevAllDone.current && !consultDismissed) setShowConsult(true);
+    prevAllDone.current = allDone;
+  }, [allDone, consultDismissed]);
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Your top 10 fixes</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>The to-do list, in priority order</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Sorted by impact — biggest score lifts at the top. Tick them off as you go, or have the BuilderAudit team handle any of them.</p>
+      </div>
+
+      {!isLoggedIn && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginBottom:20, padding:'14px 18px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+            <span style={{ fontSize:18 }}>💾</span>
+            <span style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}><b>You're not signed in.</b> Your ticked fixes are kept in this browser only — create a free account to save them and keep your score.</span>
+          </div>
+          <Btn primary onClick={()=>requireAccount({ title:'Save your progress', benefit:'Create a free account to save the fixes you tick off and keep your score next time you visit.', cta:'Save my progress' })} style={{ whiteSpace:'nowrap', flexShrink:0 }}>Save my progress →</Btn>
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
+        <Card pad={22}>
+          <Label>Ticked off</Label>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:40, color:P.ink, lineHeight:1 }}>{doneCount}<span style={{ fontSize:22, color:P.muted }}> / {fixes.length}</span></div>
+          <div style={{ height:8, marginTop:10, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}>
+            <div style={{ width:`${(doneCount/fixes.length)*100}%`, height:'100%', background:P.green, transition:'width .25s' }}/>
+          </div>
+        </Card>
+        <Card pad={22}><Label>Help requested</Label><BigNum n={reqCount} sub="BuilderAudit team will be in touch"/></Card>
+        <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub={remaining > 0 ? `could reach ${potentialScore}` : 'all fixes done'} yellow/></Card>
+      </div>
+
+      {/* Live projected score — BA3 themed: yellow header strip, tilted chip,
+          chunky offset shadow, inset progress track */}
+      {(() => {
+        const sCol = liveScore >= 75 ? P.green : liveScore >= 55 ? P.fill : P.red;
+        const lift = Math.max(0, liveScore - baseScore);
+        const pct = Math.max(0, Math.min(100, liveScore));
+        const basePct = Math.max(0, Math.min(100, baseScore));
+        return (
+          <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+            {/* Yellow header strip */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 20px' }}>
+              <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>📈 Your projected score</span>
+              {lift > 0 && (
+                <span style={{ transform:'rotate(2deg)', background:P.green, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'3px 10px', boxShadow:`2px 2px 0 ${P.line}`, fontFamily:F.display, fontWeight:800, fontSize:12 }}>▲ +{lift} so far</span>
+              )}
+            </div>
+            <div style={{ padding:'20px 22px', display:'flex', alignItems:'center', gap:22, flexWrap:'wrap' }}>
+              {/* Tilted score chip */}
+              <div style={{ flexShrink:0, transform:'rotate(-2deg)', background:sCol, color:sCol===P.fill?P.ink:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, padding:'10px 16px', boxShadow:`3px 3px 0 ${P.line}`, textAlign:'center', minWidth:92 }}>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:34, lineHeight:1 }}>{liveScore}</div>
+                <div style={{ fontFamily:F.body, fontSize:9, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginTop:3, opacity:0.9 }}>/ 100 trust</div>
+              </div>
+              {/* Progress track with base marker */}
+              <div style={{ flex:1, minWidth:200 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, marginBottom:6 }}>
+                  <span>Started at {baseScore}</span>
+                  {lift > 0 && <span style={{ color:P.green }}>Now projecting {liveScore}</span>}
+                </div>
+                <div style={{ position:'relative', height:14, background:P.surface, border:`2px solid ${P.line}`, borderRadius:7, overflow:'hidden' }}>
+                  <div style={{ width:`${pct}%`, height:'100%', background:sCol, transition:'width .35s' }}/>
+                  {/* base-score marker */}
+                  <div style={{ position:'absolute', top:-2, bottom:-2, left:`${basePct}%`, width:2, background:P.ink, opacity:0.45 }}/>
+                </div>
+                <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:9, lineHeight:1.45, maxWidth:560 }}>
+                  {doneCount === 0
+                    ? 'Tick fixes off to watch your projected score climb — it saves as you go.'
+                    : 'This is a projection. Ship the changes for real, then re-scan to verify them and unlock a higher score — ticking alone can\'t reach the top.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      <Card pad={22} style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {fixes.map((f,idx)=>{ const done = isDone(f.id); const req = reqState[f.id] || {}; return (
+            <div key={f.id} style={{ border:`2px solid ${P.line}`, borderRadius:6, background:done?P.surface:'#fff', opacity:done?0.68:1, overflow:'hidden', transition:'opacity .2s, background .2s' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'auto 40px 1fr auto auto', gap:14, alignItems:'center', padding:'14px 16px' }}>
+                <button onClick={()=>toggleDone(f.id)} style={{ flex:'0 0 auto', width:26, height:26, borderRadius:5, background:done?P.green:'#fff', border:`2.4px solid ${done?P.green:P.line}`, cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:14, fontFamily:F.display, transition:'background .15s, border-color .15s' }}>{done?'✓':''}</button>
+                <div style={{ flex:'0 0 auto', width:40, height:40, display:'grid', placeItems:'center' }}>
+                  <img src={`/assets/icons/${f.icon}.png`} alt="" width={40} height={40} style={{ width:40, height:40, objectFit:'contain' }}/>
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:done?'line-through':'none', lineHeight:1.35 }}>
+                    <span style={{ display:'inline-block', marginRight:8, padding:'1px 7px', background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:11, color:P.muted, letterSpacing:'0.04em' }}>#{idx+1}</span>
+                    {f.title}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:6, fontFamily:F.body, fontSize:12, color:P.muted, flexWrap:'wrap' }}>
+                    <span>{f.category}</span><span>·</span><span>{f.est}</span><span>·</span>
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                      <span style={{ width:6, height:6, borderRadius:'50%', background:diffColor(f.difficulty) }}/>
+                      {f.difficulty}
+                    </span>
+                  </div>
+                </div>
+                <span style={{ flex:'0 0 auto', padding:'6px 12px', background:P.green, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.display, fontWeight:800, fontSize:13, whiteSpace:'nowrap' }}>+{f.impact} pts</span>
+                <div style={{ display:'flex', gap:6, flex:'0 0 auto' }}>
+                  {req.requested ? (
+                    <span style={{ padding:'8px 12px', background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, fontFamily:F.body, fontWeight:700, fontSize:12, letterSpacing:'0.04em', whiteSpace:'nowrap' }}>✓ Help requested</span>
+                  ) : (
+                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'8px 12px', fontSize:12.5, boxShadow:'none' }}>{req.open?'Cancel':'Get help'}</Btn>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13.5, color:P.muted, lineHeight:1.5 }}>{f.why}</div>
+              {f.how && <div style={{ padding:'0 16px 14px 102px', fontFamily:F.body, fontSize:13, color:P.accent, lineHeight:1.5 }}><b style={{ textTransform:'uppercase', fontSize:10, letterSpacing:'0.07em', display:'block', marginBottom:3 }}>How</b>{f.how}</div>}
+              {req.open && (
+                <div style={{ borderTop:`2px solid ${P.line}`, background:'rgba(82,71,184,0.06)', padding:'18px 16px 18px 102px' }}>
+                  <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Request support from BuilderAudit</div>
+                  <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:'0 0 14px', lineHeight:1.5, maxWidth:640 }}>Our team will reach out within 1 working day with a quote. Most fixes in this band are £{f.difficulty==='Easy'?'40-60':f.difficulty==='Medium'?'120-200':'300+'} including a free re-audit afterwards.</p>
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <Btn primary onClick={()=>submitReq(f.id)} style={{ padding:'10px 16px' }}>Send request</Btn>
+                    <Btn onClick={()=>toggleReq(f.id)} style={{ padding:'10px 16px', boxShadow:'none' }}>Cancel</Btn>
+                    <span style={{ marginLeft:8, fontFamily:F.body, fontSize:12, color:P.muted }}>We'll email you at your registered address</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ); })}
+        </div>
+      </Card>
+
+      {/* Persistent consultation prompt once everything's ticked */}
+      {allDone && (
+        <div style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, padding:'22px 24px', marginBottom:24, display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', opacity:0.8, marginBottom:8 }}>✓ You've done everything on the list</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Want to push from {liveScore} to 100?</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, margin:0, opacity:0.85, lineHeight:1.5, maxWidth:560 }}>You've cleared every fix we found. The last stretch to a perfect score is specific to your site — book a personal consultation and we'll map out exactly what's left.</p>
+          </div>
+          <a href="/contact?topic=consultation" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'14px 22px', fontSize:15, whiteSpace:'nowrap' }}>Book a consultation →</Btn></a>
+        </div>
+      )}
+
+      <Card style={{ background:P.ink, color:'#fff', borderColor:P.line }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
+          <div>
+            <Kicker color={P.fill}>Want all {fixes.length} done by next month?</Kicker>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'12px 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Hand the whole list to our team</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>One quote, one project. Typical turnaround: 2-4 weeks.</p>
+          </div>
+          <a href="/contact?topic=full-list" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'14px 22px', fontSize:15 }}>Get a quote for all {fixes.length} →</Btn></a>
+        </div>
+      </Card>
+
+      {/* Consultation modal — pops once when the last fix is ticked */}
+      {showConsult && (
+        <div onClick={()=>{ setShowConsult(false); setConsultDismissed(true); }}
+          style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.6)', display:'grid', placeItems:'center', zIndex:1000, padding:20 }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:16, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:460, width:'100%', overflow:'hidden' }}>
+            <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'22px 24px', textAlign:'center' }}>
+              <div style={{ fontSize:34, lineHeight:1, marginBottom:8 }}>🎉</div>
+              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.1 }}>That's the whole list done</h3>
+            </div>
+            <div style={{ padding:'22px 24px' }}>
+              <p style={{ fontFamily:F.body, fontSize:15, color:P.ink, margin:'0 0 8px', lineHeight:1.55 }}>
+                Brilliant work — you've ticked off every fix we found. That takes your projected score to <b>{liveScore}</b>.
+              </p>
+              <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 20px', lineHeight:1.55 }}>
+                The final climb to a perfect 100 isn't a checklist — it's specific to your site, your trade, and your market. Book a personal consultation and we'll walk through exactly what's needed to get you there.
+              </p>
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                <a href="/contact?topic=consultation" style={{ textDecoration:'none', flex:1, minWidth:170 }}>
+                  <Btn primary style={{ padding:'13px 18px', fontSize:14.5, width:'100%' }}>Get in touch for a consultation →</Btn>
+                </a>
+                <Btn onClick={()=>{ setShowConsult(false); setConsultDismissed(true); }} style={{ padding:'13px 18px', fontSize:14.5, boxShadow:'none' }}>Maybe later</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+// ── Builder: Competitor Audits ───────────────────────────────────
+function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), adjustedScore = null, excludedPhotoIds = new Set(), onSignedUp = ()=>{} }) {
+  const report   = latestAudit?.report_json;
+  const domain   = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){ return 'yoursite.co.uk'; } })();
+  const isLoggedIn = !!user;
+
+  /* Your score, WITH the fixes you've ticked off applied — so the head-to-head
+     reflects the work you've done, matching the dashboard. Server-adjusted
+     score wins when present; otherwise compute the same way locally. */
+  const baseScore = report?.hero?.score || 64;
+  const youScore = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, excludedPhotoIds.size);
+
+  /* YOUR card — built from the live audit */
+  const you = {
+    name:      report?.business_snapshot?.company_name || 'Your company',
+    url:       domain,
+    loc:       report?.business_snapshot?.location || 'UK',
+    score:     youScore,
+    breakdown: (() => {
+      const tq = report?.trust_questions || [];
+      const allTen = tq.length > 0 && tq.every(q => (q.score || 0) <= 10);
+      const norm = (s) => allTen ? Math.round((s || 0) * 10) : (s || 50);
+      return tq.slice(0,6).map((q,i) => {
+        const labels = ['Trust','Real projects','Reviews','Credentials','Contact','Trading'];
+        return { name: labels[i] || q.question.slice(0,12), s: norm(q.score) };
+      }).concat(
+        /* fallback if no trust_questions yet */
+        tq.length ? [] :
+        [{ name:'Photos',s:48},{ name:'Trust',s:72},{ name:'Mobile',s:86},{ name:'Speed',s:54},{ name:'Clarity',s:58},{ name:'Quote flow',s:68}]
+      ).slice(0,6);
+    })(),
+    good: report?.competitor_gap?.you_have?.[0] || 'Mobile experience and copy feel genuine.',
+    bad:  report?.trust_breakpoints?.[0]?.title  || 'Stock photos and missing trade badges undermine trust.',
+    fixLift:  Math.max(0, youScore - baseScore),
+    fixCount: completedFixIds.size,
+  };
+
+  /* ── Paywall modal state ── */
+  const [showModal,  setShowModal]  = useState(false);
+  const [signedUpNow, setSignedUpNow] = useState(false);   // flipped true right after in-page signup
+  const unlocked = isLoggedIn || signedUpNow;              // reactive: updates the moment `user` arrives
+  const [pendingSlot,setPendingSlot] = useState(null); /* slot index that triggered the modal */
+
+  /* Form fields */
+  const [form, setForm] = useState({ name:'', email:'', phone:'', company:'', consentTos:false, consentAgency:false });
+  const [formErr, setFormErr]     = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const setF = (k, v) => setForm(f => ({...f, [k]: v}));
+
+  const submitSignup = async () => {
+    if (!form.name.trim())    return setFormErr('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setFormErr('Please enter a valid email address.');
+    if (!form.phone.trim())   return setFormErr('Please enter your phone number.');
+    if (!form.company.trim()) return setFormErr('Please enter your company name.');
+    if (!form.consentTos)     return setFormErr('You must agree to the Terms of Service to continue.');
+
+    setSubmitting(true);
+    setFormErr('');
+    try {
+      /* Use the existing signup endpoint — password auto-generated, they can set it later */
+      const tempPw = 'BA-' + Math.random().toString(36).slice(2,10) + '!';
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          email:        form.email.trim().toLowerCase(),
+          password:     tempPw,
+          phone:        form.phone.trim(),
+          companyName:  form.company.trim(),
+          name:         form.name.trim(),
+          businessType: 'limited_company',
+          region:       'other',
+          consentTos:   true,
+          consentAuth:  true,
+          consentAgency: true,
+          consentWeekly: false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign-up failed');
+
+      /* Unlock and run the pending slot straight away */
+      setSignedUpNow(true);
+      setShowModal(false);
+      onSignedUp();
+      if (pendingSlot !== null) runAudit(pendingSlot, true);
+    } catch(err) {
+      setFormErr(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /* ── Slots (backed by the background store so scans survive navigation) ── */
+  const NUM_SLOTS = CompetitorStore.NUM.builder;
+  const store = useCompetitorStore('builder');
+  const slots = store.slots;
+  const setDraft  = (i,v)  => store.setDraft(i, v);
+  /* Re-audit an existing slot: pre-fill the box with its URL and clear it so
+     the user can run a fresh audit over the top. */
+  const editAgain = (i)    => store.setSlot(i, { audited:false, data:null, error:null, draft: slots[i]?.data?.url || slots[i]?.draft || '' });
+
+  /* Pass skipGate=true when called immediately after sign-up */
+  const runAudit = (i, skipGate = false) => {
+    const url = (slots[i]?.draft || '').trim();
+    if (!url) return;
+    /* Show paywall if not unlocked */
+    if (!unlocked && !skipGate) {
+      setPendingSlot(i);
+      setShowModal(true);
+      return;
+    }
+    /* Fire-and-forget via the store — keeps running if you navigate away */
+    store.runAudit(i, url, { onLocked: (slot) => { setPendingSlot(slot); setShowModal(true); } });
+  };
+
+  const audited  = slots.filter(s => s.audited && s.data);
+  const ranked   = [you, ...audited.map(s => s.data)].sort((a,b) => b.score - a.score);
+  const youRank  = ranked.findIndex(x => x === you) + 1;
+
+  /* ── Sub-components ── */
+  const ScoreCard = ({ b, label, yellow, onEdit, badge, badgeColor }) => {
+    const color = b.score >= 75 ? P.green : b.score >= 55 ? P.fill : P.red;
+    return (
+      <Card pad={22} style={{ background: yellow ? P.fill : '#fff', overflow:'hidden' }}>
+        {badge && <div style={{ margin:'-22px -22px 14px', background:badgeColor||P.ink, color:'#fff', fontFamily:F.body, fontSize:10.5, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', padding:'5px 12px', textAlign:'center' }}>{badge}</div>}
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:14 }}>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{label}</div>
+            <div style={{ fontFamily:F.display, fontWeight:800, fontSize:20, color:P.ink, lineHeight:1.1 }}>{b.name}</div>
+            <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:4 }}>{b.url}</div>
+            {onEdit && <button onClick={onEdit} style={{ background:'transparent', border:'none', cursor:'pointer', color:P.accent, fontFamily:F.body, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', padding:0, marginTop:4 }}>Change</button>}
+          </div>
+          <div style={{ flex:'0 0 auto', padding:'10px 14px', background:color, color:color===P.fill?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:24, lineHeight:1, textAlign:'center', boxShadow:`3px 3px 0 ${P.line}`, minWidth:60 }}>
+            {b.score}<div style={{ fontSize:9, fontWeight:700, marginTop:2, opacity:0.85, letterSpacing:'0.08em' }}>/ 100</div>
+            {b.fixLift > 0 && <div style={{ fontSize:8.5, fontWeight:800, marginTop:3, letterSpacing:'0.04em' }}>▲{b.fixLift} fixes</div>}
+          </div>
+        </div>
+        {b.fixLift > 0 && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, margin:'-6px 0 12px', lineHeight:1.4 }}>Includes the {b.fixCount} fix{b.fixCount>1?'es':''} you've ticked off — re-scan to lock it in.</div>}
+        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
+          {b.breakdown.map((cat,j) => {
+            const cc = cat.s >= 75 ? P.green : cat.s >= 55 ? P.fill : P.red;
+            return <div key={j} style={{ display:'grid', gridTemplateColumns:'90px 1fr 30px', gap:10, alignItems:'center' }}>
+              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.ink }}>{cat.name}</div>
+              <div style={{ height:8, background:'rgba(0,0,0,0.08)', border:`1.5px solid ${P.line}`, borderRadius:3, overflow:'hidden' }}><div style={{ width:`${cat.s}%`, height:'100%', background:cc }}/></div>
+              <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{cat.s}</div>
+            </div>;
+          })}
+        </div>
+        {b.good && <div style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45, marginTop:6 }}><span style={{ color:P.green, fontWeight:800, flex:'0 0 auto' }}>✓</span>{b.good}</div>}
+        {b.bad  && <div style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.45, marginTop:6 }}><span style={{ color:P.red,   fontWeight:800, flex:'0 0 auto' }}>!</span>{b.bad}</div>}
+      </Card>
+    );
+  };
+
+  const EmptySlot = ({ slot, i }) => {
+    /* Locked — clean placeholder, whole tile opens the modal */
+    if (!unlocked) return (
+      <button onClick={()=>setShowModal(true)}
+        style={{ border:`2.5px dashed ${P.muted}`, borderRadius:10, background:'rgba(255,255,255,0.6)', minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:9, cursor:'pointer', outline:'none', textAlign:'center', padding:24, transition:'border-color .15s, background .15s' }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderColor=P.accent; e.currentTarget.style.background='#fff'; }}
+        onMouseLeave={e=>{ e.currentTarget.style.borderColor=P.muted; e.currentTarget.style.background='rgba(255,255,255,0.6)'; }}>
+        <div style={{ width:46, height:46, borderRadius:'50%', background:P.surface, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:20 }}>🔒</div>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Competitor slot</div>
+        <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</div>
+        <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.5, maxWidth:220 }}>Unlocks with your free account — use the banner above</div>
+      </button>
+    );
+
+    /* Unlocked — input + run */
+    return (
+      <Card pad={28} style={{ borderStyle:'dashed', borderWidth:2.5, boxShadow:'none', minHeight:280, display:'flex', flexDirection:'column', justifyContent:'center' }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Competitor slot</div>
+        <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</h3>
+        <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>Paste a competitor's website. We'll run the same full audit and sit them next to you.</p>
+        <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`4px 4px 0 ${P.line}`, marginBottom:10 }}>
+          <span style={{ padding:'0 12px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</span>
+          <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
+            placeholder="theirsite.co.uk"
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+        </div>
+        <button onClick={()=>runAudit(i)}
+          style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 16px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`3px 3px 0 ${P.line}`, width:'100%' }}>
+          Run full audit →
+        </button>
+        <div style={{ marginTop:12, fontFamily:F.body, fontSize:12, color:P.muted }}>Takes a few minutes. They won't be told.</div>
+        {slot.error && <div style={{ marginTop:10, fontFamily:F.body, fontSize:12.5, color:P.red }}>{slot.error}</div>}
+      </Card>
+    );
+  };
+
+  const LoadingSlot = ({ startedAt }) => {
+    const [secs, setSecs] = React.useState(startedAt ? Math.floor((Date.now()-startedAt)/1000) : 0);
+    React.useEffect(() => {
+      const tick = () => setSecs(startedAt ? Math.floor((Date.now()-startedAt)/1000) : s => s + 1);
+      const t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }, [startedAt]);
+    const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
+    const stage = secs < 20 ? 'Crawling their site…'
+                : secs < 60 ? 'Reading pages & photos…'
+                : secs < 150 ? 'Scoring trust signals…'
+                : 'Finishing the report…';
+    return (
+      <Card pad={28} style={{ minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+        <div style={{ width:36, height:36, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{stage}</div>
+        <div style={{ fontFamily:F.body, fontSize:22, fontWeight:700, color:P.accent, fontVariantNumeric:'tabular-nums' }}>{mm}:{ss}</div>
+        <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, textAlign:'center', maxWidth:220 }}>A full audit usually takes a few minutes. You can keep working — this'll update when it's done.</div>
+      </Card>
+    );
+  };
+
+  /* ── Paywall modal ── */
+  const Modal = () => (
+    <div style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.65)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
+      onClick={e=>{ if(e.target===e.currentTarget) setShowModal(false); }}>
+      <div style={{ background:'#fff', border:`3px solid ${P.line}`, borderRadius:10, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:480, width:'100%', maxHeight:'90vh', overflowY:'auto' }}>
+
+        {/* Header */}
+        <div style={{ background:P.fill, borderBottom:`2px solid ${P.line}`, padding:'22px 28px' }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Free access</div>
+          <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Unlock competitor audits</h2>
+          <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5 }}>Full-quality audits on any competitor's site — free. Just tell us who you are so we can keep the lights on.</p>
+        </div>
+
+        {/* Form */}
+        <div style={{ padding:'24px 28px', display:'flex', flexDirection:'column', gap:14 }}>
+
+          {/* Name */}
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Your name *</label>
+            <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="John Smith"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Email address *</label>
+            <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="john@yourcompany.co.uk"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Phone number *</label>
+            <input value={form.phone} onChange={e=>setF('phone',e.target.value)} type="tel" placeholder="07700 900000"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+
+          {/* Company */}
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Company name *</label>
+            <input value={form.company} onChange={e=>setF('company',e.target.value)} placeholder="Heartly Builders Ltd"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+
+          {/* Divider */}
+          <div style={{ borderTop:`1px solid ${P.line}`, margin:'4px 0' }}/>
+
+          {/* Consent T&Cs — required */}
+          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer' }}>
+            <input type="checkbox" checked={form.consentTos} onChange={e=>setF('consentTos',e.target.checked)}
+              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
+            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+              I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>. I understand BuilderAudit may contact me about my account. <span style={{ color:P.red, fontWeight:700 }}>*</span>
+            </span>
+          </label>
+
+          {/* Consent marketing — optional */}
+          <div style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'12px 14px', background:'rgba(31,138,91,0.07)', borderRadius:6, border:`1.5px solid ${P.green}` }}>
+            <span style={{ fontSize:16, flex:'0 0 auto', marginTop:1 }}>🤝</span>
+            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55 }}>
+              <b style={{ display:'block', marginBottom:2 }}>What you get when you sign up</b>
+              Unlimited competitor audits, and BuilderAudit can contact you to help with recommendations, website improvements, and online marketing. <span style={{ color:P.muted }}>You can change your contact preferences anytime from your account menu (top right).</span>
+            </span>
+          </div>
+
+          {/* Error */}
+          {formErr && <div style={{ fontFamily:F.body, fontSize:13, color:P.red, padding:'8px 12px', background:'rgba(217,83,79,0.08)', borderRadius:4, border:`1px solid ${P.red}` }}>{formErr}</div>}
+
+          {/* Submit */}
+          <button onClick={submitSignup} disabled={submitting}
+            style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'14px 20px', fontFamily:F.display, fontWeight:900, fontSize:16, cursor:submitting?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:submitting?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
+            {submitting ? 'Creating your account…' : 'Unlock competitor audits →'}
+          </button>
+
+          <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.5 }}>
+            Free forever. No payment needed. Already have an account? <a href="/login" style={{ color:P.accent, fontWeight:600 }}>Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ── Main render ── */
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1300, margin:'0 auto', position:'relative' }}>
+      {showModal && Modal()}
+
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Competitor audits</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>How you stack up</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Add up to four competitor websites. We'll run the same full audit on each and rank everyone side by side — you plus four rivals.</p>
+        {!unlocked && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginTop:18, padding:'18px 22px', background:P.fill, border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`5px 5px 0 ${P.line}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
+              <div style={{ width:42, height:42, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:18, flexShrink:0 }}>🔒</div>
+              <div>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:16, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Free feature — unlock with your account</div>
+                <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, opacity:0.75, marginTop:2 }}>Takes 30 seconds. No payment, ever.</div>
+              </div>
+            </div>
+            <button onClick={()=>setShowModal(true)} style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 22px', fontFamily:F.display, fontWeight:900, fontSize:14.5, cursor:'pointer', boxShadow:`3px 3px 0 rgba(0,0,0,0.25)`, textTransform:'uppercase', letterSpacing:'-0.01em', whiteSpace:'nowrap', flexShrink:0 }}>Unlock free →</button>
+          </div>
+        )}
+      </div>
+
+      {/* Grid: your card + 4 competitor slots */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:18, marginBottom:24 }}>
+        <ScoreCard b={you} label={`You · ${you.loc}`} yellow
+          badge={audited.length ? (youRank === 1 ? '★ You\'re winning' : `Behind on ${ranked[0].score - you.score} pts — #${youRank} of ${ranked.length}`) : null}
+          badgeColor={audited.length && youRank === 1 ? P.green : audited.length ? P.red : P.ink}/>
+        {slots.map((slot, i) =>
+          slot.loading  ? <LoadingSlot key={i} startedAt={slot.startedAt}/> :
+          slot.audited  ? <ScoreCard key={i} b={slot.data} label="Competitor" onEdit={()=>editAgain(i)}
+                            badge={you.score >= slot.data.score ? 'You beat them' : 'They beat you'}
+                            badgeColor={you.score >= slot.data.score ? P.green : P.red}/> :
+                          <React.Fragment key={i}>{EmptySlot({ slot, i })}</React.Fragment>
+        )}
+      </div>
+
+      {/* Decision-led summary — recomputes every time a competitor is added/changed */}
+      {audited.length > 0 && (() => {
+        const rivals    = audited.map(s => s.data);
+        const rivalScores = rivals.map(r => r.score);
+        const avgRival  = Math.round(rivalScores.reduce((a,b)=>a+b,0) / rivalScores.length);
+        const topRival  = rivals.reduce((m,r)=> r.score > m.score ? r : m, rivals[0]);
+        const beat      = rivals.filter(r => you.score > r.score).length;
+        const lead      = you.score - topRival.score;            // +ve = ahead of best rival
+        const gapToTop  = topRival.score - you.score;            // +ve = behind best rival
+        const winning   = youRank === 1;
+        const behindCount = rivals.filter(r => r.score > you.score).length;   // how many rivals beat you
+        const fieldLabel  = rivals.length === 1 ? 'this competitor' : `these ${rivals.length} competitors`;
+
+        /* Per-category: where do you beat / lose to the field on average? */
+        const catNames = you.breakdown.map(c => c.name);
+        const catCompare = catNames.map((name, idx) => {
+          const mine = you.breakdown[idx]?.s ?? 0;
+          const theirs = rivals.map(r => r.breakdown?.[idx]?.s).filter(v => typeof v === 'number');
+          const avgTheirs = theirs.length ? Math.round(theirs.reduce((a,b)=>a+b,0)/theirs.length) : null;
+          return avgTheirs == null ? null : { name, mine, avgTheirs, diff: mine - avgTheirs };
+        }).filter(Boolean);
+        const weakest = [...catCompare].sort((a,b)=>a.diff-b.diff)[0];      // biggest deficit
+        const strongest = [...catCompare].sort((a,b)=>b.diff-a.diff)[0];    // biggest lead
+
+        /* Outcome headline + what it means for winning enquiries */
+        const headline = winning
+          ? 'You are the one to beat'
+          : gapToTop <= 5 ? 'It\'s neck-and-neck — small fixes decide this'
+          : gapToTop <= 15 ? 'You\'re losing winnable work right now'
+          : 'Competitors are taking enquiries you should be getting';
+
+        /* Narrative — always reflects the FULL field so it updates as you add rivals */
+        let outcome;
+        if (winning) {
+          outcome = `Against ${fieldLabel}, your site makes the strongest first impression — you outscore ${beat === rivals.length ? (rivals.length === 1 ? 'them' : 'all '+rivals.length) : beat+' of '+rivals.length}. You sit top at ${you.score}, ahead of the field average of ${avgRival}. Hold the lead by clearing your remaining fixes before they catch up.`;
+        } else if (rivals.length === 1) {
+          outcome = `A homeowner choosing between you and ${topRival.name} will, on the websites alone, trust ${topRival.name} more — they score ${topRival.score} to your ${you.score}. That's the difference between getting the call and getting ignored. Close the ${gapToTop}-point gap and you flip that decision.`;
+        } else {
+          outcome = `Across ${fieldLabel}, you rank #${youRank} of ${ranked.length} — ${behindCount === 1 ? 'one competitor is' : behindCount+' competitors are'} ahead of you, and the field averages ${avgRival} to your ${you.score}. ${topRival.name} leads at ${topRival.score}, so they're the one to catch: close that ${gapToTop}-point gap and you move up the list a homeowner is comparing.`;
+        }
+
+        const accentChip = winning ? P.green : P.red;
+
+        return (
+          <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:22 }}>
+
+            {/* Yellow header strip with tilted verdict chip */}
+            <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'20px 24px', position:'relative' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>⚔ Will you win the work?</span>
+                <span style={{ fontFamily:F.body, fontSize:11, fontWeight:600, color:P.ink, opacity:0.6 }}>· you + {rivals.length} rival{rivals.length>1?'s':''}</span>
+              </div>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:27, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.04, maxWidth:560 }}>{headline}</h3>
+                <div style={{ flexShrink:0, transform:'rotate(2deg)', background:accentChip, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:8, padding:'8px 14px', boxShadow:`3px 3px 0 ${P.line}`, textAlign:'center' }}>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:22, lineHeight:1 }}>#{youRank}<span style={{ fontSize:13, fontWeight:700, opacity:0.8 }}> of {ranked.length}</span></div>
+                  <div style={{ fontFamily:F.body, fontSize:9, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginTop:3, opacity:0.9 }}>Your rank</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding:'22px 24px' }}>
+
+              {/* Head-to-head score bar: you vs top rival */}
+              {!winning && (
+                <div style={{ display:'flex', alignItems:'stretch', gap:0, border:`2px solid ${P.line}`, borderRadius:10, overflow:'hidden', marginBottom:18 }}>
+                  <div style={{ flex:1, background:P.surface, padding:'12px 16px', borderRight:`2px solid ${P.line}` }}>
+                    <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:3 }}>You</div>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                      <span style={{ fontFamily:F.display, fontWeight:900, fontSize:30, color:P.red, lineHeight:1 }}>{you.score}</span>
+                      <span style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted }}>/ 100</span>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'0 14px', background:P.ink }}>
+                    <span style={{ fontFamily:F.display, fontWeight:900, fontSize:13, color:'#fff', letterSpacing:'0.05em' }}>VS</span>
+                  </div>
+                  <div style={{ flex:1, background:'#fff', padding:'12px 16px', borderLeft:`2px solid ${P.line}` }}>
+                    <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{rivals.length === 1 ? topRival.name : `${topRival.name} · field leader of ${rivals.length}`}</div>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                      <span style={{ fontFamily:F.display, fontWeight:900, fontSize:30, color:P.good, lineHeight:1 }}>{topRival.score}</span>
+                      <span style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted }}>/ 100</span>
+                      {rivals.length > 1 && <span style={{ fontFamily:F.body, fontSize:11, fontWeight:600, color:P.muted }}>· avg {avgRival}</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:'0 0 18px', lineHeight:1.6 }}>{outcome}</p>
+
+              {/* Edge / weakness cards — chunky bordered BA3 style */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                {strongest && strongest.diff > 0 && (
+                  <div style={{ background:'rgba(31,138,91,0.08)', border:`2px solid ${P.good}`, borderRadius:10, padding:'14px 16px', boxShadow:`3px 3px 0 ${P.good}` }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:7 }}>
+                      <span style={{ fontSize:15 }}>💪</span>
+                      <span style={{ fontFamily:F.display, fontSize:12, fontWeight:800, color:P.good, letterSpacing:'0.04em', textTransform:'uppercase' }}>Your edge — lean in</span>
+                    </div>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>You win on <b>{strongest.name}</b> — <b>{strongest.mine}</b> vs their <b>{strongest.avgTheirs}</b> average. Make this front-and-centre; it's already earning you trust.</div>
+                  </div>
+                )}
+                {weakest && weakest.diff < 0 && (
+                  <div style={{ background:'rgba(217,83,79,0.08)', border:`2px solid ${P.red}`, borderRadius:10, padding:'14px 16px', boxShadow:`3px 3px 0 ${P.red}` }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:7 }}>
+                      <span style={{ fontSize:15 }}>🎯</span>
+                      <span style={{ fontFamily:F.display, fontSize:12, fontWeight:800, color:P.red, letterSpacing:'0.04em', textTransform:'uppercase' }}>Fix this first</span>
+                    </div>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>You trail on <b>{weakest.name}</b> — <b>{weakest.mine}</b> vs their <b>{weakest.avgTheirs}</b> average. This is the biggest reason a homeowner picks them over you, so it has the highest payoff.</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footnote */}
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, paddingTop:14, borderTop:`1.5px dashed ${P.line}` }}>
+                <span style={{ fontSize:13 }}>🔄</span>
+                <span style={{ fontFamily:F.body, fontSize:12, color:P.muted, lineHeight:1.45 }}>This updates automatically as you add or re-audit competitors. Add your closest rivals for the sharpest read.</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </main>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// HOMEOWNER PAGES
+// ════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HOMEOWNER DASHBOARD — 5 tabs
+// Safety verdict | Red flags | Photo check | Questions | Company check
+// ═══════════════════════════════════════════════════════════════════════════
+
+const HO_TABS = [
+  { k:'verdict',  label:'Safety verdict',    icon:'🛡' },
+  { k:'redflags', label:'Red flags',         icon:'⚠' },
+  { k:'photos',   label:'Photo check',       icon:'📸' },
+  { k:'questions',label:'Questions to ask',  icon:'❓' },
+  { k:'company',  label:'Company check',     icon:'🏢' },
+];
+
+/* Pill colour by impact */
+function impactPill(impact) {
+  const map = { critical:P.red, high:'#E05C00', medium:P.amber||'#D97706', low:P.green };
+  const bg = map[impact] || P.muted;
+  return <span style={{ padding:'2px 8px', background:bg, color:'#fff', borderRadius:999, fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>{impact}</span>;
+}
+
+/* ── Tab: Safety verdict ─────────────────────────────────────────────────── */
+function HoVerdict({ report, domain }) {
+  const score = report?.hero?.score ?? null;
+  const scoreColor = score >= 75 ? P.green : score >= 55 ? '#D97706' : P.red;
+  const verdict = score >= 75 ? 'This builder appears trustworthy' : score >= 55 ? 'Proceed carefully — some concerns' : 'Significant red flags — verify before signing';
+  const tq = report?.trust_questions || [];
+
+  return (
+    <div>
+      {/* Hero verdict — BA3 */}
+      <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+        <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:15 }}>🔍</span>
+          <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Overall verdict</span>
+        </div>
+        <div style={{ padding:'24px', display:'grid', gridTemplateColumns:'auto 1fr', gap:24, alignItems:'center' }}>
+          <div style={{ textAlign:'center', background:P.surface, border:`2.5px solid ${P.line}`, borderRadius:14, padding:'16px 22px', boxShadow:`4px 4px 0 ${P.line}` }}>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:64, color:scoreColor, lineHeight:1, letterSpacing:'-0.04em' }}>{score ?? '?'}</div>
+            <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, marginTop:4, textTransform:'uppercase', letterSpacing:'0.08em' }}>out of 100</div>
+          </div>
+          <div>
+            <div style={{ display:'inline-block', fontFamily:F.body, fontSize:11, fontWeight:800, color:scoreColor, letterSpacing:'0.04em', textTransform:'uppercase', marginBottom:8 }}>{verdict}</div>
+            <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase', lineHeight:1.1 }}>{report?.hero?.headline || verdict}</h2>
+            {report?.hero?.subtext && <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 12px', lineHeight:1.55 }}>{report.hero.subtext}</p>}
+            {report?.hero?.ai_voice_intro && <p style={{ fontFamily:F.body, fontSize:13.5, fontStyle:'italic', color:P.ink, margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.accent}`, paddingLeft:12, background:P.surface, padding:'10px 12px', borderRadius:'0 6px 6px 0' }}>{report.hero.ai_voice_intro}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* 6 trust question scores */}
+      {tq.length > 0 && (
+        <Card style={{ marginBottom:24 }}>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>6 things we checked</h3>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {tq.map((q,i) => {
+              const _allTen = tq.length > 0 && tq.every(x => (x.score || 0) <= 10);
+              const s = _allTen ? Math.round((q.score || 0) * 10) : (q.score || 0);
+              const c = s>=75?P.green:s>=55?'#D97706':P.red;
+              return (
+                <div key={i}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5 }}>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>{q.question}</div>
+                    <div style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:c, marginLeft:10, whiteSpace:'nowrap' }}>{s} / 100</div>
+                  </div>
+                  <div style={{ height:8, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:4, overflow:'hidden', marginBottom:4 }}>
+                    <div style={{ width:`${s}%`, height:'100%', background:c }}/>
+                  </div>
+                  {q.explanation && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.4 }}>{q.explanation}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Journey through the site */}
+      {report?.homeowner_journey?.length > 0 && (
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>What you'd notice on their site</h3>
+          <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>Walking through their website as a homeowner deciding whether to trust them — here's what likely runs through your mind at each stage.</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {report.homeowner_journey.map((j,i) => {
+              const labels = { first_impression:'When you land', scrolling:'As you scroll', decision_moment:'When you decide' };
+              return (
+                <div key={i} style={{ display:'flex', gap:14 }}>
+                  <div style={{ flex:'0 0 auto', width:28, height:28, borderRadius:'50%', background:P.fill, border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:800, fontSize:11 }}>{i+1}</div>
+                  <div>
+                    <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{labels[j.stage]||j.stage}</div>
+                    <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, fontStyle:'italic', lineHeight:1.55, borderLeft:`3px solid ${P.fill}`, paddingLeft:10 }}>"{j.thought}"</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ── Tab: Red flags deep-dive ────────────────────────────────────────────── */
+function HoRedFlags({ report }) {
+  const [openIdx, setOpenIdx] = React.useState(0);
+  const breakpoints = report?.trust_breakpoints || [];
+  const critical = breakpoints.filter(b => b.impact === 'critical' || b.impact === 'high');
+  const medium   = breakpoints.filter(b => b.impact === 'medium');
+  const low      = breakpoints.filter(b => b.impact === 'low');
+  const groups = [
+    { label:'Critical & high risk', items:critical, borderColor:P.red, bg:'rgba(217,83,79,0.05)' },
+    { label:'Medium risk',          items:medium,   borderColor:'#D97706', bg:'rgba(217,119,6,0.05)' },
+    { label:'Low risk / watch',     items:low,      borderColor:P.green, bg:'rgba(31,138,91,0.05)' },
+  ].filter(g => g.items.length > 0);
+
+  if (breakpoints.length === 0) return (
+    <Card><div style={{ textAlign:'center', padding:'2rem', fontFamily:F.body, fontSize:15, color:P.muted }}>No trust issues identified in this audit.</div></Card>
+  );
+
+  let globalIdx = 0;
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+      {groups.map((g, gi) => (
+        <div key={gi}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>{g.label} ({g.items.length})</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {g.items.map((b, bi) => {
+              const idx = globalIdx++;
+              const isOpen = openIdx === idx;
+              return (
+                <div key={bi} style={{ border:`2px solid ${g.borderColor}`, borderRadius:8, background:isOpen?g.bg:'#fff', overflow:'hidden', transition:'background .15s' }}>
+                  <button onClick={() => setOpenIdx(isOpen ? -1 : idx)}
+                    style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left' }}>
+                    {impactPill(b.impact)}
+                    <div style={{ flex:1, fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'0.01em' }}>{b.title}</div>
+                    <div style={{ flex:'0 0 auto', fontFamily:F.display, fontWeight:800, fontSize:18, color:P.muted, transition:'transform .15s', transform:isOpen?'rotate(45deg)':'rotate(0)' }}>+</div>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding:'0 16px 18px 16px', display:'flex', flexDirection:'column', gap:14 }}>
+                      {/* Homeowner inner monologue */}
+                      {b.homeowner_reaction && (
+                        <div style={{ borderLeft:`3px solid ${g.borderColor}`, paddingLeft:12 }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>What a homeowner thinks</div>
+                          <div style={{ fontFamily:F.body, fontSize:14, fontStyle:'italic', color:P.ink, lineHeight:1.55 }}>"{b.homeowner_reaction}"</div>
+                        </div>
+                      )}
+                      {/* Evidence */}
+                      {b.evidence && (
+                        <div style={{ background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:6, padding:'12px 14px' }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>What we found</div>
+                          <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.55 }}>{b.evidence}</div>
+                        </div>
+                      )}
+                      {/* What it means + what to ask */}
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                        <div style={{ background:'rgba(217,83,79,0.06)', border:`1.5px solid ${P.red}`, borderRadius:6, padding:'12px 14px' }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.red, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>What this means</div>
+                          <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
+                            {b.impact === 'critical' ? 'This is a serious concern that should be resolved before you sign anything.' :
+                             b.impact === 'high' ? 'This increases your risk significantly. Ask for proof before proceeding.' :
+                             b.impact === 'medium' ? 'Worth investigating — this could indicate a problem or just poor website maintenance.' :
+                             'Minor concern. Good to know but unlikely to indicate a problem on its own.'}
+                          </div>
+                        </div>
+                        <div style={{ background:'rgba(82,71,184,0.06)', border:`1.5px solid ${P.accent}`, borderRadius:6, padding:'12px 14px' }}>
+                          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.accent, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>Ask them this</div>
+                          <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5, fontStyle:'italic' }}>{b.fix || 'Can you provide documentation to verify this?'}</div>
+                        </div>
+                      </div>
+                      {/* Walk away signal */}
+                      {b.impact === 'critical' && (
+                        <div style={{ background:P.red, color:'#fff', borderRadius:6, padding:'10px 14px', fontFamily:F.body, fontSize:13.5, fontWeight:600 }}>
+                          🚨 Walk away if they can't answer this clearly and in writing.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Tab: Photo check ────────────────────────────────────────────────────── */
+function HoPhotoCheck({ report, imageUrls }) {
+  const pa = report?.photo_analysis;
+
+  function findBestUrl(description, usedIndices, urlList) {
+    if (!urlList.length) return null;
+    const descWords = (description || '').toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    let bestIdx = -1, bestScore = 0;
+    urlList.forEach((img, i) => {
+      if (usedIndices.has(i)) return;
+      const combined = [...((img && img.alt)||'').toLowerCase().split(/\W+/), ...((img && img.src)||'').toLowerCase().split(/[\W_]+/)].filter(w => w.length > 3);
+      const score = descWords.filter(w => combined.some(c => c.includes(w) || w.includes(c))).length;
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    });
+    if (bestIdx === -1) for (let i = 0; i < urlList.length; i++) { if (!usedIndices.has(i)) { bestIdx = i; break; } }
+    return bestIdx;
+  }
+
+  const usedIndices = new Set();
+  const resolveIdx = (p) => {
+    if (p.image_ref) {
+      const byRef = imageUrls.findIndex(u => u && u.ref === p.image_ref);
+      if (byRef !== -1 && !usedIndices.has(byRef)) return byRef;
+    }
+    return findBestUrl(p.description, usedIndices, imageUrls);
+  };
+  const strong = (pa?.strong_images || []).map((p, i) => {
+    const idx = resolveIdx(p);
+    if (idx != null && idx !== -1) usedIndices.add(idx);
+    const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
+    return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Real photo', detail:p.why_it_works||'', verdict:'real' };
+  });
+  const weak = (pa?.weak_images || []).map((p, i) => {
+    const idx = resolveIdx(p);
+    if (idx != null && idx !== -1) usedIndices.add(idx);
+    const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
+    return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Flagged photo', detail:p.issue||'', verdict:'stock', confirmed:p.confirmed_stock, source:p.stock_source };
+  });
+
+  const allPhotos = [...strong, ...weak];
+  const realCount = strong.length;
+  const flaggedCount = weak.length;
+
+  if (allPhotos.length === 0) return (
+    <Card><div style={{ textAlign:'center', padding:'2rem', fontFamily:F.body, color:P.muted }}>No photo analysis available for this audit. Re-scan to get a full photo check.</div></Card>
+  );
+
+  return (
+    <div>
+      {pa?.summary && (
+        <Card style={{ background:P.fill, marginBottom:20 }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Overall photo verdict</div>
+          <div style={{ fontFamily:F.body, fontSize:15, color:P.ink, lineHeight:1.6 }}>{pa.summary}</div>
+        </Card>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
+        <Card pad={18} style={{ background:'rgba(31,138,91,0.08)', borderColor:P.green, textAlign:'center' }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:P.green, lineHeight:1 }}>{realCount}</div>
+          <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:4 }}>Real photos confirmed</div>
+        </Card>
+        <Card pad={18} style={{ background:flaggedCount>0?'rgba(217,83,79,0.08)':'rgba(31,138,91,0.08)', borderColor:flaggedCount>0?P.red:P.green, textAlign:'center' }}>
+          <div style={{ fontFamily:F.display, fontWeight:900, fontSize:48, color:flaggedCount>0?P.red:P.green, lineHeight:1 }}>{flaggedCount}</div>
+          <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:flaggedCount>0?P.red:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:4 }}>{flaggedCount>0?'Stock or AI detected':'No stock photos found'}</div>
+        </Card>
+      </div>
+
+      {/* What to demand */}
+      <Card style={{ marginBottom:20, background:P.surface, borderColor:P.accent }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.accent, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>What to ask before hiring</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {[
+            'Ask to see the original photos from these jobs — taken on their phone, with EXIF data intact',
+            'Request the address or at least postcode for 2-3 of the projects shown',
+            'Ask if you can speak to a previous client from each project you\'re shown',
+            flaggedCount > 0 ? `${flaggedCount} photo${flaggedCount>1?'s are':' is'} flagged — ask them specifically about these before anything else` : null,
+          ].filter(Boolean).map((q,i) => (
+            <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:14, color:P.ink, lineHeight:1.45 }}>
+              <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>→</span>{q}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))', gap:14 }}>
+        {allPhotos.map((p, i) => {
+          const isReal = p.verdict === 'real';
+          return (
+            <div key={i} style={{ border:`2px solid ${P.line}`, borderRadius:8, overflow:'hidden' }}>
+              <a href={p.pageUrl||p.src||'#'} target="_blank" rel="noopener noreferrer"
+                 style={{ display:'block', height:140, background:'#e8e4d8', position:'relative', overflow:'hidden' }}>
+                {p.src && <img src={p.src} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'}/>}
+                <span style={{ position:'absolute', top:8, left:8, padding:'3px 9px', background:isReal?P.green:P.red, color:'#fff', border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontSize:10, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase' }}>
+                  {isReal ? 'Real' : p.confirmed ? 'Stock' : 'Flagged'}
+                </span>
+                {p.pageUrl && <span style={{ position:'absolute', bottom:6, right:6, padding:'2px 7px', background:'rgba(0,0,0,0.6)', color:'#fff', borderRadius:4, fontFamily:F.body, fontSize:10, fontWeight:700 }}>↗ View</span>}
+              </a>
+              <div style={{ padding:'12px 14px' }}>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:13, color:P.ink, textTransform:'uppercase', marginBottom:4 }}>{p.label}</div>
+                <div style={{ fontFamily:F.body, fontSize:12.5, color:isReal?P.good:P.red, lineHeight:1.4 }}>{p.detail}</div>
+                {p.source && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, marginTop:4 }}>Found on: {p.source}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Tab: Questions to ask ───────────────────────────────────────────────── */
+function HoQuestions({ report, domain }) {
+  const [printed, setPrinted] = React.useState(false);
+  const [checked, setChecked] = React.useState({});
+
+  /* Build the questions from top_actions + trust_breakpoints */
+  const questions = (() => {
+    const fromActions = (report?.top_actions || []).map((a, i) => {
+      const title = typeof a === 'string' ? a : (a.title || '');
+      const why   = typeof a === 'object' ? (a.why || '') : '';
+      return { id:'a'+i, category:'Action required', text: title, context: why };
+    });
+    const fromFlags = (report?.trust_breakpoints || [])
+      .filter(b => b.impact === 'critical' || b.impact === 'high')
+      .map((b, i) => ({
+        id:'f'+i,
+        category: b.impact === 'critical' ? '🚨 Critical' : '⚠ High risk',
+        text: b.fix || ('Can you provide evidence about: ' + b.title + '?'),
+        context: b.evidence || '',
+      }));
+    /* Deduplicate and cap at 10 */
+    return [...fromFlags, ...fromActions].slice(0, 10);
+  })();
+
+  const doneCount = Object.values(checked).filter(Boolean).length;
+
+  return (
+    <div>
+      <Card style={{ background:P.fill, marginBottom:20 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:16, alignItems:'center' }}>
+          <div>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em', marginBottom:4 }}>Your pre-hire checklist</div>
+            <div style={{ fontFamily:F.body, fontSize:14, color:P.ink, opacity:0.75 }}>
+              Specific to {domain}. Tick off each one as you get a satisfactory answer. Don't sign anything until all critical questions are answered.
+            </div>
+          </div>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:36, color:P.ink, lineHeight:1 }}>{doneCount}/{questions.length}</div>
+            <div style={{ fontFamily:F.body, fontSize:11, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em' }}>answered</div>
+          </div>
+        </div>
+      </Card>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+        {questions.map((q, i) => {
+          const isCritical = q.category.includes('Critical');
+          const done = checked[q.id];
+          return (
+            <div key={q.id} onClick={() => setChecked(c => ({...c, [q.id]: !c[q.id]}))}
+              style={{ display:'flex', gap:14, padding:'14px 16px', background:done?P.surface:'#fff', border:`2px solid ${done?P.line:isCritical?P.red:P.line}`, borderRadius:8, cursor:'pointer', opacity:done?0.7:1, transition:'all .15s' }}>
+              <div style={{ flex:'0 0 auto', width:24, height:24, borderRadius:5, background:done?P.green:'#fff', border:`2.5px solid ${done?P.green:P.line}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:13, marginTop:1 }}>{done?'✓':''}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <span style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:isCritical?P.red:P.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>{q.category}</span>
+                </div>
+                <div style={{ fontFamily:F.body, fontSize:14.5, fontWeight:600, color:P.ink, textDecoration:done?'line-through':'none', lineHeight:1.4 }}>{q.text}</div>
+                {q.context && !done && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:5, lineHeight:1.4 }}>{q.context}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <Card style={{ background:'rgba(27,26,23,0.04)', borderColor:P.line }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>General rules before signing any builder contract</div>
+        {[
+          'Always get 3 quotes — compare them line by line, not just total price',
+          'Never pay more than 10-15% upfront — stage payments only',
+          'Get everything in writing: spec, timeline, payment schedule, who\'s responsible for planning',
+          'Check their public liability insurance certificate yourself — don\'t just take their word',
+          'Search their company name + "review" and "complaint" separately from their own site',
+        ].map((tip, i) => (
+          <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'5px 0', lineHeight:1.45, borderBottom:i<4?`1px solid ${P.surface}`:'none' }}>
+            <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>{i+1}.</span>{tip}
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+/* ── Tab: Company check ─────────────────────────────────────────────────── */
+function HoCompanyCheck({ report, latestAudit }) {
+  const companyName = report?.business_snapshot?.company_name || '';
+  const domain      = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return '';} })();
+  const siteNumber  = report?.business_snapshot?.contact?.company_number || null;
+  const siteInfo    = report?.business_snapshot;
+
+  return (
+    <div>
+      {/* What their site claims */}
+      <Card style={{ marginBottom:20 }}>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>What their site claims</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {[
+            ['Company name',           siteInfo?.company_name],
+            ['Location',               siteInfo?.location],
+            ['Founded / trading',      siteInfo?.established ? `${siteInfo.established}${siteInfo.years_trading?' ('+siteInfo.years_trading+')':''}` : siteInfo?.years_trading],
+            ['Service area',           siteInfo?.service_area],
+            ['Contact phone',          siteInfo?.contact?.phone],
+            ['Contact email',          siteInfo?.contact?.email],
+            ['Address on site',        siteInfo?.contact?.address],
+            ['Company number on site', siteNumber || null],
+          ].map(([label, val], i) => (
+            <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+              <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
+              <div style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.red, fontStyle:val?'normal':'italic' }}>
+                {val || (label === 'Company number on site' ? '⚠ Not displayed' : 'Not found on site')}
+              </div>
+            </div>
+          ))}
+        </div>
+        {!siteNumber && (
+          <div style={{ marginTop:12, padding:'9px 12px', background:'rgba(217,119,6,0.08)', border:`1.5px solid #D97706`, borderRadius:6, fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+            ⚠ <b>No company number on this site.</b> We'll search by name below — but you'll need to confirm which company is actually theirs.
+          </div>
+        )}
+      </Card>
+
+      {/* Companies House verification — uses shared component */}
+      <Card>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Companies House verification</h3>
+        <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>
+          We search the official UK register for businesses matching this company's name. Because builders often use a trading name, we'll show you the closest matches so <b>you can confirm which one is theirs</b>.
+        </p>
+        <CompaniesHouseLookup
+          companyName={companyName}
+          domain={domain}
+          audience="homeowner"
+        />
+      </Card>
+    </div>
+  );
+}
+
+// ── Homeowner: Compare Builders ─────────────────────────────────
+function HomeownerCompare({ user, latestAudit, onSignedUp = ()=>{}, requireAccount = ()=>{} }) {
+  const isLoggedIn = !!user;
+  const [signedUpNow, setSignedUpNow] = useState(false);
+  const unlocked = isLoggedIn || signedUpNow;
+  const [showModal,   setShowModal]   = useState(false);
+  const [pendingSlot, setPendingSlot] = useState(null);
+
+  /* Sign-up form */
+  const [form,       setForm]       = useState({ name:'', email:'', phone:'', consentTos:false, consentAgency:false });
+  const [formErr,    setFormErr]    = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const setF = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const submitSignup = async () => {
+    if (!form.name.trim())  return setFormErr('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setFormErr('Please enter a valid email address.');
+    if (!form.phone.trim()) return setFormErr('Please enter your phone number.');
+    if (!form.consentTos)   return setFormErr('You must agree to the Terms of Service to continue.');
+    setSubmitting(true); setFormErr('');
+    try {
+      const tempPw = 'BA-' + Math.random().toString(36).slice(2,10) + '!';
+      const res = await fetch('/api/auth/signup', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({
+          email: form.email.trim().toLowerCase(), password: tempPw,
+          phone: form.phone.trim(), companyName: form.name.trim() + ' (homeowner)',
+          name: form.name.trim(), businessType:'other', region:'other',
+          consentTos:true, consentAuth:true,
+          consentAgency:true, consentWeekly:false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign-up failed');
+      setSignedUpNow(true); setShowModal(false);
+      onSignedUp();
+      if (pendingSlot !== null) runAudit(pendingSlot, true);
+    } catch(err) { setFormErr(err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  /* Slots (backed by the background store so scans survive navigation) */
+  const HO_SLOTS = CompetitorStore.NUM.homeowner;
+  const store = useCompetitorStore('homeowner');
+  const slots = store.slots;
+  const setDraft  = (i,v) => store.setDraft(i, v);
+  const clearSlot = (i)   => store.clear(i);
+
+  /* Auto-fill the first slot with the builder the homeowner audited from the
+     homepage, and persist it so it's still there when they return. */
+  const ownReport = latestAudit?.report_json || null;
+  const ownDomain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){ return null; } })();
+  const seededRef = React.useRef(false);
+  React.useEffect(() => {
+    if (seededRef.current || !ownReport || !latestAudit) return;
+    seededRef.current = true;
+    const tq = ownReport.trust_questions || [];
+    const allTen = tq.length > 0 && tq.every(q => (q.score||0) <= 10);
+    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
+    const cats = tq.map((q,i) => ({ name: names[i] || (q.question||'').slice(0,20), s: allTen ? Math.round((q.score||0)*10) : (q.score||0) }));
+    const seed = {
+      name: ownReport.business_snapshot?.company_name || ownDomain || 'Your builder',
+      url: ownDomain || '',
+      score: ownReport.hero?.score || 0,
+      cats,
+      verdict: ownReport.hero?.headline || ownReport.hero?.subtext || 'Your first audit',
+    };
+    store.seedPrimary(0, seed);
+  }, [ownReport, latestAudit]);
+
+  const runAudit = (i, skipGate=false) => {
+    const raw = (slots[i]?.draft||'').trim();
+    if (!raw) return;
+    if (!unlocked && !skipGate) { setPendingSlot(i); setShowModal(true); return; }
+    store.runAudit(i, raw, { onLocked: (slot) => { setPendingSlot(slot); setShowModal(true); } });
+  };
+
+  const audited = slots.filter(s=>s.audited&&s.data);
+  const ranked  = [...audited].sort((a,b)=>b.data.score-a.data.score);
+  const topPick = ranked[0]?.data;
+  const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
+
+  /* Export a comparison report of every builder summary — reads `ranked` at
+     click time, so it always reflects the builders added so far. Gated. */
+  const exportComparison = () => {
+    if (!unlocked) {
+      requireAccount({ title:'Export your comparison', benefit:'Create a free account to download a full report of every builder you\u2019ve compared — ranked, with each one\u2019s breakdown.', cta:'Create free account', onSuccess: () => setTimeout(doExportComparison, 80) });
+      return;
+    }
+    doExportComparison();
+  };
+  const doExportComparison = () => {
+    const list = ranked.map(r => r.data);
+    if (!list.length) return;
+    const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const badge = (n) => `<span class="badge" style="background:${sc(n)};color:#fff">${n}</span>`;
+    const rows = list.map((b,idx) => `<tr><td><b style="color:#5247B8">#${idx+1}</b> ${esc(b.name)}</td><td class="muted">${esc(b.url||'—')}</td><td>${badge(b.score)}</td></tr>`).join('');
+    const cards = list.map((b,idx) => {
+      const cats = (b.cats||[]).map(c => `<div class="row"><span>${esc(c.name)}</span><b>${c.s}/100</b></div>`).join('');
+      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">#${idx+1} ${esc(b.name)}</h2>${badge(b.score)}</div>`
+        + `<div class="muted" style="font-size:12px;margin-bottom:10px">${esc(b.url||'')}</div>`
+        + cats
+        + (b.verdict ? `<div style="margin-top:10px;font-size:13px;line-height:1.5">${esc(b.verdict)}</div>` : '')
+        + `</div>`;
+    }).join('');
+    const inner = `<h1>Builder comparison</h1>`
+      + `<p class="muted">${list.length} builder${list.length>1?'s':''} compared · ranked by website trust score</p>`
+      + `<div style="margin:14px 0"><span class="scorebox"><span class="n" style="color:${sc(list[0].score)}">${list[0].score}</span><span class="l">Top score — ${esc(list[0].name)}</span></span></div>`
+      + `<h2>Ranking</h2><table><tr><th>Builder</th><th>Website</th><th>Score</th></tr>${rows}</table>`
+      + `<h2>Detailed summaries</h2>${cards}`
+      + `<div class="foot">⚠ A website trust score reflects how well a builder presents online — a strong first filter, but not proof of build quality. Always verify Companies House registration, insurance and references before you commit. Generated free by BuilderAudit.</div>`;
+    exportReport('Builder comparison — BuilderAudit', inner);
+  };
+
+  /* Loading tile with a live elapsed timer; reads startedAt so the clock is
+     correct even after navigating away and back mid-scan. */
+  const CompareLoadingTile = ({ startedAt }) => {
+    const [secs, setSecs] = React.useState(startedAt ? Math.floor((Date.now()-startedAt)/1000) : 0);
+    React.useEffect(() => {
+      const tick = () => setSecs(startedAt ? Math.floor((Date.now()-startedAt)/1000) : s => s + 1);
+      const t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }, [startedAt]);
+    const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
+    const stage = secs < 20 ? 'Crawling their website…' : secs < 60 ? 'Reading their pages & photos…' : secs < 150 ? 'Checking trust signals…' : 'Almost there…';
+    return (
+      <div style={{ border:`2.5px solid ${P.line}`, borderRadius:12, padding:22, background:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, minHeight:300, height:'100%', boxSizing:'border-box', boxShadow:`5px 5px 0 ${P.line}` }}>
+        <div style={{ width:38,height:38,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
+        <div style={{ fontFamily:F.body, fontSize:14, fontWeight:700, color:P.ink, textAlign:'center' }}>{stage}</div>
+        <div style={{ fontFamily:F.display, fontSize:26, fontWeight:900, color:P.accent, fontVariantNumeric:'tabular-nums', lineHeight:1 }}>{mm}:{ss}</div>
+        <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.45, maxWidth:190 }}>A full audit takes a few minutes. You can keep browsing — it'll fill in here when it's done.</div>
+      </div>
+    );
+  };
+
+  /* Tile */
+  /* Plain render function (not a nested component) so inputs keep focus across re-renders */
+  const renderTile = (slot, i) => {
+    /* Loading */
+    if (slot.loading) return <React.Fragment key={i}>{CompareLoadingTile({ startedAt: slot.startedAt })}</React.Fragment>;
+
+    /* Empty + LOCKED — clean placeholder, whole tile opens the modal */
+    if (!slot.audited && !unlocked) return (
+      <button key={i} onClick={()=>setShowModal(true)}
+        style={{ border:`2.5px dashed ${P.muted}`, borderRadius:12, padding:22, background:'rgba(255,255,255,0.5)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, minHeight:300, height:'100%', boxSizing:'border-box', cursor:'pointer', outline:'none', textAlign:'center', transition:'border-color .15s, background .15s' }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderColor=P.accent; e.currentTarget.style.background='#fff'; }}
+        onMouseLeave={e=>{ e.currentTarget.style.borderColor=P.muted; e.currentTarget.style.background='rgba(255,255,255,0.5)'; }}>
+        <div style={{ width:52, height:52, borderRadius:'50%', background:P.surface, border:`2.5px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:22 }}>🔒</div>
+        <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:800, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Slot {i+1}</div>
+        <div style={{ fontFamily:F.display, fontWeight:900, fontSize:18, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Add a builder</div>
+        <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.5, maxWidth:200 }}>Create your free account to audit this builder and stack them up against the rest.</div>
+        <div style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.accent }}>Unlock free →</div>
+      </button>
+    );
+
+    /* Empty + unlocked — input + Check */
+    if (!slot.audited) return (
+      <div key={i} style={{ border:`2.5px dashed ${P.muted}`, borderRadius:12, padding:22, background:'#fff', display:'flex', flexDirection:'column', gap:12, minHeight:300, height:'100%', boxSizing:'border-box', justifyContent:'center' }}>
+        <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:800, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Slot {i+1}</div>
+        <div style={{ fontFamily:F.display, fontWeight:900, fontSize:19, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Add a builder</div>
+        <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.45 }}>Paste their website and we'll run the same full trust audit.</div>
+        <div style={{ display:'flex', alignItems:'center', background:P.surface, border:`2px solid ${P.line}`, borderRadius:7, padding:5, boxShadow:`3px 3px 0 ${P.line}`, marginTop:2 }}>
+          <span style={{ padding:'0 7px', fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted, flexShrink:0 }}>https://</span>
+          <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)} onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
+            placeholder="theirsite.co.uk"
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'9px 3px', minWidth:0 }}/>
+        </div>
+        <button onClick={()=>runAudit(i)}
+          style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:7, padding:'12px 14px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`3px 3px 0 ${P.line}`, width:'100%' }}>
+          Run full audit →
+        </button>
+        {slot.error && <div style={{ fontFamily:F.body, fontSize:12, color:P.red, lineHeight:1.45 }}>{slot.error}</div>}
+      </div>
+    );
+
+    /* Audited result tile */
+    const d=slot.data, color=sc(d.score), isTop=topPick&&d.url===topPick.url;
+    const myRank = ranked.findIndex(r => r.data.url === d.url) + 1;   // 1-based rank in field
+    const fieldN = ranked.length;
+    /* Decision-led one-liner per tile */
+    const pickLine = fieldN <= 1 ? null
+      : myRank === 1 ? '✓ Your strongest option so far'
+      : myRank === fieldN ? '↓ Weakest of the ' + fieldN + ' — take extra care'
+      : '#' + myRank + ' of ' + fieldN + ' — still worth a quote';
+    const pickColor = myRank === 1 ? P.green : myRank === fieldN ? P.red : '#D97706';
+    const band = d.score>=75 ? 'Looks trustworthy' : d.score>=55 ? 'Worth a closer look' : 'Several red flags';
+    return (
+      <div key={i} style={{ border:`2.5px solid ${isTop?P.green:P.line}`, borderRadius:12, background:isTop?'rgba(31,138,91,0.04)':'#fff', overflow:'hidden', boxShadow:`5px 5px 0 ${isTop?P.green:P.line}`, display:'flex', flexDirection:'column', minHeight:300, height:'100%', boxSizing:'border-box' }}>
+        {isTop
+          ? <div style={{ background:P.green,color:'#fff',fontFamily:F.body,fontSize:10.5,fontWeight:800,letterSpacing:'0.07em',textTransform:'uppercase',padding:'6px 10px',textAlign:'center' }}>★ Best option{fieldN>1?' of the '+fieldN:''}</div>
+          : pickLine && <div style={{ background:pickColor,color:'#fff',fontFamily:F.body,fontSize:10.5,fontWeight:800,letterSpacing:'0.07em',textTransform:'uppercase',padding:'6px 10px',textAlign:'center' }}>{pickLine}</div>
+        }
+        <div style={{ padding:'18px', display:'flex', flexDirection:'column', flex:1 }}>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:10 }}>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontFamily:F.display, fontWeight:900, fontSize:16, color:P.ink, letterSpacing:'-0.01em', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.15 }}>{d.name}</div>
+              <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.url}</div>
+            </div>
+            <div style={{ textAlign:'center', flexShrink:0 }}>
+              <div style={{ background:color, color:color===P.fill?P.ink:'#fff', border:`2.5px solid ${P.line}`, borderRadius:8, padding:'6px 12px', fontFamily:F.display, fontWeight:900, fontSize:26, lineHeight:1, boxShadow:`2px 2px 0 ${P.line}` }}>{d.score}</div>
+              <div style={{ fontFamily:F.body, fontSize:8.5, color:P.muted, textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:700, marginTop:3 }}>/ 100</div>
+            </div>
+          </div>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:color, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>{band}</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:12 }}>
+            {d.cats.map((c,ci)=>(
+              <div key={ci} style={{ display:'grid', gridTemplateColumns:'72px 1fr 22px', alignItems:'center', gap:7 }}>
+                <span style={{ fontFamily:F.body, fontSize:10.5, fontWeight:600, color:P.ink }}>{c.name}</span>
+                <div style={{ height:7, background:P.surface, border:`1px solid ${P.line}`, borderRadius:4, overflow:'hidden' }}><div style={{ width:`${c.s}%`, height:'100%', background:sc(c.s) }}/></div>
+                <span style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.ink, textAlign:'right' }}>{c.s}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontFamily:F.body, fontSize:12.5, fontWeight:500, color:P.ink, padding:'9px 11px', background:color===P.green?'rgba(31,138,91,0.08)':color==='#D97706'?'rgba(217,119,6,0.08)':'rgba(217,83,79,0.08)', borderRadius:7, lineHeight:1.45, marginBottom:'auto' }}>{d.verdict}</div>
+          <button onClick={()=>clearSlot(i)} style={{ marginTop:12, background:'transparent', border:`1.5px solid ${P.line}`, borderRadius:6, cursor:'pointer', fontFamily:F.body, fontSize:11.5, fontWeight:600, color:P.muted, padding:'7px 10px', alignSelf:'flex-start' }}>Remove &amp; check another</button>
+        </div>
+      </div>
+    );
+  };
+
+  /* Modal — homeowner framing */
+  const Modal = () => (
+    <div style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.65)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}
+      onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
+      <div style={{ background:'#fff', border:`3px solid ${P.line}`, borderRadius:10, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:460, width:'100%', maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ background:P.fill, borderBottom:`2px solid ${P.line}`, padding:'22px 28px' }}>
+          <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>Free access</div>
+          <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Compare builders free</h2>
+          <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5 }}>Full-quality audits on any builder's site — free. Just tell us who you are before you start comparing.</p>
+        </div>
+        <div style={{ padding:'24px 28px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Your name *</label>
+            <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="Jane Smith"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Email address *</label>
+            <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="jane@example.co.uk"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+          <div>
+            <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Phone number *</label>
+            <input value={form.phone} onChange={e=>setF('phone',e.target.value)} type="tel" placeholder="07700 900000"
+              style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
+          </div>
+          <div style={{ borderTop:`1px solid ${P.line}`, margin:'2px 0' }}/>
+          <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer' }}>
+            <input type="checkbox" checked={form.consentTos} onChange={e=>setF('consentTos',e.target.checked)}
+              style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
+            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+              I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>. <span style={{ color:P.red, fontWeight:700 }}>*</span>
+            </span>
+          </label>
+          <div style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'12px 14px', background:'rgba(31,138,91,0.07)', borderRadius:6, border:`1.5px solid ${P.green}` }}>
+            <span style={{ fontSize:16, flex:'0 0 auto', marginTop:1 }}>🤝</span>
+            <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.55 }}>
+              <b style={{ display:'block', marginBottom:2 }}>What you get when you sign up</b>
+              We'll give you a list of the best and currently available builders in your area, and BuilderAudit can contact you to help too. <span style={{ color:P.muted }}>You can change your contact preferences anytime from your account menu (top right).</span>
+            </span>
+          </div>
+          {formErr && <div style={{ fontFamily:F.body, fontSize:13, color:P.red, padding:'8px 12px', background:'rgba(217,83,79,0.08)', borderRadius:4, border:`1px solid ${P.red}` }}>{formErr}</div>}
+          <button onClick={submitSignup} disabled={submitting}
+            style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'14px 20px', fontFamily:F.display, fontWeight:900, fontSize:16, cursor:submitting?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:submitting?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
+            {submitting ? 'Setting up your account…' : 'Start comparing free →'}
+          </button>
+          <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.5 }}>
+            Free forever. No payment needed. Already have an account? <a href="/login" style={{ color:P.accent, fontWeight:600 }}>Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1400, margin:'0 auto', position:'relative' }}>
+      {showModal && Modal()}
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Compare builders</Kicker>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:16, flexWrap:'wrap' }}>
+          <div>
+            <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Up to 5 builders, side by side</h1>
+            <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:680 }}>Paste up to 5 builder websites. We run the same full forensic audit on each and rank them so you know who looks most trustworthy before you pick up the phone.</p>
+          </div>
+          {audited.length >= 1 && (
+            <Btn onClick={exportComparison} style={{ whiteSpace:'nowrap', flexShrink:0 }}>⬇ Export comparison</Btn>
+          )}
+        </div>
+        {!unlocked && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginTop:18, padding:'18px 22px', background:P.fill, border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`5px 5px 0 ${P.line}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
+              <div style={{ width:42, height:42, borderRadius:'50%', background:'#fff', border:`2px solid ${P.line}`, display:'grid', placeItems:'center', fontSize:18, flexShrink:0 }}>🔒</div>
+              <div>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:16, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Free feature — unlock with your account</div>
+                <div style={{ fontFamily:F.body, fontSize:13, color:P.ink, opacity:0.75, marginTop:2 }}>Takes 30 seconds. No payment, ever.</div>
+              </div>
+            </div>
+            <button onClick={()=>setShowModal(true)} style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 22px', fontFamily:F.display, fontWeight:900, fontSize:14.5, cursor:'pointer', boxShadow:`3px 3px 0 rgba(0,0,0,0.25)`, textTransform:'uppercase', letterSpacing:'-0.01em', whiteSpace:'nowrap', flexShrink:0 }}>Unlock free →</button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5, minmax(0, 1fr))', gap:16, marginBottom:24, alignItems:'stretch' }}>
+        {slots.map((slot, i) => renderTile(slot, i))}
+      </div>
+
+      {audited.length >= 1 && (() => {
+        const list = ranked.map(r => r.data);
+        const best = list[0];
+        const worst = list[list.length - 1];
+        const runnerUp = list[1];
+        const bestColor = best.score >= 75 ? P.green : best.score >= 55 ? '#D97706' : P.red;
+        const margin = runnerUp ? best.score - runnerUp.score : null;
+
+        /* Decision framing: how confident can they be in the top pick? */
+        const single = list.length === 1;
+        const verdictWord = best.score >= 75 ? 'a strong, trustworthy-looking choice'
+                          : best.score >= 55 ? 'the safest of the options, but still worth scrutinising'
+                          : 'the best of a weak field — proceed carefully with all of them';
+
+        const recommendation = single
+          ? `On the evidence of their website, ${best.name} scores ${best.score}/100 — ${verdictWord}. Add a couple more builders here to see how they really compare; one score alone doesn't tell you if it's good or just average.`
+          : margin >= 12
+            ? `${best.name} is the clear front-runner at ${best.score}/100 — a full ${margin} points ahead of the next builder. Of the ${list.length} you've compared, this is ${verdictWord}. Start the conversation here, but still get a written quote and check their references.`
+            : margin >= 1
+            ? `${best.name} edges it at ${best.score}/100, but only by ${margin} point${margin>1?'s':''} over ${runnerUp.name} (${runnerUp.score}). It's close — the website won't decide this for you. Get quotes from both and let price, availability and how they communicate be the tie-breaker.`
+            : `${best.name} and ${runnerUp.name} are level on ${best.score}/100. The websites can't separate them — speak to both, get written quotes, and judge them on responsiveness and references.`;
+
+        return (
+          <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+            {/* Yellow header strip */}
+            <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:15 }}>🏆</span>
+              <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Which should you go with? · {list.length} builder{list.length>1?'s':''} compared</span>
+            </div>
+            <div style={{ padding:'22px 24px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
+                <div>
+                  <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.05 }}>
+                    {single ? `${best.name} — your only audit so far` : `Best option: ${best.name}`}
+                  </h3>
+                  <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:'0 0 12px', lineHeight:1.6 }}>{recommendation}</p>
+                  {list.length > 1 && (
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                      {list.map((r,idx)=>(
+                        <span key={idx} style={{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink, background:idx===0?P.surface:'#fff', border:`1.5px solid ${P.line}`, borderRadius:999, padding:'4px 11px' }}>
+                          <b style={{ color:P.accent }}>#{idx+1}</b> {r.name} <span style={{ color:P.muted }}>({r.score})</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign:'center', flexShrink:0, background:P.surface, border:`2.5px solid ${P.line}`, borderRadius:12, padding:'12px 18px', boxShadow:`3px 3px 0 ${P.line}` }}>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:46, color:bestColor, lineHeight:1 }}>{best.score}</div>
+                  <div style={{ fontFamily:F.body, fontSize:9.5, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginTop:2, fontWeight:700 }}>Top score / 100</div>
+                </div>
+              </div>
+              <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:16, lineHeight:1.5, borderTop:`1.5px dashed ${P.line}`, paddingTop:12 }}>
+                ⚠ A website score reflects how well a builder presents online — it's a strong first filter, but not proof of build quality. Always verify Companies House registration, insurance, and references before you commit. This updates as you add more builders.
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      <Card style={{ background:P.surface }}>
+        <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Good to know</div>
+        {['A high score means a better-presented website — not a guarantee of quality work.','Always get at least 3 quotes and compare them line by line, not just the total price.','Use the Questions tab on each individual audit to know what to ask before you sign.'].map((t,i)=>(
+          <div key={i} style={{ display:'flex', gap:10, fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'6px 0', borderBottom:i<2?`1px solid ${P.line}`:'none', lineHeight:1.45 }}>
+            <span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>{i+1}.</span>{t}
+          </div>
+        ))}
+      </Card>
+    </main>
+  );
+}
+
+// ── Homeowner: Advice & FAQs ─────────────────────────────────────
+function HomeownerAdvice() {
+  const [open, setOpen] = useState(0);
+
+  const faqs = [
+    { q: 'How do I know if a builder is legitimate?',
+      a: 'Check three things: (1) their Companies House registration — every UK limited company must be registered and display their company number; (2) trade body membership like FMB (Federation of Master Builders) or TrustMark — these vet members before accepting them; (3) public liability insurance — ask to see the certificate, a legitimate builder will show it without hesitation. Use our Company Check tab to verify their registration in seconds.' },
+    { q: 'How many quotes should I get?',
+      a: 'At least three. Compare them line by line, not just the bottom number. A quote that\'s 30% cheaper than the others usually means something\'s been left out — materials quality, waste removal, VAT, or contingency. Ask each builder to break their quote down the same way so you\'re comparing like for like.' },
+    { q: 'What deposit is reasonable?',
+      a: 'For most domestic work, 10–25% up front is normal — enough to cover initial materials. Be very cautious of anyone asking for 50% or more before starting, or anyone who wants cash. For larger projects, agree staged payments tied to completed milestones (e.g. foundations done, walls up, roof on), and never pay ahead of the work.' },
+    { q: 'Do I need planning permission?',
+      a: 'It depends on the project. Many extensions and loft conversions fall under "permitted development" and don\'t need full planning permission — but they still need building regulations approval, which is separate. Larger extensions, anything in a conservation area, and most front-facing changes need planning permission. Check with your local council before signing anything — a good builder will know, but it\'s your legal responsibility as the homeowner.' },
+    { q: 'What should be in the contract?',
+      a: 'A written contract is essential for anything over a few thousand pounds. It should cover: the full scope of work, a fixed price or clear day rate, payment schedule tied to milestones, start and completion dates, who handles building regs sign-off, how changes ("variations") are priced, and what happens if either side wants out. The FMB and JCT publish standard home-improvement contracts you can use for free or cheaply.' },
+    { q: 'What are the biggest red flags?',
+      a: 'Cash-only payment. No fixed address or company number. Quotes given on the spot without measuring up. Pressure to "sign today for a discount". No insurance documents. A website full of stock photos instead of their real work. Reviews that only exist on their own website. And the classic: "we\'re doing a job around the corner so we can do yours cheap" — that\'s a doorstep scam script.' },
+    { q: 'Should I pay in cash to avoid VAT?',
+      a: 'No. Paying cash-in-hand to dodge VAT means there\'s no paper trail — if the work goes wrong, you have almost no consumer protection, no proof of what was agreed, and you may even be participating in tax evasion. Pay by bank transfer or card, get everything in writing, and treat a builder who insists on cash as a serious red flag.' },
+    { q: 'What if the work goes wrong?',
+      a: 'First, raise it directly with the builder in writing — give them a chance to fix it. If they\'re a member of a trade body (FMB, TrustMark), use their dispute resolution scheme — it\'s free and they take complaints seriously. Beyond that you have rights under the Consumer Rights Act 2015: work must be done with reasonable care and skill. Keep records of everything: photos, messages, invoices. For amounts under £10,000, small claims court is a realistic option that doesn\'t need a solicitor.' },
+    { q: 'How far in advance should I book a builder?',
+      a: 'Good builders are typically booked 2–6 months ahead — sometimes longer for big projects. A builder who can "start Monday" should prompt the question: why are they free? That said, gaps do open up through cancellations and project delays, which is exactly what our free builder-matching service taps into — we work directly with vetted builders to fill diary gaps.' },
+    { q: 'What\'s the difference between a quote and an estimate?',
+      a: 'A quote is a fixed price for defined work — once accepted, the builder can\'t change it unless you change the scope. An estimate is a rough guess and can move significantly. Always push for a written quote for the core work, with any uncertain items (e.g. "we won\'t know about the joists until we open the floor") clearly listed as provisional sums.' },
+  ];
+
+  const tips = [
+    { icon:'📋', t:'Verify before you call',  d:'Run their website through BuilderAudit and check Companies House. Two minutes of checking beats two months of regret.' },
+    { icon:'🧾', t:'Everything in writing',   d:'Quotes, changes, timelines, payments. If it\'s not written down, it didn\'t happen.' },
+    { icon:'💷', t:'Never pay ahead of work', d:'Stage payments to completed milestones. The money is your only leverage.' },
+    { icon:'🏗', t:'Visit a current job',     d:'A proud builder will happily show you a live site. A tidy site is a tidy job.' },
+  ];
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Homeowner advice</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Finding a builder, without the horror stories</h1>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:700 }}>Straight answers to the questions every homeowner should ask before hiring. No jargon, no scare tactics — just what to check and why.</p>
+      </div>
+
+      {/* Quick tips */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(230px, 1fr))', gap:14, marginBottom:28 }}>
+        {tips.map((t,i) => (
+          <Card key={i} pad={18}>
+            <div style={{ fontSize:24, marginBottom:8 }}>{t.icon}</div>
+            <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em', marginBottom:4 }}>{t.t}</div>
+            <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, lineHeight:1.5 }}>{t.d}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* FAQ accordion */}
+      <Card style={{ marginBottom:24 }}>
+        <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Frequently asked questions</h2>
+        <div style={{ display:'flex', flexDirection:'column' }}>
+          {faqs.map((f, i) => {
+            const isOpen = open === i;
+            return (
+              <div key={i} style={{ borderBottom: i < faqs.length-1 ? `1.5px solid ${P.surface}` : 'none' }}>
+                <button onClick={()=>setOpen(isOpen ? -1 : i)}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, width:'100%', padding:'16px 4px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left', outline:'none' }}>
+                  <span style={{ fontFamily:F.body, fontWeight:700, fontSize:15.5, color:P.ink }}>{f.q}</span>
+                  <span style={{ flex:'0 0 auto', width:26, height:26, borderRadius:'50%', border:`2px solid ${P.line}`, background:isOpen?P.ink:'transparent', color:isOpen?'#fff':P.ink, display:'grid', placeItems:'center', fontFamily:F.body, fontWeight:800, fontSize:15, transition:'background .15s' }}>{isOpen?'−':'+'}</span>
+                </button>
+                {isOpen && (
+                  <div style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, lineHeight:1.65, padding:'0 4px 18px', maxWidth:820 }}>{f.a}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* CTA into match service */}
+      <Card style={{ background:P.ink }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:22, alignItems:'center' }}>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.fill, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Free service</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Want us to find you a trusted builder?</h3>
+            <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.75)', margin:0, lineHeight:1.55, maxWidth:560 }}>Entirely free for homeowners. We work with accredited, reputable, actively trading builders across the UK — fully insured and offering backed guarantees — and match you with the best local team for your project.</p>
+          </div>
+          <button onClick={()=>{ const u=new URL(window.location.href); u.searchParams.set('page','match'); window.location.href=u.toString(); }}
+            style={{ background:P.fill, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'14px 22px', fontFamily:F.display, fontWeight:900, fontSize:15, cursor:'pointer', boxShadow:`4px 4px 0 rgba(255,255,255,0.25)`, textTransform:'uppercase', whiteSpace:'nowrap' }}>
+            Find me a builder →
+          </button>
+        </div>
+      </Card>
+    </main>
+  );
+}
+
+// ── Homeowner: Find a Trusted Builder (lead-gen) ─────────────────
+function HomeownerMatch({ user }) {
+  const [form, setForm] = useState({
+    name: user?.name || '', email: user?.email || '', phone: user?.phone || '',
+    location: '', projectType: '', budget: '', timeline: '',
+    hasPlans: '', planningStatus: '', description: '',
+    consentTos: false, consentAgency: true,
+  });
+  const [state, setState]     = useState('idle'); /* idle | submitting | done */
+  const [errMsg, setErrMsg]   = useState('');
+  const setF = (k,v) => setForm(f => ({...f, [k]: v}));
+
+  const PROJECT_TYPES = ['Extension', 'Loft conversion', 'Full renovation', 'New build', 'Kitchen', 'Bathroom', 'Garage conversion', 'Garden / landscaping', 'Roofing', 'Other'];
+  const BUDGETS   = ['Under £10k', '£10k – £30k', '£30k – £75k', '£75k – £150k', '£150k – £300k', 'Over £300k'];
+  const TIMELINES = ['As soon as possible', 'Within 3 months', '3 – 6 months', '6 – 12 months', 'Just planning ahead'];
+  const PLANS     = ['Yes — drawings ready', 'In progress with architect', 'No — need help with design'];
+  const PLANNING  = ['Approved', 'Applied — awaiting decision', 'Not applied yet', 'Not needed / permitted development', 'Not sure'];
+
+  async function submit() {
+    if (!form.name.trim())        return setErrMsg('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setErrMsg('Please enter a valid email address.');
+    if (!form.phone.trim())       return setErrMsg('Please enter your phone number.');
+    if (!form.location.trim())    return setErrMsg('Please enter your location or postcode.');
+    if (!form.projectType)        return setErrMsg('Please select a project type.');
+    if (!form.budget)             return setErrMsg('Please select a budget range.');
+    if (!form.consentTos)         return setErrMsg('Please agree to the Terms of Service.');
+    setErrMsg(''); setState('submitting');
+    try {
+      const res = await fetch('/api/builder-match', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Submission failed');
+      setState('done');
+    } catch(e) { setErrMsg(e.message); setState('idle'); }
+  }
+
+  /* Shared field styles */
+  const labelSt = { fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:6 };
+  const inputSt = { width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'11px 12px', fontFamily:F.body, fontSize:14.5, color:P.ink, boxSizing:'border-box', outline:'none', background:'#fff' };
+
+  const PillGroup = ({ options, value, onPick }) => (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+      {options.map((o,i) => {
+        const on = value === o;
+        return (
+          <button key={i} onClick={()=>onPick(o)}
+            style={{ padding:'9px 14px', background:on?P.ink:'#fff', color:on?'#fff':P.ink, border:`2px solid ${P.line}`, borderRadius:999, fontFamily:F.body, fontWeight:600, fontSize:13.5, cursor:'pointer', boxShadow:on?`2px 2px 0 ${P.line}`:'none', transition:'background .1s' }}>
+            {o}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  if (state === 'done') return (
+    <main style={{ padding:'40px 36px', maxWidth:760, margin:'0 auto' }}>
+      <Card style={{ textAlign:'center', padding:48 }}>
+        <div style={{ fontSize:52, marginBottom:14 }}>🤝</div>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>You're in safe hands</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 auto 8px', lineHeight:1.6, maxWidth:520 }}>
+          Thanks {form.name.split(' ')[0]} — we've got your project details. One of the BuilderAudit team will call you within <b style={{ color:P.ink }}>1 working day</b> to talk through your <b style={{ color:P.ink }}>{form.projectType.toLowerCase()}</b> in <b style={{ color:P.ink }}>{form.location}</b>, then put you in touch with the <b style={{ color:P.ink }}>3 best builders in your area</b>. We work with vetted builders right across the UK, so we'll find the right local team. Prefer to contact them yourself first? Just say — we'll share the directors' details and you reach out when you're ready.
+        </p>
+        <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:'14px auto 0', maxWidth:480 }}>
+          In the meantime, run any builders you're already talking to through the <b>Compare builders</b> tab — it's free.
+        </p>
+      </Card>
+    </main>
+  );
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:1100, margin:'0 auto' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 380px', gap:28, alignItems:'start' }}>
+
+        {/* ── Left: the form ── */}
+        <Card>
+          <Kicker color={P.accent}>Free matching service</Kicker>
+          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:32, lineHeight:1.05, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'12px 0 8px' }}>Find a trusted builder</h1>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 14px', background:'rgba(31,138,91,0.1)', border:`2px solid ${P.green}`, borderRadius:6, marginBottom:12 }}>
+            <span style={{ fontSize:15 }}>✓</span>
+            <span style={{ fontFamily:F.body, fontWeight:700, fontSize:13.5, color:P.green }}>Entirely free for homeowners — no fees, no commission, no catch. Ever.</span>
+          </div>
+          <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 24px', lineHeight:1.6 }}>
+            Tell us about your project and one of our team will personally match you with builders who pass every check we run: accredited, reputable, actively trading, fully insured, and offering backed guarantees on their work. <b>We work with trusted builders right across the UK</b>, so wherever you are, we'll find the right local team.
+          </p>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            {/* Contact */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              <div>
+                <label style={labelSt}>Your name *</label>
+                <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="Jane Smith" style={inputSt}/>
+              </div>
+              <div>
+                <label style={labelSt}>Phone *</label>
+                <input value={form.phone} onChange={e=>setF('phone',e.target.value)} type="tel" placeholder="07700 900000" style={inputSt}/>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              <div>
+                <label style={labelSt}>Email *</label>
+                <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="jane@example.co.uk" style={inputSt}/>
+              </div>
+              <div>
+                <label style={labelSt}>Location / postcode *</label>
+                <input value={form.location} onChange={e=>setF('location',e.target.value)} placeholder="Doncaster / DN1" style={inputSt}/>
+              </div>
+            </div>
+
+            {/* Project type */}
+            <div>
+              <label style={labelSt}>Project type *</label>
+              <PillGroup options={PROJECT_TYPES} value={form.projectType} onPick={v=>setF('projectType',v)}/>
+            </div>
+
+            {/* Budget */}
+            <div>
+              <label style={labelSt}>Budget *</label>
+              <PillGroup options={BUDGETS} value={form.budget} onPick={v=>setF('budget',v)}/>
+            </div>
+
+            {/* Timeline */}
+            <div>
+              <label style={labelSt}>When do you want to start?</label>
+              <PillGroup options={TIMELINES} value={form.timeline} onPick={v=>setF('timeline',v)}/>
+            </div>
+
+            {/* Plans */}
+            <div>
+              <label style={labelSt}>Do you have drawings / plans?</label>
+              <PillGroup options={PLANS} value={form.hasPlans} onPick={v=>setF('hasPlans',v)}/>
+            </div>
+
+            {/* Planning permission */}
+            <div>
+              <label style={labelSt}>Planning permission status</label>
+              <PillGroup options={PLANNING} value={form.planningStatus} onPick={v=>setF('planningStatus',v)}/>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label style={labelSt}>Tell us about the project <span style={{ color:P.muted, fontWeight:500, textTransform:'none' }}>(optional)</span></label>
+              <textarea value={form.description} onChange={e=>setF('description',e.target.value)} rows={4}
+                placeholder="e.g. Single-storey rear extension, around 4m x 6m, want bifold doors onto the garden. House is a 1930s semi…"
+                style={{ ...inputSt, resize:'vertical', fontFamily:F.body, lineHeight:1.5 }}/>
+            </div>
+
+            {/* Consents */}
+            <div style={{ borderTop:`1.5px solid ${P.line}`, paddingTop:18, display:'flex', flexDirection:'column', gap:12 }}>
+              <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer' }}>
+                <input type="checkbox" checked={form.consentTos} onChange={e=>setF('consentTos',e.target.checked)}
+                  style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
+                <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+                  I agree to the <a href="/terms" target="_blank" style={{ color:P.accent }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color:P.accent }}>Privacy Policy</a>, and I'm happy for the BuilderAudit team to contact me about my project. <span style={{ color:P.red, fontWeight:700 }}>*</span>
+                </span>
+              </label>
+              <label style={{ display:'flex', gap:12, alignItems:'flex-start', cursor:'pointer', padding:'12px 14px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+                <input type="checkbox" checked={form.consentAgency} onChange={e=>setF('consentAgency',e.target.checked)}
+                  style={{ marginTop:3, flex:'0 0 auto', width:16, height:16, cursor:'pointer' }}/>
+                <span style={{ fontFamily:F.body, fontSize:13, color:P.ink, lineHeight:1.5 }}>
+                  <b style={{ display:'block', marginBottom:2 }}>Connect me with recommended builders</b>
+                  Share my project details with up to 3 vetted, accredited local builders. On our call you choose: they contact you, or we give you the directors' details and you contact them first. <span style={{ color:P.muted }}>(You can opt out any time.)</span>
+                </span>
+              </label>
+            </div>
+
+            {errMsg && <div style={{ fontFamily:F.body, fontSize:13.5, color:P.red, padding:'10px 14px', background:'rgba(217,83,79,0.08)', borderRadius:6, border:`1.5px solid ${P.red}` }}>{errMsg}</div>}
+
+            <button onClick={submit} disabled={state==='submitting'}
+              style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:6, padding:'16px 24px', fontFamily:F.display, fontWeight:900, fontSize:17, cursor:state==='submitting'?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:state==='submitting'?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
+              {state==='submitting' ? 'Sending your details…' : 'Match me with trusted builders →'}
+            </button>
+            <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, textAlign:'center' }}>Entirely free for homeowners — no fees, no commission, no obligation. We never sell your data.</div>
+          </div>
+        </Card>
+
+        {/* ── Right: why this works ── */}
+        <div style={{ display:'flex', flexDirection:'column', gap:18, position:'sticky', top:96 }}>
+          <Card pad={22} style={{ background:P.fill }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10, opacity:0.7 }}>Why this beats enquiry pools</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:19, color:P.ink, margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'-0.01em', lineHeight:1.15 }}>We bypass the general enquiry scramble</h3>
+            <p style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, margin:0, lineHeight:1.6, opacity:0.85 }}>
+              Lead websites blast your details to anyone who pays. We work <b>directly</b> with accredited builders across the UK to plug gaps in their diaries — so you get a local builder who actually has time for your project, not five voicemails from whoever bought your number.
+            </p>
+          </Card>
+
+          <Card pad={22}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Every builder we recommend is</div>
+            {[
+              ['🇬🇧','Local to you — we work with vetted builders across the whole UK'],
+              ['🛡','Accredited — FMB, TrustMark, CHAS or equivalent trade body'],
+              ['⭐','Reputable — verified reviews and top-scoring website audits'],
+              ['🏛','Active — Companies House verified, accounts up to date, no red flags'],
+              ['📄','Insured — public liability insurance confirmed'],
+              ['✅','Guarantee-backed — work covered by insurance-backed guarantees'],
+              ['📅','Genuinely available — we match to real diary gaps'],
+            ].map(([icon, text], i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:i<6?`1px solid ${P.surface}`:'none' }}>
+                <span style={{ fontSize:17, flex:'0 0 auto' }}>{icon}</span>
+                <span style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>{text}</span>
+              </div>
+            ))}
+          </Card>
+
+          <Card pad={22} style={{ background:P.ink }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:P.fill, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>How it works</div>
+            {[
+              ['1', 'A real person from the BuilderAudit team calls you first — to understand your project properly. No bots, no forms disappearing into the void.'],
+              ['2', 'We match you with the 3 best builders in your area — vetted, accredited, and with genuine availability for your timeline.'],
+              ['3', 'You choose how it goes. Happy for them to ring you? We\'ll arrange it. Prefer to make contact yourself first? Absolutely fine — we\'ll share the personal contact details of the directors of the best local building companies, and you reach out when you\'re ready.'],
+            ].map(([n, text], i) => (
+              <div key={i} style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'9px 0', borderBottom:i<2?'1px solid rgba(255,255,255,0.12)':'none' }}>
+                <span style={{ flex:'0 0 auto', width:24, height:24, borderRadius:'50%', background:P.fill, color:P.ink, display:'grid', placeItems:'center', fontFamily:F.display, fontWeight:900, fontSize:13 }}>{n}</span>
+                <span style={{ fontFamily:F.body, fontSize:13, color:'rgba(255,255,255,0.85)', lineHeight:1.55 }}>{text}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/* ── Main HomeownerDashboard ─────────────────────────────────────────────── */
+function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, isLoggedIn = false }) {
+  const report = latestAudit?.report_json || null;
+  const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
+  const [tab, setTab] = React.useState('verdict');
+
+  /* Export this builder's safety report as a clean, printable/PDF document. Gated. */
+  const exportHoReport = () => {
+    if (!isLoggedIn) {
+      requireAccount({ title:'Export this report', benefit:'Create a free account to download this builder\u2019s full trust report as a PDF you can keep or share.', cta:'Create free account', onSuccess: () => setTimeout(doExportHoReport, 80) });
+      return;
+    }
+    doExportHoReport();
+  };
+  const doExportHoReport = () => {
+    if (!report) return;
+    const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
+    const score = report.hero?.score || 0;
+    const name = report.business_snapshot?.company_name || domain || 'This builder';
+    const snap = report.business_snapshot || report.site_facts || {};
+    const band = score>=75 ? 'Looks trustworthy on the evidence of their website'
+               : score>=55 ? 'Worth a closer look — a few things to check'
+               : 'Several red flags — verify carefully before committing';
+
+    /* About this builder */
+    const snapRows = [];
+    const estVal = snap.established ? (snap.established + (snap.years_trading ? ' (' + snap.years_trading + ')' : '')) : (snap.years_trading || null);
+    if (estVal) snapRows.push(['Founded / trading', estVal]);
+    if (snap.location) snapRows.push(['Location', snap.location]);
+    if (snap.work_types && snap.work_types.length) snapRows.push(['Type of work', snap.work_types.join(', ')]);
+    if (snap.accreditations && snap.accreditations.length) snapRows.push(['Accreditations shown', snap.accreditations.join(', ')]);
+    const snapHtml = snapRows.length ? `<h2>About this builder</h2><div class="card">${snapRows.map(([l,v])=>`<div class="row"><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join('')}</div>` : '';
+
+    /* The six trust checks, with the plain-English explanation under each */
+    const tq = report.trust_questions || [];
+    const allTen = tq.length > 0 && tq.every(q => (q.score||0) <= 10);
+    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
+    const checks = tq.map((q,i) => {
+      const s = allTen ? Math.round((q.score||0)*10) : (q.score||0);
+      return `<div style="padding:10px 0;border-bottom:1px solid #eee">`
+        + `<div style="display:flex;justify-content:space-between;gap:12px"><span style="font-weight:600">${esc(names[i]||q.question||'')}</span><b style="color:${sc(s)}">${s}/100</b></div>`
+        + (q.explanation ? `<div class="muted" style="font-size:12.5px;margin-top:3px;line-height:1.45">${esc(q.explanation)}</div>` : '')
+        + `</div>`;
+    }).join('');
+    const checksHtml = tq.length ? `<h2>The six trust checks</h2><div class="card">${checks}</div>` : '';
+
+    /* Red flags & what to watch */
+    const bps = report.trust_breakpoints || [];
+    const sevColor = (imp) => (imp==='critical'||imp==='high') ? P.red : imp==='medium' ? '#D97706' : P.green;
+    const sevLabel = (imp) => imp==='critical'?'Critical':imp==='high'?'High risk':imp==='medium'?'Medium':'Watch';
+    const flagCards = bps.map(b => {
+      const col = sevColor(b.impact);
+      return `<div class="card" style="border-color:${col}">`
+        + `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px"><b>${esc(b.title||'')}</b><span class="badge" style="background:${col};color:#fff;font-size:10.5px">${esc(sevLabel(b.impact))}</span></div>`
+        + (b.homeowner_reaction ? `<div style="font-style:italic;font-size:13px;margin-bottom:6px;line-height:1.5">"${esc(b.homeowner_reaction)}"</div>` : '')
+        + (b.evidence ? `<div class="muted" style="font-size:12.5px;margin-bottom:6px;line-height:1.45"><b>What we found:</b> ${esc(b.evidence)}</div>` : '')
+        + (b.fix ? `<div style="font-size:12.5px;line-height:1.45"><b>Ask them:</b> <span style="font-style:italic">${esc(b.fix)}</span></div>` : '')
+        + `</div>`;
+    }).join('');
+    const flagsHtml = bps.length ? `<h2>Red flags &amp; what to watch</h2>${flagCards}` : '';
+
+    /* Questions to ask before you hire — from critical flags + recommended actions */
+    const qFromFlags = bps.filter(b=>b.impact==='critical'||b.impact==='high').map(b => b.fix || ('Can you give me evidence about: ' + (b.title||'') + '?'));
+    const qFromActions = (report.top_actions||[]).map(a => typeof a==='string'?a:(a.title||'')).filter(Boolean);
+    const questions = [...qFromFlags, ...qFromActions].filter((q,i,a)=>q && a.indexOf(q)===i).slice(0,10);
+    const qHtml = questions.length ? `<h2>Questions to ask before you hire</h2><div class="card">${questions.map(q=>`<div class="row"><span>☐&nbsp;&nbsp;${esc(q)}</span></div>`).join('')}</div>` : '';
+
+    /* How to vet them further — homeowner guidance (always useful) */
+    const vetHtml = `<h2>How to vet them further</h2><div class="card">`
+      + [
+        ['Companies House','If they trade as a limited company, look them up at companieshouse.gov.uk — check the company is active and the directors match who you\u2019re dealing with.'],
+        ['Insurance','Ask to see their public liability insurance certificate. A legitimate builder shows it without hesitation.'],
+        ['References','Ask for two or three recent customers you can actually call — ideally for work similar to yours.'],
+        ['Written quote','Get a fixed, written, line-by-line quote — not a verbal estimate. Compare at least three builders like for like.'],
+        ['Contract & payments','Use a written contract with payments tied to milestones. Be wary of large up-front deposits or cash-only requests.'],
+      ].map(([t,d])=>`<div style="padding:9px 0;border-bottom:1px solid #eee"><b>${esc(t)}</b><div class="muted" style="font-size:12.5px;margin-top:2px;line-height:1.45">${esc(d)}</div></div>`).join('')
+      + `</div>`;
+
+    const inner = `<h1>${esc(name)}</h1>`
+      + `<p class="muted">${esc(domain||'')} · independent website trust audit</p>`
+      + `<div style="display:flex;align-items:center;gap:18px;margin:16px 0;flex-wrap:wrap"><span class="scorebox"><span class="n" style="color:${sc(score)}">${score}</span><span class="l">out of 100</span></span>`
+      + `<span style="font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:15px;color:${sc(score)};text-transform:uppercase;letter-spacing:-0.01em;max-width:340px">${esc(band)}</span></div>`
+      + (report.hero?.headline ? `<div class="card"><b>${esc(report.hero.headline)}</b>${report.hero.subtext?`<div class="muted" style="margin-top:6px;font-size:13px;line-height:1.5">${esc(report.hero.subtext)}</div>`:''}${report.hero.ai_voice_intro?`<div style="margin-top:8px;font-style:italic;font-size:13px;border-left:3px solid #5247B8;padding-left:10px;line-height:1.55">${esc(report.hero.ai_voice_intro)}</div>`:''}</div>` : '')
+      + snapHtml
+      + checksHtml
+      + flagsHtml
+      + qHtml
+      + vetHtml
+      + `<div class="foot">⚠ This report grades how well ${esc(name)} presents online — a strong first filter, but not proof of build quality. A high score is not a guarantee, and a low score does not mean a builder is dishonest. Always verify Companies House registration, insurance and references before you commit. Generated free by BuilderAudit.</div>`;
+    exportReport(name + ' — trust report · BuilderAudit', inner);
+  };
+
+  /* Shareable URL — same structure as the builder ShareReport: POST to the
+     share endpoint, get back a public /r/<token> link anyone can open. Gated. */
+  const [shareState, setShareState] = React.useState('idle'); // idle|loading|ready|error
+  const [shareUrl, setShareUrl] = React.useState('');
+  const [shareErr, setShareErr] = React.useState('');
+  const [shareCopied, setShareCopied] = React.useState(false);
+  const doCreateShareLink = async () => {
+    setShareState('loading'); setShareErr('');
+    try {
+      const id = latestAudit?.id || 'latest';
+      const res = await fetch('/api/my/audit/' + id + '/share', { method:'POST', credentials:'include' });
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(()=>null) : null;
+      if (!res.ok || !data?.url) throw new Error(data?.error || 'Could not create a link.');
+      setShareUrl(data.url); setShareState('ready');
+    } catch(e) { setShareErr(e.message); setShareState('error'); }
+  };
+  const createShareLink = () => {
+    if (!isLoggedIn) {
+      requireAccount({ title:'Share this report', benefit:'Create a free account to get a shareable link to this builder\u2019s report — handy for your partner, family, or anyone helping you decide.', cta:'Create free account', onSuccess: () => setTimeout(doCreateShareLink, 80) });
+      return;
+    }
+    doCreateShareLink();
+  };
+  const copyShare = () => { try { navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(()=>setShareCopied(false), 1800); } catch(e){} };
+
+  /* Show the 5-tab report if we have real data */
+  if (latestAudit && report) {
+
+    return (
+      <main style={{ padding:'32px 36px 80px', maxWidth:1100, margin:'0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom:24, display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:16, flexWrap:'wrap' }}>
+          <div>
+            <Kicker color={P.accent}>Homeowner safety check</Kicker>
+            <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:36, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 4px' }}>{domain}</h1>
+            <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
+          </div>
+          <div style={{ display:'flex', gap:10, flexShrink:0 }}>
+            <Btn onClick={createShareLink} disabled={shareState==='loading'} style={{ whiteSpace:'nowrap' }}>{shareState==='loading' ? 'Creating…' : '🔗 Share link'}</Btn>
+            <Btn onClick={exportHoReport} style={{ whiteSpace:'nowrap' }}>⬇ Export report</Btn>
+          </div>
+        </div>
+
+        {/* Generated share link */}
+        {shareState === 'ready' && (
+          <div style={{ marginBottom:24, padding:'14px 18px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:10, boxShadow:`3px 3px 0 ${P.line}` }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:8 }}>🔗 Your shareable link — anyone can open it, no login needed</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <input readOnly value={shareUrl} onFocus={e=>e.target.select()}
+                style={{ flex:1, minWidth:220, fontFamily:F.body, fontSize:13.5, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 12px', background:'#fff' }}/>
+              <Btn primary onClick={copyShare} style={{ padding:'10px 16px' }}>{shareCopied ? '✓ Copied' : 'Copy link'}</Btn>
+              <a href={shareUrl} target="_blank" rel="noopener" style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.accent }}>Open ↗</a>
+            </div>
+          </div>
+        )}
+        {shareState === 'error' && <div style={{ marginBottom:16, fontFamily:F.body, fontSize:13, color:P.red }}>{shareErr}</div>}
+
+        {/* Tab bar — BA3 chunky segments */}
+        <div style={{ display:'flex', gap:12, marginBottom:32, flexWrap:'wrap' }}>
+          {HO_TABS.map(t => {
+            const on = tab === t.k;
+            return (
+              <button key={t.k} onClick={() => setTab(t.k)}
+                aria-current={on ? 'true' : undefined}
+                style={{
+                  display:'inline-flex', alignItems:'center', gap:9,
+                  padding:'12px 20px',
+                  background: on ? P.fill : '#fff',
+                  color: P.ink,
+                  border: `2.5px solid ${P.line}`,
+                  borderRadius: 10,
+                  boxShadow: on ? `4px 4px 0 ${P.line}` : `2px 2px 0 ${P.line}`,
+                  cursor:'pointer',
+                  fontFamily:F.body, fontWeight: on ? 800 : 700, fontSize:13.5,
+                  whiteSpace:'nowrap',
+                  transition:'background .12s, box-shadow .12s, transform .12s',
+                  transform: on ? 'translate(-1px,-1px)' : 'none',
+                }}
+                onMouseEnter={e=>{ if(!on){ e.currentTarget.style.background = P.surface; e.currentTarget.style.boxShadow = `4px 4px 0 ${P.line}`; e.currentTarget.style.transform='translate(-1px,-1px)'; } }}
+                onMouseLeave={e=>{ if(!on){ e.currentTarget.style.background = '#fff'; e.currentTarget.style.boxShadow = `2px 2px 0 ${P.line}`; e.currentTarget.style.transform='none'; } }}>
+                <span style={{ fontSize:16, lineHeight:1 }}>{t.icon}</span>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab content */}
+        {tab === 'verdict'   && <HoVerdict     report={report} domain={domain}/>}
+        {tab === 'redflags'  && <HoRedFlags     report={report}/>}
+        {tab === 'photos'    && <HoPhotoCheck   report={report} imageUrls={auditData?.imageUrls||[]}/>}
+        {tab === 'questions' && <HoQuestions    report={report} domain={domain}/>}
+        {tab === 'company'   && <HoCompanyCheck report={report} latestAudit={latestAudit}/>}
+
+        {/* Check another CTA */}
+        <div style={{ marginTop:40, paddingTop:28, borderTop:`2px solid ${P.line}` }}>
+          <Card style={{ background:P.fill }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+              <div>
+                <Kicker color={P.ink}>Got another quote?</Kicker>
+                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 4px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Check another builder</h3>
+                <p style={{ fontFamily:F.body, fontSize:14, color:P.ink, margin:0, opacity:0.75 }}>Paste their website — we'll vet them the same way.</p>
+              </div>
+              <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
+            </div>
+          </Card>
+        </div>
+      </main>
+    );
+  }
+
+  /* No audit data — show the landing/empty state */
+
+  const builders = auditData?.builders || [
+    { name:'Heartly Builders Ltd', url:'heartlybuilders.co.uk', loc:'Bath', score:64, lastChecked:'2 days ago', notes:'Stock photos · no accreditations shown', saved:true },
+    { name:'Greenfield Construction', url:'greenfieldconstruction.co.uk', loc:'Bristol', score:78, lastChecked:'5 days ago', notes:'FMB accredited · 14 real photos', saved:true },
+  ];
+
+  return (
+    <main style={{ padding:'40px 36px', maxWidth:900, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <Kicker color={P.accent}>Homeowner safety checks</Kicker>
+        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Vet a builder before you sign</h1>
+        <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 0 24px' }}>Paste any UK builder's website. We'll run a forensic trust audit — photos, accreditations, Companies House, the lot.</p>
+        <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
+      </div>
+      {builders.length > 0 && (
+        <Card>
+          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Recent checks</h3>
+          {builders.map((b,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:16, padding:'12px 0', borderBottom:i<builders.length-1?`1px solid ${P.surface}`:'none' }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{b.name}</div>
+                <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, marginTop:2 }}>{b.url} · {b.loc}</div>
+              </div>
+              <div style={{ padding:'8px 14px', background:b.score>=75?P.green:b.score>=55?P.fill:P.red, color:b.score>=55&&b.score<75?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:20 }}>{b.score}</div>
+              <Btn style={{ padding:'8px 12px', fontSize:12, boxShadow:'none' }} onClick={()=>window.location.href=`/audit?url=https://${b.url}&audience=homeowner`}>Re-check</Btn>
+            </div>
+          ))}
+        </Card>
+      )}
+    </main>
+  );
+}
+
+function Loading() {
+  return (
+    <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', fontFamily:F.body, fontSize:16, color:P.muted }}>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ width:48, height:48, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto 16px' }}/>
+        Loading your dashboard…
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    </div>
+  );
+}
+
+// ── Error state ──────────────────────────────────────────────────
+function ErrorState({ msg }) {
+  return (
+    <div style={{ display:'grid', placeItems:'center', minHeight:'60vh', padding:'40px' }}>
+      <Card style={{ maxWidth:480, textAlign:'center' }}>
+        <div style={{ fontSize:48, marginBottom:16 }}>⚠</div>
+        <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, textTransform:'uppercase', margin:'0 0 12px' }}>Something went wrong</h2>
+        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:'0 0 20px', lineHeight:1.5 }}>{msg}</p>
+        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+          <Btn primary onClick={()=>window.location.reload()}>Try again</Btn>
+          <Btn onClick={()=>window.location.href='/'}>Go home</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════════════════════
+
+/* Shared signup gate. Renders when `gate` is set. On success: creates the
+   account (session cookie set server-side), refreshes app-wide user, then runs
+   the pending action. */
+function AccountGateModal({ gate, onClose, onSignedUp }) {
+  const [form, setForm] = useState({ name:'', email:'', phone:'', company:'' });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const setF = (k,v) => setForm(f => ({ ...f, [k]:v }));
+  if (!gate) return null;
+
+  const submit = async () => {
+    if (!form.name.trim()) return setErr('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setErr('Please enter a valid email address.');
+    setBusy(true); setErr('');
+    try {
+      const tempPw = 'BA-' + Math.random().toString(36).slice(2,10) + '!';
+      const res = await fetch('/api/auth/signup', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({
+          email: form.email.trim().toLowerCase(), password: tempPw,
+          phone: form.phone.trim(), companyName: (form.company.trim() || form.name.trim()),
+          name: form.name.trim(), businessType:'other', region:'other',
+          consentTos:true, consentAuth:true, consentAgency:true, consentWeekly:false,
+        }),
+      });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.error || 'Sign-up failed');
+      const cb = gate.onSuccess;
+      await onSignedUp();          // refresh app-wide user state
+      onClose();
+      if (cb) setTimeout(cb, 0);   // run the pending action once logged in
+    } catch(e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div onClick={(e)=>{ if(e.target===e.currentTarget && !busy) onClose(); }}
+      style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.6)', display:'grid', placeItems:'center', zIndex:1000, padding:20 }}>
+      <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:16, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:440, width:'100%', overflow:'hidden' }}>
+        <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'18px 24px' }}>
+          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:4 }}>Free account</div>
+          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.05 }}>{gate.title}</h3>
+        </div>
+        <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:12 }}>
+          {gate.benefit && <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5 }}>{gate.benefit}</p>}
+          <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="Your name"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="Email"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          <input value={form.phone} onChange={e=>setF('phone',e.target.value)} placeholder="Phone (optional)"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          <input value={form.company} onChange={e=>setF('company',e.target.value)} placeholder="Company (optional)"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          {err && <div style={{ fontFamily:F.body, fontSize:13, color:P.red }}>{err}</div>}
+          <button onClick={submit} disabled={busy}
+            style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:9, padding:'13px 18px', fontFamily:F.display, fontWeight:900, fontSize:15.5, cursor:busy?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:busy?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
+            {busy ? 'Setting up…' : (gate.cta + ' →')}
+          </button>
+          <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.5 }}>
+            Free forever. No payment needed. Already have an account? <a href="/login" style={{ color:P.accent, fontWeight:600 }}>Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardApp() {
+  const params = new URLSearchParams(window.location.search);
+  const auditIdFromUrl = params.get('id') || null;    // set when redirected from /audit
+  const [role, setRole] = useState(params.get('role')==='homeowner'?'homeowner':'builder');
+  const [page, setPage] = useState(params.get('page')||'dashboard');
+  const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);  // true once /api/auth/me resolves
+  const [error, setError] = useState(null);
+  const [user, setUser] = useState(null);
+  const [latestAudit, setLatestAudit] = useState(null);
+  const [auditData, setAuditData] = useState(null);
+  const [imageUrls, setImageUrls] = useState([]);
+  const [excludedPhotoIds, setExcludedPhotoIds] = useState(new Set());
+  const [completedFixIds, setCompletedFixIds] = useState(new Set());
+  const [adjustedScore, setAdjustedScore] = useState(null);
+  const [activeSection, setActiveSection] = useState(params.get('page') || 'dashboard');  // builder single-scroll active tab
+  const didInitialScroll = React.useRef(false);
+
+  /* Save an override to the server and update the adjusted score */
+  const saveOverride = useCallback(async (payload) => {
+    /* Works whether the audit was opened via ?id= OR loaded as the user's
+       latest audit (no ?id=). Without a target id we can't persist. */
+    const targetId = auditIdFromUrl || latestAudit?.id;
+    if (!targetId) return;
+    try {
+      const res = await fetch('/api/report/' + targetId + '/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(()=>null);
+        if (data?.adjustedScore != null) setAdjustedScore(data.adjustedScore);
+      }
+    } catch(e) { /* silent — state still updates locally */ }
+  }, [auditIdFromUrl, latestAudit]);
+
+  /* ── Account gate (shared) ───────────────────────────────────────────────
+     One signup modal for the whole dashboard. `requireAccount(opts)` runs the
+     action immediately if logged in, otherwise opens the gate; on success it
+     refreshes app-wide user state (so the app remembers the new account without
+     a re-login) and then runs the pending action. */
+  const [gate, setGate] = useState(null);   // { title, benefit, cta, onSuccess } | null
+  const isLoggedIn = !!user;
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const r = await fetch('/api/auth/me', { credentials:'include' });
+      const d = await r.json().catch(()=>null);
+      if (d?.user) { setUser(d.user); return d.user; }
+    } catch(e){}
+    return null;
+  }, []);
+
+  const requireAccount = useCallback((opts = {}) => {
+    if (user) { opts.onSuccess && opts.onSuccess(); return; }
+    setGate({ title: opts.title || 'Create your free account', benefit: opts.benefit || '', cta: opts.cta || 'Create free account', onSuccess: opts.onSuccess || null });
+  }, [user]);
+
+  /* When the user becomes logged in, persist any progress they made while
+     logged out, so nothing they ticked is lost. */
+  const prevLoggedIn = React.useRef(isLoggedIn);
+  useEffect(() => {
+    if (!prevLoggedIn.current && isLoggedIn) {
+      completedFixIds.forEach(id => saveOverride({ fixId: id, completed: true }));
+      excludedPhotoIds.forEach(pid => saveOverride({ photoId: pid, decision: 'rejected' }));
+    }
+    prevLoggedIn.current = isLoggedIn;
+  }, [isLoggedIn]);
+
+  // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    p.set('role', role); p.set('page', page);
+    if (auditIdFromUrl) p.set('id', auditIdFromUrl);
+    window.history.replaceState({}, '', window.location.pathname+'?'+p.toString());
+  }, [role, page]);
+
+  // Fetch data — priority: specific audit by ?id= > user's latest audit > demo mode
+  useEffect(() => {
+    /* Always load the signed-in user (for the nav settings menu),
+       independent of the report-loading flow below which may return early */
+    fetch('/api/auth/me', { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.user) setUser(d.user); })
+      .catch(()=>{})
+      .finally(() => setAuthChecked(true));
+
+    async function loadData() {
+      setLoading(true);
+      setError(null);
+      try {
+        // 1. If ?id= is in the URL, load that specific audit directly
+        if (auditIdFromUrl) {
+          const auditRes = await fetch('/api/report/' + auditIdFromUrl + '/data', { credentials:'include' }).catch(()=>null);
+          if (auditRes?.ok) {
+            const data = await auditRes.json().catch(()=>null);
+            if (data && !data.locked && data.report) {
+              setLatestAudit({ id: auditIdFromUrl, url: data.url, report_json: data.report, created_at: data.scannedAt });
+              setImageUrls(data.imageUrls || []);
+              /* Restore saved fix completions + photo exclusions from overrides */
+              const ov = data.overrides || {};
+              const savedFixes = new Set(Object.keys(ov).filter(k => k.startsWith('fix_') && ov[k] === 'completed').map(k => parseInt(k.replace('fix_',''))));
+              const savedPhotos = new Set(Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').map(k => parseInt(k.replace('photo_excluded_',''))));
+              setCompletedFixIds(savedFixes);
+              setExcludedPhotoIds(savedPhotos);
+              setAuditData({
+                count:   1,
+                company: data.report?.business_snapshot?.company_name || data.url || 'Your company',
+                history: [{ date: 'Latest', score: data.report?.hero?.score || 0 }],
+                imageUrls: data.imageUrls || [],
+              });
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
+        // 2. No ?id= in URL: load the user's MOST RECENT full audit so the
+        //    dashboard shows their real data on login (not demo mode).
+        const latestRes = await fetch('/api/my/latest-audit', { credentials:'include' }).catch(()=>null);
+        if (latestRes?.ok) {
+          const data = await latestRes.json().catch(()=>null);
+          if (data?.audit?.report_json) {
+            const a = data.audit;
+            setLatestAudit({ id: a.id, url: a.url, report_json: a.report_json, created_at: a.created_at });
+            setImageUrls(a.imageUrls || []);
+            const ov = a.overrides || {};
+            setCompletedFixIds(new Set(Object.keys(ov).filter(k => k.startsWith('fix_') && ov[k] === 'completed').map(k => parseInt(k.replace('fix_','')))));
+            setExcludedPhotoIds(new Set(Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').map(k => parseInt(k.replace('photo_excluded_','')))));
+          }
+        }
+
+        // 3. Also load the audit list for the score-history summary.
+        const auditsRes = await fetch('/api/my/audits', { credentials:'include' }).catch(()=>null);
+        if (auditsRes?.ok) {
+          const data = await auditsRes.json().catch(()=>null);
+          const list = data?.audits || [];
+          if (list.length > 0) {
+            setAuditData({
+              count:   list.length,
+              company: list[0]?.url || 'Your company',
+              history: list.slice(0,8).reverse().map(a => ({ date:(a.created_at||'').slice(0,10), score:a.score||0 })),
+            });
+          }
+        }
+      } catch(e) {
+        // Silent — fall through to demo mode
+      }
+
+      // 3. Fall back to demo mode (mock data already baked into components)
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
+  if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/><Loading/></div>;
+
+  const pages = role==='builder' ? {
+    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} user={user} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    about:       <BuilderAbout       latestAudit={latestAudit}/>,
+    review:      <BuilderReview      latestAudit={latestAudit}/>,
+    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    fixes:       <BuilderFixes       latestAudit={latestAudit} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    competitors: <BuilderCompetitors latestAudit={latestAudit} user={user} completedFixIds={completedFixIds} adjustedScore={adjustedScore} excludedPhotoIds={excludedPhotoIds} onSignedUp={refreshUser}/>,
+  } : {
+    dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    compare:   <HomeownerCompare user={user} latestAudit={latestAudit} onSignedUp={refreshUser} requireAccount={requireAccount}/>,
+    advice:    <HomeownerAdvice/>,
+    match:     <HomeownerMatch user={user}/>,
+    account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', background:P.surface }}>
+      <AccountGateModal gate={gate} onClose={()=>setGate(null)} onSignedUp={refreshUser}/>
+      <Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/>
+      {pages[page] || pages['dashboard']}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<DashboardApp/>);
+</script>
+<script src="/assets/feedback-widget.js" defer></script>
+</body>
+</html>
+  

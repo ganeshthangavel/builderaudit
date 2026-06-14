@@ -671,31 +671,46 @@ function showFinalizing() {
 }
 function startSmoothTick() {
   if (smoothInterval) return;
-  auditStartTime = Date.now();          // anchor the engine clock to engine start
+  auditStartTime = Date.now();            // anchor the engine clock to engine start
   var N = CHECKS.length;
-  var TARGET = 420;                     // 7 min — matches the countdown
-  var ACTIVE = TARGET * 0.85;           // first N-1 categories spread across this
+  var TARGET = 420;                        // 7 min — matches the countdown
+  var ACTIVE = TARGET * 0.85;              // ~6 min to walk the first N-1 categories
   var lastIdxShown = -1;
+  var lastFinalLine = -1;
+  /* Reassurance lines rotated while parked on the final stage, so a long tail
+     never looks frozen — there's always something changing on screen. */
+  var FINAL_LINES = audience === 'homeowner'
+    ? ['Cross-checking every claim against the data\u2026', 'Weighing up the red flags\u2026', 'Compiling your safety verdict\u2026', 'Almost there \u2014 putting it all together\u2026']
+    : ['Weighing up every trust signal\u2026', 'Prioritising your fix-list\u2026', 'Double-checking the photo analysis\u2026', 'Almost there \u2014 putting your report together\u2026'];
   smoothInterval = setInterval(function(){
     var elapsed = (Date.now() - auditStartTime) / 1000;
     var pct, idx;
     if (elapsed < ACTIVE) {
-      var f = elapsed / ACTIVE;                       // 0 → 1 across active window
-      idx = Math.min(N - 2, Math.floor(f * (N - 1))); // walk categories 0 … N-2
-      pct = 2 + f * 86;                               // 2% → ~88%
+      var t = elapsed / ACTIVE;                          // 0 → 1 across active window
+      /* Ease-out: brisk, reassuring climb in the first ~minute (the window where
+         new users give up if nothing moves), then a steady walk to the parking
+         point. Front-loaded so 30s≈13%, 60s≈23%, 90s≈32%. */
+      var eased = 1 - Math.pow(1 - t, 1.5);
+      idx = Math.min(N - 2, Math.floor(t * (N - 1)));    // ~45s of dwell per category
+      pct = 2 + eased * 86;                              // 2% → ~88%
     } else {
-      idx = N - 1;                                    // park on the final category
+      idx = N - 1;                                       // park on the final category
       var over = elapsed - ACTIVE;
-      pct = 88 + (97 - 88) * (1 - Math.exp(-over / 110)); // creep 88% → ~97%
+      pct = 88 + (97 - 88) * (1 - Math.exp(-over / 110)); // creep 88% → ~97%, never stalls
       if (!finalizingShown) { showFinalizing(); finalizingShown = true; }
+      var fl = Math.floor(over / 10) % FINAL_LINES.length;  // rotate reassurance ~every 10s
+      if (fl !== lastFinalLine) {
+        var sub = document.getElementById('heroSub');
+        if (sub) sub.textContent = FINAL_LINES[fl];
+        lastFinalLine = fl;
+      }
     }
-    /* Safety floors — never let the bar look stalled. If for any reason it's
-       lagging, guarantee it has visibly moved on by these checkpoints. */
+    /* Safety floors — guarantee visible early movement no matter what. */
     if (elapsed >= 60  && pct < 10) pct = 10;
     if (elapsed >= 180 && pct < 20) pct = 20;
 
     var displayed = parseFloat(document.getElementById('pctDisplay').textContent) || 0;
-    if (pct > displayed) setProgress(Math.min(98, pct), false);  // never go backward; never hit 100 here
+    if (pct > displayed) setProgress(Math.min(98, pct), false);  // never backward; never 100 here
     if (idx !== lastIdxShown) { setActiveIdx(idx, false); lastIdxShown = idx; }
   }, 150);
 }

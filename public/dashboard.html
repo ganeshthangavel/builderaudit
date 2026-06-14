@@ -3582,27 +3582,30 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
           <Btn onClick={exportHoReport} style={{ whiteSpace:'nowrap', flexShrink:0 }}>⬇ Export report</Btn>
         </div>
 
-        {/* Tab bar — pill segments */}
-        <div style={{ display:'flex', gap:8, marginBottom:28, flexWrap:'wrap' }}>
+        {/* Tab bar — BA3 chunky segments */}
+        <div style={{ display:'flex', gap:12, marginBottom:32, flexWrap:'wrap' }}>
           {HO_TABS.map(t => {
             const on = tab === t.k;
             return (
               <button key={t.k} onClick={() => setTab(t.k)}
+                aria-current={on ? 'true' : undefined}
                 style={{
-                  display:'inline-flex', alignItems:'center', gap:8,
-                  padding:'10px 18px',
-                  background: on ? P.ink : '#fff',
-                  color:      on ? '#fff' : P.ink,
-                  border: `2px solid ${P.line}`,
-                  borderRadius: 8,
-                  boxShadow: on ? `3px 3px 0 ${P.line}` : 'none',
+                  display:'inline-flex', alignItems:'center', gap:9,
+                  padding:'12px 20px',
+                  background: on ? P.fill : '#fff',
+                  color: P.ink,
+                  border: `2.5px solid ${P.line}`,
+                  borderRadius: 10,
+                  boxShadow: on ? `4px 4px 0 ${P.line}` : `2px 2px 0 ${P.line}`,
                   cursor:'pointer',
-                  fontFamily:F.body, fontWeight:700, fontSize:13.5,
+                  fontFamily:F.body, fontWeight: on ? 800 : 700, fontSize:13.5,
                   whiteSpace:'nowrap',
-                  transition:'background .12s, color .12s, box-shadow .12s, transform .12s',
+                  transition:'background .12s, box-shadow .12s, transform .12s',
                   transform: on ? 'translate(-1px,-1px)' : 'none',
-                }}>
-                <span style={{ fontSize:15, lineHeight:1 }}>{t.icon}</span>
+                }}
+                onMouseEnter={e=>{ if(!on){ e.currentTarget.style.background = P.surface; e.currentTarget.style.boxShadow = `4px 4px 0 ${P.line}`; e.currentTarget.style.transform='translate(-1px,-1px)'; } }}
+                onMouseLeave={e=>{ if(!on){ e.currentTarget.style.background = '#fff'; e.currentTarget.style.boxShadow = `2px 2px 0 ${P.line}`; e.currentTarget.style.transform='none'; } }}>
+                <span style={{ fontSize:16, lineHeight:1 }}>{t.icon}</span>
                 {t.label}
               </button>
             );

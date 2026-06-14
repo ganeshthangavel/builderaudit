@@ -182,7 +182,7 @@ body {
   flex: 1; min-width: 0; border: none; outline: none;
   background: transparent;
   font-family: var(--body); font-size: 18px;
-  color: var(--ink); padding: 16px 6px;
+  color: var(--ink); padding: 16px 6px 16px 18px;
 }
 .url-input button {
   background: var(--accent); color: #fff;
@@ -690,7 +690,7 @@ body {
 .final-url input {
   flex: 1; min-width: 0; border: none; outline: none;
   background: transparent; font-family: var(--body);
-  font-size: 17px; color: var(--ink); padding: 14px 4px;
+  font-size: 17px; color: var(--ink); padding: 14px 4px 14px 18px;
 }
 .final-url button {
   background: var(--accent); color: #fff;
@@ -787,7 +787,6 @@ html, body { overflow-x: hidden; }
         <p class="lead" id="heroSub">Paste your URL. We'll poke around like a homeowner would — photos, reviews, the lot — and grade your site out of 100. With actual things to fix, in plain English.</p>
 
         <form class="url-input" id="auditForm" onsubmit="return startAudit(event)">
-          <div class="prefix">https://</div>
           <input type="text" id="urlInput" placeholder="yourbuildingcompany.co.uk" autocomplete="off" required>
           <button type="submit" id="auditBtn"><span id="auditLabel">Run my free audit</span> →</button>
         </form>
@@ -1320,7 +1319,6 @@ html, body { overflow-x: hidden; }
       <h2 class="final-h2" id="finalH2">Right then. Paste your URL.</h2>
       <p class="final-sub" id="finalSub">No sign-up to try. Free, forever — your full fix-list, ready in a few minutes.</p>
       <form class="final-url" onsubmit="return startAuditFromBottom(event)">
-        <div class="prefix">https://</div>
         <input type="text" id="finalUrlInput" placeholder="yourbuildingcompany.co.uk" autocomplete="off">
         <button type="submit" id="finalAuditBtn">Run my free audit →</button>
       </form>

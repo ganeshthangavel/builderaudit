@@ -1084,16 +1084,11 @@ app.get('/api/share/:token', async (req, res) => {
     const report = a.report_json || {};
 
     /* Apply saved fix/photo overrides so the shared score matches what the
-       owner sees on their dashboard (projected score with fixes applied). */
+       owner sees on their dashboard (conservative projected score). */
     const ov = a.overrides || {};
     const actions = report.top_actions || [];
-    const completedPts = actions.reduce((sum, act, i) =>
-      ov['fix_' + i] === 'completed'
-        ? sum + ((typeof act === 'object' && act && act.impact_pts) ? act.impact_pts : ([8,6,5,3,2][i] || 2))
-        : sum, 0);
-    const excludedPhotos = Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').length;
     const baseScore = report.hero?.score || 0;
-    const adjustedScore = Math.min(100, baseScore + completedPts + excludedPhotos * 5);
+    const adjustedScore = computeAdjustedScore(report, ov).score;
 
     /* Normalise trust_questions to 0-100 if the model returned 0-10 */
     const tq = report.trust_questions || [];
@@ -1103,6 +1098,40 @@ app.get('/api/share/:token', async (req, res) => {
     let domain = a.url;
     try { domain = new URL(a.url).hostname.replace(/^www\./, ''); } catch(e){}
 
+    const bs = report.business_snapshot || {};
+
+    /* ── Competitor audits this builder has run (for the bottom section) ── */
+    let competitors = [];
+    try {
+      if (a.user_id) {
+        const comps = await db.listCompetitorsForUser(a.user_id, a.audience || 'builder');
+        competitors = (comps || [])
+          .filter(c => c.data && typeof c.data.score === 'number')
+          .sort((x,y) => (x.slotIndex||0) - (y.slotIndex||0))
+          .map(c => ({
+            name:  c.data.name || c.url || 'Competitor',
+            url:   c.data.url || c.url || '',
+            score: c.data.score,
+            verdict: c.data.good || c.data.verdict || '',
+            breakdown: Array.isArray(c.data.breakdown)
+              ? c.data.breakdown.map(b => ({ name: b.name, score: b.s }))
+              : (Array.isArray(c.data.cats) ? c.data.cats.map(b => ({ name: b.name, score: b.s })) : []),
+          }));
+      }
+    } catch (e) { /* non-fatal — report still renders without competitors */ }
+
+    /* Where you rank against the field (you + competitors) */
+    let ranking = null;
+    if (competitors.length) {
+      const field = [{ name: bs.company_name || domain, score: adjustedScore, isYou: true }]
+        .concat(competitors.map(c => ({ name: c.name, score: c.score, isYou: false })))
+        .sort((p,q) => q.score - p.score);
+      const youPos = field.findIndex(f => f.isYou) + 1;
+      const beat   = competitors.filter(c => adjustedScore > c.score).length;
+      const avg    = Math.round(competitors.reduce((s,c)=>s+c.score,0) / competitors.length);
+      ranking = { position: youPos, total: field.length, beat, of: competitors.length, fieldAvg: avg };
+    }
+
     res.json({
       domain,
       url: a.url,
@@ -1111,21 +1140,42 @@ app.get('/api/share/:token', async (req, res) => {
       baseScore,
       score: adjustedScore,
       fixesApplied: actions.filter((_,i)=>ov['fix_'+i]==='completed').length,
-      company: report.business_snapshot?.company_name || domain,
+      company: bs.company_name || domain,
       headline: report.hero?.headline || '',
       subtext: report.hero?.subtext || '',
+      voiceIntro: report.hero?.ai_voice_intro || '',
+      /* Business snapshot for the "about your business" block */
+      snapshot: {
+        oneLiner: bs.one_liner || '',
+        established: bs.established || null,
+        yearsTrading: bs.years_trading || null,
+        location: bs.location || null,
+        serviceArea: bs.service_area || null,
+        workTypes: bs.work_types || [],
+        accreditations: bs.accreditations || [],
+        team: (bs.team && (bs.team.key_people || bs.team.owners)) ? [].concat(bs.team.owners||[], bs.team.key_people||[]) : [],
+        usps: bs.unique_selling_points || [],
+        missing: bs.what_we_could_not_find || [],
+      },
       categories: tq.map((q,i) => ({
         name: ['Legitimacy','Real projects','Reviews','Credentials','Contactability','Trading'][i] || (q.question||'').replace('?',''),
         score: norm(q.score),
         note: q.explanation || '',
       })),
-      strengths: (report.competitor_gap?.you_have || report.strengths || []).slice(0, 5),
-      breakpoints: (report.trust_breakpoints || []).slice(0, 5).map(b => typeof b === 'string' ? b : (b.title || b.issue || '')),
+      strengths: (report.competitor_gap?.you_have || report.strengths || []).slice(0, 6),
+      breakpoints: (report.trust_breakpoints || []).slice(0, 6).map(b => typeof b === 'string'
+        ? { title: b, reaction: '', fix: '' }
+        : { title: b.title || b.issue || '', reaction: b.homeowner_reaction || '', fix: b.fix || '' }),
+      photoSummary: report.photo_analysis?.summary || '',
       topActions: actions.slice(0, 10).map((act,i) => ({
         title: typeof act === 'object' ? (act.title || '') : act,
+        why:   typeof act === 'object' ? (act.why || '') : '',
+        time:  typeof act === 'object' ? (act.time || '') : '',
         impact: (typeof act === 'object' && act.impact_pts) ? act.impact_pts : ([8,6,5,3,2][i] || 2),
         done: ov['fix_' + i] === 'completed',
       })),
+      competitors,
+      ranking,
     });
   } catch (err) {
     console.error('[share:data] failed:', err.message);
@@ -1395,6 +1445,45 @@ app.post('/api/report/:id/reanalyze', async (req, res) => {
   res.end();
 });
 
+/* ── Self-reported score projection ───────────────────────────────────────
+   A builder can mark fixes done and correct mis-flagged photos, which gives a
+   PROJECTED score lift. To keep this honest (so nobody reaches a perfect score
+   by ticking boxes), the lift is deliberately conservative:
+     • Completed fixes contribute their impact points.
+     • Photo corrections contribute only a little, and are capped — correcting a
+       classification isn't the same as doing real work.
+     • The combined lift has DIMINISHING RETURNS (early wins matter most) and is
+       capped so a projection can close at most ~half the gap to 100 and never
+       reach a near-perfect score. Going higher requires a real re-scan, which
+       actually verifies the changes are live on the site.
+   Returns { score, baseScore, capped } where `capped` is true when the lift hit
+   the projection ceiling (used to nudge the user to re-scan). */
+function computeAdjustedScore(report, overrides) {
+  const base = report?.hero?.score || 0;
+  const ov = overrides || {};
+  const actions = report?.top_actions || [];
+
+  const fixPts = actions.reduce((sum, a, i) =>
+    ov['fix_' + i] === 'completed'
+      ? sum + ((typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2))
+      : sum, 0);
+
+  /* Photo corrections: +1 raw point each, capped at +4 raw — a nudge, not a lever */
+  const photoCount = Object.keys(ov).filter(k => k.startsWith('photo_excluded_') && ov[k] === 'excluded').length;
+  const photoPts = Math.min(photoCount, 4);
+
+  const raw = fixPts + photoPts;
+  if (raw <= 0) return { score: base, baseScore: base, capped: false };
+
+  /* Cap: close at most half the gap to 100 via projection, never more than +18. */
+  const gap = Math.max(0, 100 - base);
+  const maxLift = Math.min(Math.round(gap * 0.5), 18);
+  /* Diminishing returns: raw points saturate toward maxLift. */
+  const effLift = Math.round(maxLift * (1 - Math.exp(-raw / 12)));
+  const score = Math.min(base + effLift, base + maxLift);
+  return { score, baseScore: base, capped: effLift >= maxLift - 1 && maxLift > 0 };
+}
+
 /* Override a flagged image OR save fix completions / photo exclusions.
    Accepts:
      - { imageSrc, decision }                    → image override (existing)
@@ -1427,13 +1516,8 @@ app.post('/api/report/:id/override', async (req, res) => {
       const audit = await db.getAudit(id);
       const overrides = audit.overrides || {};
       const report = audit.report_json || {};
-      const actions = report.top_actions || [];
-      const completedPts = actions.reduce((sum, a, i) => {
-        const pts = typeof a === 'object' && a.impact_pts ? a.impact_pts : [8,6,5,3,2][i] || 2;
-        return overrides['fix_' + i] === 'completed' ? sum + pts : sum;
-      }, 0);
-      const adjustedScore = Math.min(100, (report.hero?.score || 0) + completedPts);
-      return res.json({ success: true, overrides, adjustedScore });
+      const { score: adjustedScore, capped } = computeAdjustedScore(report, overrides);
+      return res.json({ success: true, overrides, adjustedScore, capped });
     }
 
     /* ── Photo exclusion ── */
@@ -1443,11 +1527,8 @@ app.post('/api/report/:id/override', async (req, res) => {
       const audit = await db.getAudit(id);
       const overrides = audit.overrides || {};
       const report = audit.report_json || {};
-      const excludedCount = Object.keys(overrides).filter(k => k.startsWith('photo_excluded_') && overrides[k] === 'excluded').length;
-      const baseScore = report.hero?.score || 0;
-      /* Each excluded flagged photo restores ~5 pts to the "real projects" trust question */
-      const adjustedScore = Math.min(100, baseScore + (excludedCount * 5));
-      return res.json({ success: true, overrides, adjustedScore });
+      const { score: adjustedScore, capped } = computeAdjustedScore(report, overrides);
+      return res.json({ success: true, overrides, adjustedScore, capped });
     }
 
     /* ── Image override (existing) ── */

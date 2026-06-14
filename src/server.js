@@ -1262,6 +1262,44 @@ app.get('/api/my/report-leads', auth.requireAuth, async (req, res) => {
   }
 });
 
+/* PUBLIC: in-app feedback / error flags from the widget on every page. */
+app.post('/api/feedback', async (req, res) => {
+  try {
+    const { kind, message, email, pageUrl } = req.body || {};
+    if (!message || String(message).trim().length < 3) {
+      return res.status(400).json({ error: 'Please add a little more detail.' });
+    }
+    const validKind = ['error', 'idea', 'other'].includes(kind) ? kind : 'feedback';
+    const clean = {
+      kind: validKind,
+      message: String(message).trim().slice(0, 4000),
+      email: (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) ? String(email).trim().toLowerCase().slice(0, 160) : null,
+      pageUrl: pageUrl ? String(pageUrl).slice(0, 300) : null,
+    };
+
+    /* Store it (resilient — never block the user on a storage hiccup). */
+    try {
+      await db.saveFeedback({
+        userId: req.user?.id || null,
+        ...clean,
+        ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 60),
+        userAgent: (req.get('user-agent') || '').slice(0, 250),
+      });
+    } catch (saveErr) {
+      console.error('[feedback] save failed (continuing):', saveErr.message);
+    }
+
+    /* Notify (fire-and-forget). */
+    email.sendFeedbackNotification({ feedback: clean, user: req.user || null })
+      .catch(e => console.error('[feedback] notify failed:', e.message));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[feedback] failed:', err.message);
+    res.status(500).json({ error: 'Could not send your feedback. Please try again.' });
+  }
+});
+
 /* ── Persisted competitor audits ──────────────────────────────────────────── */
 app.get('/api/my/competitors', auth.requireAuth, async (req, res) => {
   const role = req.query.role === 'homeowner' ? 'homeowner' : 'builder';
@@ -1759,4 +1797,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-   
+     

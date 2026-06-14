@@ -3550,20 +3550,78 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
     if (!report) return;
     const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
+    const score = report.hero?.score || 0;
+    const name = report.business_snapshot?.company_name || domain || 'This builder';
+    const snap = report.business_snapshot || report.site_facts || {};
+    const band = score>=75 ? 'Looks trustworthy on the evidence of their website'
+               : score>=55 ? 'Worth a closer look — a few things to check'
+               : 'Several red flags — verify carefully before committing';
+
+    /* About this builder */
+    const snapRows = [];
+    const estVal = snap.established ? (snap.established + (snap.years_trading ? ' (' + snap.years_trading + ')' : '')) : (snap.years_trading || null);
+    if (estVal) snapRows.push(['Founded / trading', estVal]);
+    if (snap.location) snapRows.push(['Location', snap.location]);
+    if (snap.work_types && snap.work_types.length) snapRows.push(['Type of work', snap.work_types.join(', ')]);
+    if (snap.accreditations && snap.accreditations.length) snapRows.push(['Accreditations shown', snap.accreditations.join(', ')]);
+    const snapHtml = snapRows.length ? `<h2>About this builder</h2><div class="card">${snapRows.map(([l,v])=>`<div class="row"><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join('')}</div>` : '';
+
+    /* The six trust checks, with the plain-English explanation under each */
     const tq = report.trust_questions || [];
     const allTen = tq.length > 0 && tq.every(q => (q.score||0) <= 10);
     const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
-    const checks = tq.map((q,i) => { const s = allTen ? Math.round((q.score||0)*10) : (q.score||0); return `<div class="row"><span>${esc(names[i]||q.question||'')}</span><b style="color:${sc(s)}">${s}/100</b></div>`; }).join('');
-    const breaks = (report.trust_breakpoints||[]).slice(0,5).map(tb => `<div class="row"><span>${esc(tb.homeowner_reaction||tb.title||'')}</span></div>`).join('');
-    const score = report.hero?.score || 0;
-    const name = report.business_snapshot?.company_name || domain || 'This builder';
+    const checks = tq.map((q,i) => {
+      const s = allTen ? Math.round((q.score||0)*10) : (q.score||0);
+      return `<div style="padding:10px 0;border-bottom:1px solid #eee">`
+        + `<div style="display:flex;justify-content:space-between;gap:12px"><span style="font-weight:600">${esc(names[i]||q.question||'')}</span><b style="color:${sc(s)}">${s}/100</b></div>`
+        + (q.explanation ? `<div class="muted" style="font-size:12.5px;margin-top:3px;line-height:1.45">${esc(q.explanation)}</div>` : '')
+        + `</div>`;
+    }).join('');
+    const checksHtml = tq.length ? `<h2>The six trust checks</h2><div class="card">${checks}</div>` : '';
+
+    /* Red flags & what to watch */
+    const bps = report.trust_breakpoints || [];
+    const sevColor = (imp) => (imp==='critical'||imp==='high') ? P.red : imp==='medium' ? '#D97706' : P.green;
+    const sevLabel = (imp) => imp==='critical'?'Critical':imp==='high'?'High risk':imp==='medium'?'Medium':'Watch';
+    const flagCards = bps.map(b => {
+      const col = sevColor(b.impact);
+      return `<div class="card" style="border-color:${col}">`
+        + `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px"><b>${esc(b.title||'')}</b><span class="badge" style="background:${col};color:#fff;font-size:10.5px">${esc(sevLabel(b.impact))}</span></div>`
+        + (b.homeowner_reaction ? `<div style="font-style:italic;font-size:13px;margin-bottom:6px;line-height:1.5">"${esc(b.homeowner_reaction)}"</div>` : '')
+        + (b.evidence ? `<div class="muted" style="font-size:12.5px;margin-bottom:6px;line-height:1.45"><b>What we found:</b> ${esc(b.evidence)}</div>` : '')
+        + (b.fix ? `<div style="font-size:12.5px;line-height:1.45"><b>Ask them:</b> <span style="font-style:italic">${esc(b.fix)}</span></div>` : '')
+        + `</div>`;
+    }).join('');
+    const flagsHtml = bps.length ? `<h2>Red flags &amp; what to watch</h2>${flagCards}` : '';
+
+    /* Questions to ask before you hire — from critical flags + recommended actions */
+    const qFromFlags = bps.filter(b=>b.impact==='critical'||b.impact==='high').map(b => b.fix || ('Can you give me evidence about: ' + (b.title||'') + '?'));
+    const qFromActions = (report.top_actions||[]).map(a => typeof a==='string'?a:(a.title||'')).filter(Boolean);
+    const questions = [...qFromFlags, ...qFromActions].filter((q,i,a)=>q && a.indexOf(q)===i).slice(0,10);
+    const qHtml = questions.length ? `<h2>Questions to ask before you hire</h2><div class="card">${questions.map(q=>`<div class="row"><span>☐&nbsp;&nbsp;${esc(q)}</span></div>`).join('')}</div>` : '';
+
+    /* How to vet them further — homeowner guidance (always useful) */
+    const vetHtml = `<h2>How to vet them further</h2><div class="card">`
+      + [
+        ['Companies House','If they trade as a limited company, look them up at companieshouse.gov.uk — check the company is active and the directors match who you\u2019re dealing with.'],
+        ['Insurance','Ask to see their public liability insurance certificate. A legitimate builder shows it without hesitation.'],
+        ['References','Ask for two or three recent customers you can actually call — ideally for work similar to yours.'],
+        ['Written quote','Get a fixed, written, line-by-line quote — not a verbal estimate. Compare at least three builders like for like.'],
+        ['Contract & payments','Use a written contract with payments tied to milestones. Be wary of large up-front deposits or cash-only requests.'],
+      ].map(([t,d])=>`<div style="padding:9px 0;border-bottom:1px solid #eee"><b>${esc(t)}</b><div class="muted" style="font-size:12.5px;margin-top:2px;line-height:1.45">${esc(d)}</div></div>`).join('')
+      + `</div>`;
+
     const inner = `<h1>${esc(name)}</h1>`
       + `<p class="muted">${esc(domain||'')} · independent website trust audit</p>`
-      + `<div style="margin:14px 0"><span class="scorebox"><span class="n" style="color:${sc(score)}">${score}</span><span class="l">Trust score / 100</span></span></div>`
-      + (report.hero?.headline ? `<div class="card"><b>${esc(report.hero.headline)}</b>${report.hero.subtext?`<div class="muted" style="margin-top:6px;font-size:13px;line-height:1.5">${esc(report.hero.subtext)}</div>`:''}</div>` : '')
-      + `<h2>The 6 trust checks</h2><div class="card">${checks || '<div class="muted">No checks available</div>'}</div>`
-      + (breaks ? `<h2>What to watch before you commit</h2><div class="card">${breaks}</div>` : '')
-      + `<div class="foot">⚠ A website score reflects how well a builder presents online — a strong first filter, not proof of build quality. Always verify Companies House registration, insurance and references before you commit. Generated free by BuilderAudit.</div>`;
+      + `<div style="display:flex;align-items:center;gap:18px;margin:16px 0;flex-wrap:wrap"><span class="scorebox"><span class="n" style="color:${sc(score)}">${score}</span><span class="l">out of 100</span></span>`
+      + `<span style="font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:15px;color:${sc(score)};text-transform:uppercase;letter-spacing:-0.01em;max-width:340px">${esc(band)}</span></div>`
+      + (report.hero?.headline ? `<div class="card"><b>${esc(report.hero.headline)}</b>${report.hero.subtext?`<div class="muted" style="margin-top:6px;font-size:13px;line-height:1.5">${esc(report.hero.subtext)}</div>`:''}${report.hero.ai_voice_intro?`<div style="margin-top:8px;font-style:italic;font-size:13px;border-left:3px solid #5247B8;padding-left:10px;line-height:1.55">${esc(report.hero.ai_voice_intro)}</div>`:''}</div>` : '')
+      + snapHtml
+      + checksHtml
+      + flagsHtml
+      + qHtml
+      + vetHtml
+      + `<div class="foot">⚠ This report grades how well ${esc(name)} presents online — a strong first filter, but not proof of build quality. A high score is not a guarantee, and a low score does not mean a builder is dishonest. Always verify Companies House registration, insurance and references before you commit. Generated free by BuilderAudit.</div>`;
     exportReport(name + ' — trust report · BuilderAudit', inner);
   };
 

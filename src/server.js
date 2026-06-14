@@ -1265,13 +1265,14 @@ app.get('/api/my/report-leads', auth.requireAuth, async (req, res) => {
 /* PUBLIC: in-app feedback / error flags from the widget on every page. */
 app.post('/api/feedback', async (req, res) => {
   try {
-    const { kind, message, email, pageUrl } = req.body || {};
+    const { kind, name, message, email, pageUrl } = req.body || {};
     if (!message || String(message).trim().length < 3) {
       return res.status(400).json({ error: 'Please add a little more detail.' });
     }
     const validKind = ['error', 'idea', 'other'].includes(kind) ? kind : 'feedback';
     const clean = {
       kind: validKind,
+      name: name ? String(name).trim().slice(0, 120) : null,
       message: String(message).trim().slice(0, 4000),
       email: (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) ? String(email).trim().toLowerCase().slice(0, 160) : null,
       pageUrl: pageUrl ? String(pageUrl).slice(0, 300) : null,
@@ -1797,4 +1798,3 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-     

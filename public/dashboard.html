@@ -606,6 +606,13 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
   const score = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, excludedPhotoIds.size);
   const scoreLift = Math.max(0, score - baseScore);
 
+  /* Real headroom: the most your score could still rise if you completed every
+     remaining fix — under the same capped projection model, so it can never
+     push you past what's actually achievable (and never out of 0-100). */
+  const allFixIds = new Set(allActions.map((_,i) => i));
+  const potentialScore = projectScore(report, allFixIds, excludedPhotoIds.size);
+  const pointsAvailable = Math.max(0, potentialScore - score);
+
   const previousScore = baseScore; // base is the "last scan" reference
   const change = score - previousScore;
 
@@ -689,7 +696,7 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audit score</Label><BigNum n={score} sub="out of 100"/></Card>
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Audits run</Label><BigNum n={auditsRun} sub="total"/></Card>
           <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}` }}><Label>Fixes applied</Label><BigNum n={fixesDone} sub={`${fixDefs.length - fixesDone} still outstanding`}/></Card>
-          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${fixDefs.filter(f=>!completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0)}`} sub="still on the table" yellow/></Card>
+          <Card pad={20} style={{ boxShadow:`3px 3px 0 ${P.line}`, background:P.fill }}><Label>Points available</Label><BigNum n={`+${pointsAvailable}`} sub={pointsAvailable > 0 ? `could reach ${potentialScore}` : 'all fixes done'} yellow/></Card>
         </div>
       </div>
 
@@ -1569,9 +1576,12 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
   const fixes = baseFixes;
   const doneCount      = fixes.filter(f=>isDone(f.id)).length;
   const reqCount       = Object.values(reqState).filter(r=>r.requested).length;
-  const remaining      = fixes.filter(f=>!isDone(f.id)).reduce((a,b)=>a+b.impact,0);
   const completedPts   = fixes.filter(f=>isDone(f.id)).reduce((a,b)=>a+b.impact,0);
   const liveScore      = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, 0);
+  /* Real achievable headroom under the capped model — not the raw point sum. */
+  const allFixIds      = new Set((report?.top_actions || []).map((_,i) => i));
+  const potentialScore = projectScore(report, allFixIds, 0);
+  const remaining      = Math.max(0, potentialScore - liveScore);
   const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
 
   /* When every fix is ticked off, the projection has done all it can — that's
@@ -1602,7 +1612,7 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
           </div>
         </Card>
         <Card pad={22}><Label>Help requested</Label><BigNum n={reqCount} sub="BuilderAudit team will be in touch"/></Card>
-        <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub="still on the table" yellow/></Card>
+        <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub={remaining > 0 ? `could reach ${potentialScore}` : 'all fixes done'} yellow/></Card>
       </div>
 
       {/* Live projected score — BA3 themed: yellow header strip, tilted chip,

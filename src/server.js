@@ -985,9 +985,13 @@ app.get('/api/my/latest-audit', auth.requireAuth, async (req, res) => {
     let imageUrls = [];
     try {
       const pages = full.raw_data?.pages || [];
+      /* Assign ref (img_1, img_2…) from the SAME flattened order the scorer used,
+         BEFORE any filtering, so image_ref from the AI maps to the right URL. */
       imageUrls = pages.flatMap(p =>
         (p.images || []).map(img => ({ src: img.src, alt: img.alt || '', pageUrl: p.url }))
-      ).filter(img => img.src && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src)).slice(0, 30);
+      ).slice(0, 30)
+       .map((img, idx) => ({ ...img, ref: 'img_' + (idx + 1) }))
+       .filter(img => img.src && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src));
     } catch (e) { /* non-fatal */ }
 
     res.json({
@@ -1153,12 +1157,15 @@ app.get('/api/report/:id/data', async (req, res) => {
     }
 
     /* Extract real image URLs from raw_data pages so the dashboard can show
-       actual photos rather than placeholder boxes. We pair AI analysis descriptions
-       with the actual scraped image src URLs by position. */
+       actual photos. We tag each with a ref (img_1, img_2…) from the SAME
+       flattened order the scorer used, BEFORE filtering, so the AI's image_ref
+       maps to the correct URL — no keyword guessing needed. */
     const rawPages = audit.raw_data?.pages || [];
     const allImageUrls = rawPages.flatMap(p =>
       (p.images || []).map(img => ({ src: img.src, alt: img.alt || '', pageUrl: p.url }))
-    ).filter(img => /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src));
+    ).slice(0, 30)
+     .map((img, idx) => ({ ...img, ref: 'img_' + (idx + 1) }))
+     .filter(img => img.src && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.src));
 
     res.json({
       locked: false,
@@ -1168,7 +1175,7 @@ app.get('/api/report/:id/data', async (req, res) => {
       overrides: audit.overrides || {},
       audience: audit.audience || 'builder',
       scannedAt: audit.created_at,
-      imageUrls: allImageUrls.slice(0, 30), /* Cap at 30 to keep response lean */
+      imageUrls: allImageUrls, /* already capped at 30, ref-tagged */
     });
   } catch (err) {
     console.error('GET /api/report/' + id + '/data failed:', err);
@@ -1470,4 +1477,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-       
+                        

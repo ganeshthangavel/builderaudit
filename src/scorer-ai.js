@@ -391,6 +391,7 @@ Return ONLY valid JSON. No markdown fences. No text outside the JSON.` + context
     {"question": "Will they be easy to contact and communicate with?", "score": 0, "explanation": "<specific contact details found or missing>"},
     {"question": "Is this business actively trading right now?", "score": 0, "explanation": "<recent content, dates, copyright year etc>"}
   ],
+  "_trust_questions_scale_note": "EVERY trust_questions score MUST be an integer from 0 to 100 (NOT 0-10). E.g. strong = 80, weak = 35, missing = 10. A score like 7 means 7/100 (almost failing) — only use single-digit numbers if the signal genuinely scores under 10/100.",
   "competitor_gap": {
     "summary": "<1-2 sentences specific to THIS builder's positioning>",
     "they_have": ["<specific thing a well-optimised UK builder shows that THIS site lacks>"],

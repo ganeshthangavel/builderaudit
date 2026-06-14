@@ -294,7 +294,7 @@ const HOMEOWNER_PAGES = [
   { k:'match',     label:'Find a trusted builder' },
 ];
 
-function Nav({ role, page, setPage, user }) {
+function Nav({ role, page, setPage, user, website }) {
   const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
   const initials = (() => {
     const source = user?.companyName || user?.company_name || user?.name || '';
@@ -350,6 +350,18 @@ function Nav({ role, page, setPage, user }) {
     else { savePref('consentAgency', true); }
   };
 
+  /* Proper sign out — actually clears the session, then returns home. */
+  const signOut = async () => {
+    try { await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); } catch(e){}
+    window.location.href = '/';
+  };
+
+  /* Display helpers for the profile panel */
+  const prettyType = (t) => ({ sole_trader:'Sole trader', limited_company:'Limited company', partnership:'Partnership', llp:'LLP', other:'Other' }[t] || (t ? t.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) : null));
+  const prettyRegion = (r) => r ? r.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) : null;
+  const siteHost = (() => { try { return website ? new URL(website).hostname.replace(/^www\./,'') : null; } catch(e){ return website || null; } })();
+  const displayName = user?.companyName || user?.company_name || user?.name || null;
+
   const Toggle = ({ on, onChange }) => (
     <button onClick={()=>onChange(!on)}
       style={{ flex:'0 0 auto', width:42, height:24, borderRadius:999, border:`2px solid ${P.line}`, background:on?P.green:P.surface, position:'relative', cursor:'pointer', padding:0, transition:'background .15s', outline:'none' }}>
@@ -388,20 +400,33 @@ function Nav({ role, page, setPage, user }) {
           </button>
 
           {menuOpen && (
-            <div style={{ position:'absolute', top:'calc(100% + 10px)', right:0, width:260, background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`6px 6px 0 ${P.line}`, zIndex:200, overflow:'hidden' }}>
+            <div style={{ position:'absolute', top:'calc(100% + 10px)', right:0, width:280, background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`6px 6px 0 ${P.line}`, zIndex:200, overflow:'hidden' }}>
               <div style={{ padding:'14px 18px', background:P.surface, borderBottom:`2px solid ${P.line}` }}>
                 <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Signed in as</div>
-                <div style={{ fontFamily:F.body, fontSize:13.5, fontWeight:700, color:P.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email || 'Not signed in'}</div>
+                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{displayName || user?.email || 'Not signed in'}</div>
+                {displayName && user?.email && <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>}
               </div>
               {user ? (
-                <button onClick={()=>{ setMenuOpen(false); setPrefsModal(true); }}
-                  style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'13px 18px', background:'transparent', border:'none', borderBottom:`1.5px solid ${P.surface}`, cursor:'pointer', textAlign:'left', fontFamily:F.body, fontSize:14, fontWeight:600, color:P.ink, outline:'none' }}>
-                  <span style={{ fontSize:15 }}>⚙</span> Manage account & preferences
-                </button>
+                <>
+                  {/* Quick profile preview */}
+                  <div style={{ padding:'12px 18px', borderBottom:`1.5px solid ${P.surface}`, display:'flex', flexDirection:'column', gap:7 }}>
+                    {siteHost && <div style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:12.5 }}><span style={{ color:P.muted, width:58, flexShrink:0 }}>Website</span><span style={{ color:P.ink, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{siteHost}</span></div>}
+                    {user.phone && <div style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:12.5 }}><span style={{ color:P.muted, width:58, flexShrink:0 }}>Phone</span><span style={{ color:P.ink, fontWeight:600 }}>{user.phone}</span></div>}
+                    {prettyType(user.businessType) && <div style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:12.5 }}><span style={{ color:P.muted, width:58, flexShrink:0 }}>Type</span><span style={{ color:P.ink, fontWeight:600 }}>{prettyType(user.businessType)}</span></div>}
+                  </div>
+                  <button onClick={()=>{ setMenuOpen(false); setPrefsModal(true); }}
+                    style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'13px 18px', background:'transparent', border:'none', borderBottom:`1.5px solid ${P.surface}`, cursor:'pointer', textAlign:'left', fontFamily:F.body, fontSize:14, fontWeight:600, color:P.ink, outline:'none' }}>
+                    <span style={{ fontSize:15 }}>⚙</span> Account &amp; settings
+                  </button>
+                  <a href="/privacy" style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 18px', borderBottom:`1.5px solid ${P.surface}`, fontFamily:F.body, fontSize:13, fontWeight:600, color:P.muted, textDecoration:'none' }}><span style={{ fontSize:14 }}>🔒</span> Privacy &amp; terms</a>
+                  <button onClick={signOut}
+                    style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'13px 18px', background:'transparent', border:'none', cursor:'pointer', textAlign:'left', fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.red, outline:'none' }}>
+                    <span style={{ fontSize:14 }}>↩</span> Sign out
+                  </button>
+                </>
               ) : (
-                <a href="/login" style={{ display:'block', padding:'13px 18px', borderBottom:`1.5px solid ${P.surface}`, fontFamily:F.body, fontSize:14, fontWeight:600, color:P.accent, textDecoration:'none' }}>Sign in →</a>
+                <a href="/login" style={{ display:'block', padding:'13px 18px', fontFamily:F.body, fontSize:14, fontWeight:600, color:P.accent, textDecoration:'none' }}>Sign in →</a>
               )}
-              <a href="/login" style={{ display:'block', padding:'13px 18px', fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
             </div>
           )}
         </div>
@@ -421,7 +446,30 @@ function Nav({ role, page, setPage, user }) {
               </div>
 
               <div style={{ padding:'22px 24px', display:'flex', flexDirection:'column', gap:18 }}>
-                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Contact preferences</div>
+                {/* Your details */}
+                <div>
+                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>Your details</div>
+                  <div style={{ border:`2px solid ${P.line}`, borderRadius:10, overflow:'hidden' }}>
+                    {[
+                      ['Company', displayName],
+                      ['Website', siteHost],
+                      ['Email', user.email],
+                      ['Phone', user.phone],
+                      ['Business type', prettyType(user.businessType)],
+                      ['Region', prettyRegion(user.region)],
+                    ].map(([label, val], i, arr) => (
+                      <div key={label} style={{ display:'flex', gap:12, padding:'10px 14px', borderBottom:i<arr.length-1?`1.5px solid ${P.surface}`:'none', background:i%2?'#fff':'rgba(251,245,225,0.4)' }}>
+                        <span style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, width:104, flexShrink:0 }}>{label}</span>
+                        <span style={{ fontFamily:F.body, fontSize:13.5, color:val?P.ink:P.muted, fontWeight:val?600:400, wordBreak:'break-word' }}>{val || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, marginTop:8, lineHeight:1.45 }}>
+                    Need to change your company name, phone or website? <a href="/contact?topic=account" style={{ color:P.accent, fontWeight:600 }}>Get in touch</a> and we'll update it.
+                  </div>
+                </div>
+
+                <div style={{ borderTop:`1.5px solid ${P.surface}`, paddingTop:18, fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>Contact preferences</div>
 
                 <div style={{ display:'flex', gap:14, alignItems:'flex-start', justifyContent:'space-between' }}>
                   <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>
@@ -466,7 +514,11 @@ function Nav({ role, page, setPage, user }) {
                 )}
               </div>
 
-              <div style={{ borderTop:`1.5px solid ${P.line}`, padding:'14px 24px', display:'flex', justifyContent:'flex-end' }}>
+              <div style={{ borderTop:`1.5px solid ${P.line}`, padding:'14px 24px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <button onClick={signOut}
+                  style={{ background:'transparent', color:P.red, border:`2px solid ${P.red}`, borderRadius:6, padding:'10px 18px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:'pointer' }}>
+                  Sign out
+                </button>
                 <button onClick={()=>{ if(!confirmOff) setPrefsModal(false); }}
                   style={{ background:P.ink, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 20px', fontFamily:F.body, fontWeight:700, fontSize:13.5, cursor:confirmOff?'not-allowed':'pointer', opacity:confirmOff?0.5:1, boxShadow:`3px 3px 0 ${P.line}` }}>
                   Done
@@ -475,8 +527,6 @@ function Nav({ role, page, setPage, user }) {
             </div>
           </div>
         )}
-
-        <a href="/login" style={{ fontFamily:F.body, fontSize:13, color:P.muted, textDecoration:'none', fontWeight:600 }}>Sign out</a>
       </div>
     </header>
   );
@@ -3524,7 +3574,7 @@ function DashboardApp() {
     loadData();
   }, []);
 
-  if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
+  if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/><Loading/></div>;
 
   const pages = role==='builder' ? {
     dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} user={user} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
@@ -3543,7 +3593,7 @@ function DashboardApp() {
 
   return (
     <div style={{ minHeight:'100vh', background:P.surface }}>
-      <Nav role={role} page={page} setPage={setPage} user={user}/>
+      <Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/>
       {pages[page] || pages['dashboard']}
     </div>
   );

@@ -452,41 +452,58 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
     imageVerifSection +
     'Return this exact JSON structure:\n\n' + jsonSchema + homeownerAddendum;
 
-  async function callModel(maxTokens) {
+  async function callModel(maxTokens, blocks) {
     return client.messages.create({
       model: 'claude-opus-4-5',
       max_tokens: maxTokens,
       system: systemPrompt,
-      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: userPrompt }] }],
+      messages: [{ role: 'user', content: [...blocks, { type: 'text', text: userPrompt }] }],
     });
   }
 
-  let response = await callModel(8000);
-
+  /* Pull the JSON object out of the response even if the model wrapped it in
+     prose or fences — slices from the first { to the last } and parses that. */
   function parseReport(resp) {
     const rawText = resp.content.map(b => b.text || '').join('');
-    const clean = rawText.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    let clean = rawText.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(clean);
+    } catch (e) {
+      const first = clean.indexOf('{');
+      const last = clean.lastIndexOf('}');
+      if (first !== -1 && last > first) {
+        return JSON.parse(clean.slice(first, last + 1));
+      }
+      throw e;
+    }
   }
 
-  let result;
-  try {
-    result = parseReport(response);
-  } catch (e) {
-    /* If the model ran out of room (truncated JSON), try once more with a
-       bigger budget before giving up. */
-    if (response.stop_reason === 'max_tokens') {
-      console.warn('[scorer-ai] Report truncated at 8000 tokens — retrying once at 14000.');
-      try {
-        response = await callModel(14000);
-        result = parseReport(response);
-      } catch (e2) {
-        console.error('JSON parse failed after retry. Stop reason:', response.stop_reason, 'Last 300 chars:', response.content.map(b => b.text || '').join('').slice(-300));
+  const tail = (resp) => resp.content.map(b => b.text || '').join('').slice(-400);
+
+  let response, result;
+  /* Attempt order:
+     1) full prompt (screenshots + labelled project images) at 8000
+     2) same, bigger budget (14000) — handles truncation
+     3) screenshots only, no project images (12000) — handles a bad/confusing
+        image batch so the audit still succeeds, just with keyword pairing */
+  const attempts = [
+    { blocks: imageBlocks,    budget: 8000,  label: 'full prompt @8000' },
+    { blocks: imageBlocks,    budget: 14000, label: 'full prompt @14000' },
+    { blocks: screenshotBlocks, budget: 12000, label: 'screenshots-only @12000 (no project images)' },
+  ];
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i];
+    try {
+      response = await callModel(a.budget, a.blocks);
+      result = parseReport(response);
+      if (i > 0) console.warn('[scorer-ai] Succeeded on fallback attempt: ' + a.label);
+      break;
+    } catch (err) {
+      console.warn('[scorer-ai] Attempt failed (' + a.label + '). stop_reason=' + (response?.stop_reason || 'n/a') + ' err=' + err.message + ' tail=' + (response ? tail(response) : 'no response'));
+      if (i === attempts.length - 1) {
+        console.error('[scorer-ai] All attempts failed.');
         throw new Error('AI response was incomplete. Try again.');
       }
-    } else {
-      console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', response.content.map(b => b.text || '').join('').slice(-300));
-      throw new Error('AI response was incomplete. Try again.');
     }
   }
   result.imageVerification = imageVerification;

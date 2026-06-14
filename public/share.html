@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trust Audit Report — BuilderAudit</title>
+<meta name="description" content="A forensic website trust audit by BuilderAudit.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --fill:#FFD24D; --accent:#5247B8; --surface:#FBF5E1; --ink:#1B1A17; --line:#1B1A17;
+    --muted:#5C5851; --green:#1F8A5B; --red:#D9534F; --amber:#D97706;
+    --display:'Hanken Grotesk',-apple-system,sans-serif;
+    --body:'IBM Plex Sans',-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface);color:var(--ink);font-family:var(--body);line-height:1.6}
+  a{color:var(--accent)}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 20px 64px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:28px}
+  .brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:900;font-size:19px;color:var(--ink);text-decoration:none;letter-spacing:-0.01em}
+  .brand .dot{width:26px;height:26px;border-radius:7px;background:var(--fill);border:2.5px solid var(--line);display:grid;place-items:center;font-size:14px}
+  .pill{font-family:var(--body);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;border:1.5px solid var(--line);border-radius:999px;padding:4px 11px;background:#fff}
+  .card{background:#fff;border:2.5px solid var(--line);border-radius:14px;box-shadow:6px 6px 0 var(--line);overflow:hidden;margin-bottom:22px}
+  .hero-strip{background:var(--fill);border-bottom:2.5px solid var(--line);padding:22px 24px;position:relative}
+  .eyebrow{font-family:var(--body);font-size:11px;font-weight:800;color:var(--ink);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;opacity:0.75}
+  .hero-row{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  h1{font-family:var(--display);font-weight:900;font-size:27px;line-height:1.05;text-transform:uppercase;letter-spacing:-0.02em;margin:0;max-width:560px}
+  .scorechip{flex-shrink:0;transform:rotate(2deg);color:#fff;border:2.5px solid var(--line);border-radius:10px;padding:10px 16px;box-shadow:3px 3px 0 var(--line);text-align:center;min-width:96px}
+  .scorechip .n{font-family:var(--display);font-weight:900;font-size:34px;line-height:1}
+  .scorechip .l{font-family:var(--body);font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-top:3px;opacity:0.92}
+  .body{padding:22px 24px}
+  .sub{font-family:var(--body);font-size:14.5px;color:var(--ink);margin:0 0 4px}
+  .meta{font-family:var(--body);font-size:12.5px;color:var(--muted);margin:6px 0 0}
+  h2{font-family:var(--display);font-weight:800;font-size:16px;text-transform:uppercase;letter-spacing:-0.01em;margin:0 0 14px}
+  .cat{display:grid;grid-template-columns:150px 1fr 34px;gap:12px;align-items:center;margin-bottom:11px}
+  .cat .nm{font-family:var(--body);font-size:13px;font-weight:600}
+  .bar{height:11px;background:var(--surface);border:1.5px solid var(--line);border-radius:4px;overflow:hidden}
+  .bar > div{height:100%}
+  .cat .v{font-family:var(--body);font-size:12.5px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+  ul.clean{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+  ul.clean li{display:flex;gap:10px;font-size:13.5px;line-height:1.45;align-items:flex-start}
+  .tick{flex:0 0 auto;font-weight:800}
+  .action{display:flex;align-items:center;gap:12px;padding:11px 13px;border:2px solid var(--line);border-radius:7px;background:#fff}
+  .action.done{background:var(--surface);opacity:0.62}
+  .action .ttl{flex:1;font-size:14px;font-weight:600}
+  .action .imp{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12px;color:#fff;background:var(--green);border:2px solid var(--line);border-radius:999px;padding:4px 11px;white-space:nowrap}
+  .footer{text-align:center;margin-top:36px;font-family:var(--body);font-size:13px;color:var(--muted)}
+  .cta{display:inline-block;margin-top:10px;background:var(--accent);color:#fff;text-decoration:none;font-family:var(--body);font-weight:700;font-size:14px;border:2px solid var(--line);border-radius:8px;padding:12px 20px;box-shadow:3px 3px 0 var(--line)}
+  .state{text-align:center;padding:80px 20px;font-family:var(--body);color:var(--muted)}
+  .spinner{width:34px;height:34px;border:4px solid #e4dfc9;border-top:4px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a class="brand" href="/"><span class="dot">🔍</span> BuilderAudit</a>
+      <span class="pill">Shared trust report</span>
+    </div>
+    <div id="root"><div class="state"><div class="spinner"></div>Loading report…</div></div>
+    <div class="footer" id="footer" style="display:none">
+      <div>This is a forensic website trust audit produced by BuilderAudit.</div>
+      <a class="cta" href="/">Run a free audit on your own site →</a>
+    </div>
+  </div>
+
+<script>
+(function(){
+  var token = (location.pathname.split('/r/')[1] || '').replace(/\/$/,'');
+  var root = document.getElementById('root');
+  var footer = document.getElementById('footer');
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function scoreColor(s){ return s>=75 ? 'var(--green)' : s>=55 ? 'var(--amber)' : 'var(--red)'; }
+  function fmtDate(d){ try { return new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); } catch(e){ return ''; } }
+
+  fetch('/api/share/' + encodeURIComponent(token))
+    .then(function(r){ return r.ok ? r.json() : r.json().then(function(e){ throw new Error(e.error || 'Not found'); }); })
+    .then(render)
+    .catch(function(err){
+      root.innerHTML = '<div class="state"><div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);margin-bottom:8px">Report unavailable</div>' + esc(err.message) + '</div>';
+    });
+
+  function render(d){
+    document.title = (d.company || d.domain) + ' — Trust Audit · BuilderAudit';
+    var sc = d.score || 0;
+    var col = scoreColor(sc);
+
+    var cats = (d.categories||[]).map(function(c){
+      return '<div class="cat"><div class="nm">'+esc(c.name)+'</div>'
+        + '<div class="bar"><div style="width:'+(c.score||0)+'%;background:'+scoreColor(c.score||0)+'"></div></div>'
+        + '<div class="v">'+(c.score||0)+'</div></div>';
+    }).join('');
+
+    var strengths = (d.strengths||[]).map(function(s){
+      return '<li><span class="tick" style="color:var(--green)">✓</span><span>'+esc(s)+'</span></li>';
+    }).join('');
+
+    var breaks = (d.breakpoints||[]).filter(Boolean).map(function(b){
+      return '<li><span class="tick" style="color:var(--red)">!</span><span>'+esc(b)+'</span></li>';
+    }).join('');
+
+    var actions = (d.topActions||[]).map(function(a){
+      return '<div class="action'+(a.done?' done':'')+'">'
+        + '<span style="flex:0 0 auto;width:20px;height:20px;border-radius:5px;border:2.2px solid '+(a.done?'var(--green)':'var(--line)')+';background:'+(a.done?'var(--green)':'#fff')+';color:#fff;display:grid;place-items:center;font-weight:900;font-size:11px">'+(a.done?'✓':'')+'</span>'
+        + '<span class="ttl" style="'+(a.done?'text-decoration:line-through':'')+'">'+esc(a.title)+'</span>'
+        + '<span class="imp">+'+(a.impact||0)+' pts</span></div>';
+    }).join('');
+
+    var liftNote = (d.fixesApplied>0)
+      ? '<div class="meta" style="color:var(--green);font-weight:600">Score reflects '+d.fixesApplied+' fix'+(d.fixesApplied>1?'es':'')+' marked complete (base score was '+d.baseScore+').</div>'
+      : '';
+
+    var html =
+      '<div class="card">'
+      +  '<div class="hero-strip">'
+      +    '<div class="eyebrow">Website trust audit</div>'
+      +    '<div class="hero-row">'
+      +      '<div><h1>'+esc(d.company||d.domain)+'</h1>'
+      +        '<div class="meta">'+esc(d.domain)+(d.scannedAt?' · scanned '+fmtDate(d.scannedAt):'')+'</div></div>'
+      +      '<div class="scorechip" style="background:'+col+'"><div class="n">'+sc+'</div><div class="l">/ 100 trust</div></div>'
+      +    '</div>'
+      +  '</div>'
+      +  '<div class="body">'
+      +    (d.headline ? '<p class="sub"><b>'+esc(d.headline)+'</b></p>' : '')
+      +    (d.subtext ? '<p class="sub" style="color:var(--muted)">'+esc(d.subtext)+'</p>' : '')
+      +    liftNote
+      +  '</div>'
+      +'</div>'
+
+      + (cats ? '<div class="card"><div class="body"><h2>The 6 trust checks</h2>'+cats+'</div></div>' : '')
+
+      + ((strengths||breaks) ?
+          '<div class="card"><div class="body">'
+          + (strengths ? '<h2>What\'s working</h2><ul class="clean" style="margin-bottom:18px">'+strengths+'</ul>' : '')
+          + (breaks ? '<h2>Where trust breaks down</h2><ul class="clean">'+breaks+'</ul>' : '')
+          + '</div></div>' : '')
+
+      + (actions ? '<div class="card"><div class="body"><h2>Priority fixes</h2><div style="display:flex;flex-direction:column;gap:9px">'+actions+'</div></div></div>' : '');
+
+    root.innerHTML = html;
+    footer.style.display = 'block';
+  }
+})();
+</script>
+</body>
+</html>

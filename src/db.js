@@ -115,6 +115,8 @@ async function initSchema() {
   await step('audits.last_analyzed_at',  `ALTER TABLE audits ADD COLUMN IF NOT EXISTS last_analyzed_at TIMESTAMPTZ`);
   await step('audits.user_id',           `ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id TEXT`);
   await step('audits.audience',          `ALTER TABLE audits ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'builder'`);
+  await step('audits.share_token',       `ALTER TABLE audits ADD COLUMN IF NOT EXISTS share_token TEXT`);
+  await step('index audits.share_token', `CREATE UNIQUE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token) WHERE share_token IS NOT NULL`);
 
   /* User preferences for retention emails */
   await step('users.weekly_email_opt_in',  `ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_opt_in BOOLEAN DEFAULT FALSE`);
@@ -503,6 +505,40 @@ async function getAuditMeta(id) {
   }
 }
 
+/* Generate (or return existing) a public share token for an audit.
+   Only the owner should be allowed to call this (enforced in the route). */
+async function setShareToken(auditId, token) {
+  if (!getPool()) throw new Error('Database not configured');
+  const { rows } = await getPool().query(
+    `UPDATE audits SET share_token = COALESCE(share_token, $2) WHERE id = $1
+     RETURNING share_token`,
+    [auditId, token]
+  );
+  return rows[0]?.share_token || null;
+}
+
+/* Remove a share token (revoke the public link). */
+async function clearShareToken(auditId) {
+  if (!getPool()) throw new Error('Database not configured');
+  await getPool().query(`UPDATE audits SET share_token = NULL WHERE id = $1`, [auditId]);
+}
+
+/* Public lookup by share token — returns the data needed for a read-only summary. */
+async function getAuditByShareToken(token) {
+  if (!getPool() || !token) return null;
+  try {
+    const { rows } = await getPool().query(
+      `SELECT id, url, score, report_json, overrides, audience, created_at, share_token
+       FROM audits WHERE share_token = $1`,
+      [token]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    if (err.code === '42703') return null;
+    throw err;
+  }
+}
+
 // List all audits for a user — newest first
 async function listAuditsForUser(userId) {
   if (!getPool()) return [];
@@ -678,6 +714,9 @@ module.exports = {
   updateAnalysis,
   getAudit,
   getAuditMeta,
+  setShareToken,
+  clearShareToken,
+  getAuditByShareToken,
   listAuditsForUser,
   unlockAudit,
   claimAudit,

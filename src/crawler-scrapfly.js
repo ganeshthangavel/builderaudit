@@ -189,8 +189,6 @@ function parsePageContent(html, pageUrl, origin) {
      - Must not be from a CDN that serves primarily icons (font awesome etc) */
   const images = [];
   const seenSrcs = new Set();
-  const imgRegex = /<img\b[^>]*>/gi;
-  const matches = html.match(imgRegex) || [];
 
   /* Patterns in the src URL that indicate non-project images */
   const EXCLUDE_SRC = /logo|icon|badge|avatar|sprite|placeholder|loader|spinner|pixel|tracking|award|trophy|accreditat|trustmark|checkatrade|fmb|nhbc|chas|niceic|whichl|mybuilder|ratedpeople|trustpilot|google|facebook|twitter|linkedin|instagram|youtube|flag|cert|member|seal|stamp|banner|ribbon|widget|button|arrow|star|rating|review-logo|brand/i;
@@ -198,37 +196,77 @@ function parsePageContent(html, pageUrl, origin) {
   /* Patterns in alt text that indicate non-project images */
   const EXCLUDE_ALT = /logo|icon|badge|award|trophy|accreditat|trustmark|checkatrade|certificate|member|seal|stamp|winner|finalist|runner.?up|sponsor|partner|verified|approved|registered|chartered|affiliated|facebook|twitter|linkedin|instagram|youtube/i;
 
-  for (const tag of matches) {
-    const src = (tag.match(/(?:^|\s)src=["']([^"']+)["']/i) || tag.match(/data-src=["']([^"']+)["']/i) || [])[1];
-    const alt = (tag.match(/alt=["']([^"']*)["']/i) || [])[1] || '';
-
-    if (!src) continue;
-
-    /* Must be a photo format */
-    if (!/\.(jpg|jpeg|png|webp)(\?|$)/i.test(src)) continue;
+  /* Helper: validate, resolve, de-dupe and push a candidate image URL. */
+  const considerImage = (rawSrc, alt) => {
+    if (!rawSrc) return;
+    let src = rawSrc.trim();
+    if (!src || src.startsWith('data:')) return;
 
     /* Resolve relative URLs */
     let abs = src;
-    try { abs = new URL(src, pageUrl).toString(); } catch (e) { continue; }
-    if (!abs.startsWith('http')) continue;
+    try { abs = new URL(src, pageUrl).toString(); } catch (e) { return; }
+    if (!abs.startsWith('http')) return;
 
-    /* Skip duplicates */
+    /* Accept common photo extensions OR extensionless CDN/upload URLs that
+       live under typical media paths (WordPress, Squarespace, Wix, etc serve
+       images without a file extension, e.g. /wp-content/uploads/… or ?w=800). */
+    const looksLikePhoto =
+      /\.(jpg|jpeg|png|webp)(\?|$)/i.test(abs) ||
+      /(wp-content\/uploads|\/uploads\/|\/media\/|\/images?\/|cdn|imgix|cloudinary|squarespace|wixstatic|format=|fit=|\bw=\d|\bh=\d)/i.test(abs);
+    if (!looksLikePhoto) return;
+    /* Never accept obvious non-photos regardless */
+    if (/\.(svg|gif|ico|css|js)(\?|$)/i.test(abs)) return;
+
     const srcKey = abs.split('?')[0];
-    if (seenSrcs.has(srcKey)) continue;
+    if (seenSrcs.has(srcKey)) return;
     seenSrcs.add(srcKey);
 
-    /* Skip non-project images by URL pattern */
-    if (EXCLUDE_SRC.test(abs)) continue;
+    if (EXCLUDE_SRC.test(abs)) return;
+    if (alt && EXCLUDE_ALT.test(alt)) return;
 
-    /* Skip non-project images by alt text */
-    if (alt && EXCLUDE_ALT.test(alt)) continue;
-
-    /* Skip very small images (favicons, tracking pixels, tiny UI elements).
-       We can't get dimensions from HTML alone, but file path patterns help. */
     const pathLower = abs.toLowerCase();
-    if (/\/(\d+x\d+|thumb|icon|favicon|1x1|pixel)/.test(pathLower)) continue;
+    if (/\/(\d+x\d+|thumb|icon|favicon|1x1|pixel)/.test(pathLower)) return;
 
-    images.push({ src: abs, alt, width: 0, height: 0 });
+    images.push({ src: abs, alt: alt || '', width: 0, height: 0 });
+  };
+
+  /* Pick the largest candidate from a srcset string (last/highest-res entry). */
+  const fromSrcset = (srcset) => {
+    if (!srcset) return null;
+    const parts = srcset.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : null;
+  };
+
+  /* 1) <img> tags — read src, data-src, common lazy-load attrs, and srcset */
+  const imgRegex = /<img\b[^>]*>/gi;
+  const matches = html.match(imgRegex) || [];
+  for (const tag of matches) {
+    const alt = (tag.match(/alt=["']([^"']*)["']/i) || [])[1] || '';
+    const direct =
+      (tag.match(/(?:^|\s)src=["']([^"']+)["']/i) || [])[1] ||
+      (tag.match(/data-src=["']([^"']+)["']/i) || [])[1] ||
+      (tag.match(/data-lazy-src=["']([^"']+)["']/i) || [])[1] ||
+      (tag.match(/data-original=["']([^"']+)["']/i) || [])[1] ||
+      null;
+    const srcsetAttr =
+      (tag.match(/(?:^|\s)srcset=["']([^"']+)["']/i) || [])[1] ||
+      (tag.match(/data-srcset=["']([^"']+)["']/i) || [])[1] ||
+      null;
+    considerImage(direct || fromSrcset(srcsetAttr), alt);
+  }
+
+  /* 2) <source srcset=…> inside <picture> elements */
+  const sourceRegex = /<source\b[^>]*>/gi;
+  for (const tag of (html.match(sourceRegex) || [])) {
+    const srcsetAttr = (tag.match(/srcset=["']([^"']+)["']/i) || [])[1];
+    considerImage(fromSrcset(srcsetAttr), '');
+  }
+
+  /* 3) Inline background-image: url(…) — heroes & gallery tiles often use these */
+  const bgRegex = /background(?:-image)?\s*:\s*url\(\s*["']?([^"')]+)["']?\s*\)/gi;
+  let bgMatch;
+  while ((bgMatch = bgRegex.exec(html)) !== null) {
+    considerImage(bgMatch[1], '');
   }
 
   /* Extract internal links for the crawl queue.
@@ -539,5 +577,5 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
-  version: '2026-06-09-autoscroll-counters',
+  version: '2026-06-14-broad-image-extraction',
 };

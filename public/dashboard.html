@@ -372,10 +372,9 @@ function ScanBar({ placeholder = 'yourothersite.co.uk', cta = 'Run audit', onSub
   const go = () => { const u = val.trim(); if (u) { onSubmit ? onSubmit(u) : window.location.href = `/audit?url=https://${u.replace(/^https?:\/\//,'')}&audience=builder`; } };
   return (
     <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:6, maxWidth:560, boxShadow:`4px 4px 0 ${P.line}` }}>
-      <div style={{ padding:'0 14px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</div>
       <input value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()}
         placeholder={placeholder}
-        style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:16, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+        style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:16, color:P.ink, padding:'10px 4px 10px 14px', minWidth:0 }}/>
       <button onClick={go} style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 18px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap' }}>{cta} →</button>
     </div>
   );
@@ -2154,11 +2153,10 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
         <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Who are you up against?</h3>
         <p style={{ fontFamily:F.body, fontSize:13, color:P.muted, margin:'0 0 16px', lineHeight:1.5 }}>Paste a competitor's website. We'll run the same full audit and sit them next to you.</p>
         <div style={{ display:'flex', alignItems:'center', background:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:4, boxShadow:`4px 4px 0 ${P.line}`, marginBottom:10 }}>
-          <span style={{ padding:'0 12px', color:P.muted, fontFamily:F.body, fontSize:14, fontWeight:600 }}>https://</span>
           <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
             placeholder="theirsite.co.uk"
-            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px', minWidth:0 }}/>
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:15, color:P.ink, padding:'10px 4px 10px 14px', minWidth:0 }}/>
         </div>
         <button onClick={()=>runAudit(i)}
           style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'12px 16px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`3px 3px 0 ${P.line}`, width:'100%' }}>
@@ -3032,10 +3030,9 @@ function HomeownerCompare({ user, latestAudit, onSignedUp = ()=>{}, requireAccou
         <div style={{ fontFamily:F.display, fontWeight:900, fontSize:19, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>Add a builder</div>
         <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, lineHeight:1.45 }}>Paste their website and we'll run the same full trust audit.</div>
         <div style={{ display:'flex', alignItems:'center', background:P.surface, border:`2px solid ${P.line}`, borderRadius:7, padding:5, boxShadow:`3px 3px 0 ${P.line}`, marginTop:2 }}>
-          <span style={{ padding:'0 7px', fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted, flexShrink:0 }}>https://</span>
           <input value={slot.draft} onChange={e=>setDraft(i,e.target.value)} onKeyDown={e=>e.key==='Enter'&&runAudit(i)}
             placeholder="theirsite.co.uk"
-            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'9px 3px', minWidth:0 }}/>
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontFamily:F.body, fontSize:13.5, color:P.ink, padding:'9px 3px 9px 12px', minWidth:0 }}/>
         </div>
         <button onClick={()=>runAudit(i)}
           style={{ background:P.accent, color:'#fff', border:`2px solid ${P.line}`, borderRadius:7, padding:'12px 14px', fontFamily:F.body, fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`3px 3px 0 ${P.line}`, width:'100%' }}>

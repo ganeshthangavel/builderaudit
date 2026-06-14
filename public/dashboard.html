@@ -2472,18 +2472,28 @@ function HoVerdict({ report, domain }) {
   const cleanArr = (a) => Array.isArray(a) ? a.map(clean).filter(Boolean) : [];
   const companyName = clean(bs.company_name);
   const oneLiner    = clean(bs.one_liner);
+  const directors   = cleanArr(bs.team?.owners);
+  const directorsText = directors.length ? directors.join(', ') : null;
+  /* Facts that genuinely exist (used to decide whether the card is worth showing) */
+  const realFacts = [
+    clean(bs.location), clean(bs.service_area), clean(bs.established),
+    clean(bs.years_trading), clean(bs.team?.team_size), clean(bs.project_value_range),
+  ].filter(Boolean);
+  /* Directors is ALWAYS shown when the card renders — homeowners want to know if
+     the people behind the company are named at all. `true` = always show. */
   const aboutFacts = [
     ['Location',       clean(bs.location)],
     ['Service area',   clean(bs.service_area)],
     ['Established',    clean(bs.established)],
     ['Years trading',  clean(bs.years_trading)],
+    ['Directors',      directorsText, true],
     ['Team size',      clean(bs.team?.team_size)],
     ['Project values', clean(bs.project_value_range)],
-  ].filter(([, v]) => v);
+  ].filter(([, v, always]) => v || always);
   const workTypes      = cleanArr(bs.work_types);
   const accreditations = cleanArr(bs.accreditations);
   const usps           = cleanArr(bs.unique_selling_points);
-  const hasAbout = companyName || oneLiner || aboutFacts.length || workTypes.length || accreditations.length || usps.length;
+  const hasAbout = companyName || oneLiner || realFacts.length || directorsText || workTypes.length || accreditations.length || usps.length;
 
   return (
     <div>
@@ -2523,7 +2533,7 @@ function HoVerdict({ report, domain }) {
                 {aboutFacts.map(([label, v], i) => (
                   <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
                     <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
-                    <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink }}>{v}</div>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, color:v?P.ink:P.red, fontStyle:v?'normal':'italic' }}>{v || (label === 'Directors' ? "Not named on their site — ask who'll be responsible" : 'Not stated')}</div>
                   </div>
                 ))}
               </div>

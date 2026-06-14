@@ -105,7 +105,8 @@ async function fetchImageAsBlock(url) {
   }
 }
 
-async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext, audience) {
+async function scoreWebsite(pages, targetUrl, imageVerification, overrides, userContext, audience, options = {}) {
+  const lite = options.lite === true;   // competitor scans: skip slow individual-image vision fetching
   const client = getClient();
   audience = audience || 'builder';
 
@@ -182,14 +183,14 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     ref: 'img_' + (idx + 1), src: i.src, alt: i.alt, width: i.width, height: i.height,
   }));
   const PROJECT_IMAGE_CAP = 12;
-  const projectCandidates = refImages.filter(isLikelyProjectImage).slice(0, PROJECT_IMAGE_CAP);
-  const fetchedProjectImages = (await Promise.all(
+  const projectCandidates = lite ? [] : refImages.filter(isLikelyProjectImage).slice(0, PROJECT_IMAGE_CAP);
+  const fetchedProjectImages = lite ? [] : (await Promise.all(
     projectCandidates.map(async (im) => {
       const source = await fetchImageAsBlock(im.src);
       return source ? { ref: im.ref, source } : null;
     })
   )).filter(Boolean);
-  console.log(`[scorer-ai] Project photos: ${projectCandidates.length} selected, ${fetchedProjectImages.length} fetched for vision analysis`);
+  if (!lite) console.log(`[scorer-ai] Project photos: ${projectCandidates.length} selected, ${fetchedProjectImages.length} fetched for vision analysis`);
 
   /* Interleave a ref label before each project image so the AI can tie its
      description to the exact image (and thus the exact URL on the dashboard). */

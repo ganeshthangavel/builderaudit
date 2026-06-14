@@ -6,6 +6,9 @@
 <title>Trust Audit Report — BuilderAudit</title>
 <meta name="description" content="A forensic website trust audit by BuilderAudit.">
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/assets/logo/builderaudit-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -22,7 +25,7 @@
   .wrap{max-width:860px;margin:0 auto;padding:28px 20px 64px}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:28px}
   .brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:900;font-size:19px;color:var(--ink);text-decoration:none;letter-spacing:-0.01em}
-  .brand .dot{width:26px;height:26px;border-radius:7px;background:var(--fill);border:2.5px solid var(--line);display:grid;place-items:center;font-size:14px}
+  .brand-word{font-family:var(--display);font-weight:900;font-size:19px;letter-spacing:-0.01em}
   .pill{font-family:var(--body);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;border:1.5px solid var(--line);border-radius:999px;padding:4px 11px;background:#fff}
   .card{background:#fff;border:2.5px solid var(--line);border-radius:14px;box-shadow:6px 6px 0 var(--line);overflow:hidden;margin-bottom:22px}
   .hero-strip{background:var(--fill);border-bottom:2.5px solid var(--line);padding:22px 24px;position:relative}
@@ -48,6 +51,25 @@
   .action.done{background:var(--surface);opacity:0.62}
   .action .ttl{flex:1;font-size:14px;font-weight:600}
   .action .imp{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12px;color:#fff;background:var(--green);border:2px solid var(--line);border-radius:999px;padding:4px 11px;white-space:nowrap}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-family:var(--body);font-size:12.5px;font-weight:600;background:var(--surface);border:1.5px solid var(--line);border-radius:999px;padding:5px 12px}
+  .kv{display:flex;flex-wrap:wrap;gap:18px 28px;margin-bottom:4px}
+  .kv .item{min-width:120px}
+  .kv .k{font-family:var(--body);font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:2px}
+  .kv .v{font-family:var(--display);font-weight:800;font-size:15px;color:var(--ink)}
+  .bp{border:2px solid var(--line);border-radius:9px;padding:13px 15px;margin-bottom:10px;background:#fff}
+  .bp .t{font-family:var(--display);font-weight:800;font-size:14.5px;margin-bottom:5px}
+  .bp .r{font-family:var(--body);font-size:13px;color:var(--muted);font-style:italic;margin-bottom:6px;line-height:1.45}
+  .bp .f{font-family:var(--body);font-size:13px;line-height:1.45}
+  .bp .f b{color:var(--accent)}
+  .voice{background:var(--accent);color:#fff;border:2.5px solid var(--line);border-radius:12px;box-shadow:5px 5px 0 var(--line);padding:20px 22px;margin-bottom:22px;font-family:var(--body);font-size:15px;line-height:1.6}
+  .voice .lbl{font-family:var(--body);font-size:10.5px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;opacity:0.7;margin-bottom:8px}
+  .comp{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;border:2px solid var(--line);border-radius:9px;padding:13px 15px;margin-bottom:10px;background:#fff}
+  .comp.you{background:var(--fill)}
+  .comp .nm{font-family:var(--display);font-weight:800;font-size:15px}
+  .comp .u{font-family:var(--body);font-size:12px;color:var(--muted);margin-top:2px}
+  .comp .sc{font-family:var(--display);font-weight:900;font-size:24px;border:2px solid var(--line);border-radius:7px;padding:6px 12px;min-width:54px;text-align:center;box-shadow:2px 2px 0 var(--line)}
+  .rankline{font-family:var(--body);font-size:14px;line-height:1.55;margin:0 0 16px;padding:13px 15px;background:var(--surface);border:1.5px dashed var(--line);border-radius:9px}
   .footer{text-align:center;margin-top:36px;font-family:var(--body);font-size:13px;color:var(--muted)}
   .cta{display:inline-block;margin-top:10px;background:var(--accent);color:#fff;text-decoration:none;font-family:var(--body);font-weight:700;font-size:14px;border:2px solid var(--line);border-radius:8px;padding:12px 20px;box-shadow:3px 3px 0 var(--line)}
   .state{text-align:center;padding:80px 20px;font-family:var(--body);color:var(--muted)}
@@ -58,7 +80,7 @@
 <body>
   <div class="wrap">
     <div class="topbar">
-      <a class="brand" href="/"><span class="dot">🔍</span> BuilderAudit</a>
+      <a class="brand" href="/"><svg width="30" height="31" viewBox="0 0 240 248" role="img" aria-label="BuilderAudit" style="display:block;flex:0 0 auto"><rect x="151" y="150" width="30" height="78" rx="15" transform="rotate(-45 166 189)" fill="#1B1A17"/><circle cx="114" cy="152" r="58" fill="#FFFFFF" stroke="#1B1A17" stroke-width="14"/><path d="M86 130 Q75 152 88 176" fill="none" stroke="#D8D5CC" stroke-width="9" stroke-linecap="round"/><rect x="32" y="92" width="164" height="31" rx="15.5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M62 96 Q62 40 114 40 Q166 40 166 96 Z" fill="#FFD24D" stroke="#1B1A17" stroke-width="8" stroke-linejoin="round"/><rect x="100" y="26" width="28" height="20" rx="5" fill="#FFD24D" stroke="#1B1A17" stroke-width="8"/><path d="M68 86 Q114 97 160 86" fill="none" stroke="#5247B8" stroke-width="9" stroke-linecap="round"/><path d="M114 46 V90" fill="none" stroke="#1B1A17" stroke-width="6" stroke-linecap="round"/><path d="M88 52 Q80 72 86 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/><path d="M140 52 Q148 72 142 90" fill="none" stroke="#1B1A17" stroke-width="5.5" stroke-linecap="round"/></svg><span class="brand-word"><span>Builder</span><span style="color:var(--accent)">Audit</span></span></a>
       <span class="pill">Shared trust report</span>
     </div>
     <div id="root"><div class="state"><div class="spinner"></div>Loading report…</div></div>
@@ -89,60 +111,117 @@
     document.title = (d.company || d.domain) + ' — Trust Audit · BuilderAudit';
     var sc = d.score || 0;
     var col = scoreColor(sc);
+    var name = d.company || d.domain;
 
-    var cats = (d.categories||[]).map(function(c){
-      return '<div class="cat"><div class="nm">'+esc(c.name)+'</div>'
-        + '<div class="bar"><div style="width:'+(c.score||0)+'%;background:'+scoreColor(c.score||0)+'"></div></div>'
-        + '<div class="v">'+(c.score||0)+'</div></div>';
-    }).join('');
+    /* Plain-English verdict band, spoken to the company */
+    var band = sc>=75 ? 'Your website is doing its job — most homeowners will trust you on first look.'
+             : sc>=55 ? 'Your website earns some trust, but clear gaps are costing you enquiries.'
+             : 'Your website is losing you work — homeowners hit doubts before they ever call.';
 
-    var strengths = (d.strengths||[]).map(function(s){
-      return '<li><span class="tick" style="color:var(--green)">✓</span><span>'+esc(s)+'</span></li>';
-    }).join('');
+    var s = d.snapshot || {};
 
-    var breaks = (d.breakpoints||[]).filter(Boolean).map(function(b){
-      return '<li><span class="tick" style="color:var(--red)">!</span><span>'+esc(b)+'</span></li>';
-    }).join('');
-
-    var actions = (d.topActions||[]).map(function(a){
-      return '<div class="action'+(a.done?' done':'')+'">'
-        + '<span style="flex:0 0 auto;width:20px;height:20px;border-radius:5px;border:2.2px solid '+(a.done?'var(--green)':'var(--line)')+';background:'+(a.done?'var(--green)':'#fff')+';color:#fff;display:grid;place-items:center;font-weight:900;font-size:11px">'+(a.done?'✓':'')+'</span>'
-        + '<span class="ttl" style="'+(a.done?'text-decoration:line-through':'')+'">'+esc(a.title)+'</span>'
-        + '<span class="imp">+'+(a.impact||0)+' pts</span></div>';
-    }).join('');
-
-    var liftNote = (d.fixesApplied>0)
-      ? '<div class="meta" style="color:var(--green);font-weight:600">Score reflects '+d.fixesApplied+' fix'+(d.fixesApplied>1?'es':'')+' marked complete (base score was '+d.baseScore+').</div>'
-      : '';
-
-    var html =
+    /* ── Hero ── */
+    var hero =
       '<div class="card">'
       +  '<div class="hero-strip">'
-      +    '<div class="eyebrow">Website trust audit</div>'
+      +    '<div class="eyebrow">Your website trust audit</div>'
       +    '<div class="hero-row">'
-      +      '<div><h1>'+esc(d.company||d.domain)+'</h1>'
+      +      '<div><h1>'+esc(name)+'</h1>'
       +        '<div class="meta">'+esc(d.domain)+(d.scannedAt?' · scanned '+fmtDate(d.scannedAt):'')+'</div></div>'
       +      '<div class="scorechip" style="background:'+col+'"><div class="n">'+sc+'</div><div class="l">/ 100 trust</div></div>'
       +    '</div>'
       +  '</div>'
       +  '<div class="body">'
-      +    (d.headline ? '<p class="sub"><b>'+esc(d.headline)+'</b></p>' : '')
+      +    '<p class="sub"><b>'+esc(band)+'</b></p>'
+      +    (d.headline ? '<p class="sub" style="color:var(--muted)">'+esc(d.headline)+'</p>' : '')
       +    (d.subtext ? '<p class="sub" style="color:var(--muted)">'+esc(d.subtext)+'</p>' : '')
-      +    liftNote
+      +    (d.fixesApplied>0 ? '<div class="meta" style="color:var(--green);font-weight:600">This score includes '+d.fixesApplied+' fix'+(d.fixesApplied>1?'es':'')+' you\'ve marked done (you started at '+d.baseScore+'). Re-scan to lock it in.</div>' : '')
       +  '</div>'
-      +'</div>'
+      +'</div>';
 
-      + (cats ? '<div class="card"><div class="body"><h2>The 6 trust checks</h2>'+cats+'</div></div>' : '')
+    /* ── AI voice intro (speaks directly to the owner) ── */
+    var voice = d.voiceIntro
+      ? '<div class="voice"><div class="lbl">What this means for you</div>'+esc(d.voiceIntro)+'</div>'
+      : '';
 
-      + ((strengths||breaks) ?
-          '<div class="card"><div class="body">'
-          + (strengths ? '<h2>What\'s working</h2><ul class="clean" style="margin-bottom:18px">'+strengths+'</ul>' : '')
-          + (breaks ? '<h2>Where trust breaks down</h2><ul class="clean">'+breaks+'</ul>' : '')
-          + '</div></div>' : '')
+    /* ── About your business ── */
+    var kv = [];
+    if (s.established)  kv.push(['Established', s.established]);
+    if (s.yearsTrading) kv.push(['Trading', s.yearsTrading]);
+    if (s.location)     kv.push(['Based in', s.location]);
+    if (s.serviceArea)  kv.push(['Covers', s.serviceArea]);
+    var snapshot = '';
+    if (s.oneLiner || kv.length || (s.workTypes&&s.workTypes.length) || (s.accreditations&&s.accreditations.length) || (s.team&&s.team.length)) {
+      snapshot = '<div class="card"><div class="body"><h2>About your business</h2>'
+        + (s.oneLiner ? '<p class="sub" style="margin-bottom:16px">'+esc(s.oneLiner)+'</p>' : '')
+        + (kv.length ? '<div class="kv">'+kv.map(function(p){ return '<div class="item"><div class="k">'+esc(p[0])+'</div><div class="v">'+esc(p[1])+'</div></div>'; }).join('')+'</div>' : '')
+        + ((s.workTypes&&s.workTypes.length) ? '<div style="margin-top:16px"><div class="k" style="font-family:var(--body);font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:7px">What you do</div><div class="chips">'+s.workTypes.map(function(w){ return '<span class="chip">'+esc(w)+'</span>'; }).join('')+'</div></div>' : '')
+        + ((s.accreditations&&s.accreditations.length) ? '<div style="margin-top:14px"><div class="k" style="font-family:var(--body);font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:7px">Accreditations found</div><div class="chips">'+s.accreditations.map(function(w){ return '<span class="chip">✓ '+esc(w)+'</span>'; }).join('')+'</div></div>' : '')
+        + ((s.team&&s.team.length) ? '<div style="margin-top:14px"><div class="k" style="font-family:var(--body);font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:7px">Your team on the site</div><div class="chips">'+s.team.map(function(w){ return '<span class="chip">'+esc(w)+'</span>'; }).join('')+'</div></div>' : '')
+        + '</div></div>';
+    }
 
-      + (actions ? '<div class="card"><div class="body"><h2>Priority fixes</h2><div style="display:flex;flex-direction:column;gap:9px">'+actions+'</div></div></div>' : '');
+    /* ── Trust checks ── */
+    var cats = (d.categories||[]).map(function(c){
+      return '<div class="cat"><div class="nm">'+esc(c.name)+'</div>'
+        + '<div class="bar"><div style="width:'+(c.score||0)+'%;background:'+scoreColor(c.score||0)+'"></div></div>'
+        + '<div class="v">'+(c.score||0)+'</div></div>';
+    }).join('');
+    var catCard = cats ? '<div class="card"><div class="body"><h2>The 6 trust checks homeowners make</h2>'+cats+'</div></div>' : '';
 
-    root.innerHTML = html;
+    /* ── Strengths ── */
+    var strengths = (d.strengths||[]).map(function(x){
+      return '<li><span class="tick" style="color:var(--green)">✓</span><span>'+esc(x)+'</span></li>';
+    }).join('');
+    var strengthCard = strengths ? '<div class="card"><div class="body"><h2>What\'s working in your favour</h2><ul class="clean">'+strengths+'</ul></div></div>' : '';
+
+    /* ── Trust breakpoints (where you lose them) ── */
+    var bps = (d.breakpoints||[]).filter(function(b){ return b.title; }).map(function(b){
+      return '<div class="bp"><div class="t">'+esc(b.title)+'</div>'
+        + (b.reaction ? '<div class="r">"'+esc(b.reaction)+'"</div>' : '')
+        + (b.fix ? '<div class="f"><b>Fix:</b> '+esc(b.fix)+'</div>' : '')
+        + '</div>';
+    }).join('');
+    var bpCard = bps ? '<div class="card"><div class="body"><h2>Where you\'re losing homeowners</h2>'+bps+'</div></div>' : '';
+
+    /* ── Photo verdict ── */
+    var photoCard = d.photoSummary ? '<div class="card"><div class="body"><h2>Your photos</h2><p class="sub" style="color:var(--muted);margin:0">'+esc(d.photoSummary)+'</p></div></div>' : '';
+
+    /* ── Priority fixes ── */
+    var actions = (d.topActions||[]).map(function(a){
+      return '<div class="action'+(a.done?' done':'')+'">'
+        + '<span style="flex:0 0 auto;width:20px;height:20px;border-radius:5px;border:2.2px solid '+(a.done?'var(--green)':'var(--line)')+';background:'+(a.done?'var(--green)':'#fff')+';color:#fff;display:grid;place-items:center;font-weight:900;font-size:11px">'+(a.done?'✓':'')+'</span>'
+        + '<div style="flex:1"><div class="ttl" style="'+(a.done?'text-decoration:line-through':'')+'">'+esc(a.title)+'</div>'
+        +   (a.why ? '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.4">'+esc(a.why)+(a.time?' · '+esc(a.time):'')+'</div>' : '')
+        + '</div>'
+        + '<span class="imp">+'+(a.impact||0)+' pts</span></div>';
+    }).join('');
+    var actionCard = actions ? '<div class="card"><div class="body"><h2>Your priority fixes</h2><div style="display:flex;flex-direction:column;gap:9px">'+actions+'</div></div></div>' : '';
+
+    /* ── Competitors (bottom) ── */
+    var compCard = '';
+    if (d.competitors && d.competitors.length) {
+      var rank = d.ranking;
+      var rankLine = rank
+        ? '<p class="rankline">Against the '+rank.of+' competitor'+(rank.of>1?'s':'')+' you\'ve audited, you rank <b>#'+rank.position+' of '+rank.total+'</b> — you beat '+rank.beat+' of '+rank.of+', and the field averages '+rank.fieldAvg+' to your '+sc+'.</p>'
+        : '';
+      /* combined field incl. "you", sorted by score */
+      var field = [{ name:name, url:d.domain, score:sc, you:true }]
+        .concat(d.competitors.map(function(c){ return { name:c.name, url:c.url, score:c.score, you:false, verdict:c.verdict }; }))
+        .sort(function(p,q){ return q.score - p.score; });
+      var rows = field.map(function(f){
+        return '<div class="comp'+(f.you?' you':'')+'">'
+          + '<div><div class="nm">'+esc(f.name)+(f.you?' <span style="font-size:11px;color:var(--accent)">(you)</span>':'')+'</div>'
+          +   (f.url ? '<div class="u">'+esc(f.url)+'</div>' : '')
+          +   (f.verdict ? '<div class="u" style="margin-top:4px">'+esc(f.verdict)+'</div>' : '')
+          + '</div>'
+          + '<div class="sc" style="background:'+scoreColor(f.score)+';color:#fff">'+f.score+'</div>'
+          + '</div>';
+      }).join('');
+      compCard = '<div class="card"><div class="body"><h2>How you compare to other builders</h2>'+rankLine+rows+'</div></div>';
+    }
+
+    root.innerHTML = hero + voice + snapshot + catCard + strengthCard + bpCard + photoCard + actionCard + compCard;
     footer.style.display = 'block';
   }
 })();

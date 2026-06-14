@@ -125,6 +125,13 @@ async function initSchema() {
   /* Phone number (required at signup, never displayed publicly) */
   await step('users.phone',                 `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`);
 
+  /* Email verification — prove the address is real & owned before the account is trusted */
+  await step('users.email_verified',  `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE`);
+  await step('users.verify_token',    `ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT`);
+  await step('users.verify_sent_at',  `ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_sent_at TIMESTAMPTZ`);
+  await step('users.email_verified_at',`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`);
+  await step('index users.verify_token', `CREATE INDEX IF NOT EXISTS idx_users_verify_token ON users(verify_token) WHERE verify_token IS NOT NULL`);
+
   /* GDPR consent flags + timestamps. We store both whether the user consented
      AND when, because UK GDPR Art 7(1) requires we be able to demonstrate consent.
      The consent_log table below has the immutable audit trail. */
@@ -430,12 +437,49 @@ async function logConsent({ userId, consentType, granted, ipAddress, userAgent }
   }
 }
 
+/* ── Email verification ───────────────────────────────────────────────────
+   Store a one-time token against the user; clicking the emailed link verifies
+   the address. Tokens are single-use and replaced on each (re)send. */
+async function setVerifyToken(userId, token) {
+  if (!getPool()) return;
+  try {
+    await getPool().query(
+      `UPDATE users SET verify_token = $2, verify_sent_at = NOW(), email_verified = FALSE WHERE id = $1`,
+      [userId, token]
+    );
+  } catch (err) {
+    if (err.code === '42703') { console.warn('setVerifyToken: verification columns missing — run migrations'); return; }
+    throw err;
+  }
+}
+
+/* Verify by token. Returns the user row on success, or null if the token is
+   unknown/expired/already used. Tokens older than 7 days are rejected. */
+async function verifyEmailByToken(token) {
+  if (!getPool() || !token) return null;
+  try {
+    const { rows } = await getPool().query(
+      `UPDATE users
+          SET email_verified = TRUE, email_verified_at = NOW(), verify_token = NULL
+        WHERE verify_token = $1
+          AND verify_sent_at > NOW() - INTERVAL '7 days'
+        RETURNING id, email, company_name`,
+      [token]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    if (err.code === '42703') { console.warn('verifyEmailByToken: verification columns missing'); return null; }
+    throw err;
+  }
+}
+
 async function getUserByEmail(email) {
   if (!getPool()) return null;
   try {
     const { rows } = await getPool().query(
       `SELECT id, email, password_hash, company_name, business_type, region, created_at,
               phone, weekly_email_opt_in, last_weekly_email_at,
+              email_verified, verify_token,
               consent_agency, consent_agency_at
        FROM users WHERE email = $1`,
       [email.toLowerCase().trim()]
@@ -461,6 +505,7 @@ async function getUserById(id) {
     const { rows } = await getPool().query(
       `SELECT id, email, company_name, business_type, region, created_at,
               phone, weekly_email_opt_in, last_weekly_email_at,
+              email_verified, verify_token,
               consent_agency, consent_agency_at
        FROM users WHERE id = $1`,
       [id]
@@ -788,6 +833,8 @@ module.exports = {
   updateUserSettings,
   markWeeklyEmailSent,
   logConsent,
+  setVerifyToken,
+  verifyEmailByToken,
   // audits
   saveAudit,
   updateAnalysis,

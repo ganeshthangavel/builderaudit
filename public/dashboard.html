@@ -61,6 +61,26 @@ const F = {
   body:    '"IBM Plex Sans", -apple-system, sans-serif',
 };
 
+/* Conservative projected-score model — mirrors the server's computeAdjustedScore.
+   Self-reported fixes + photo corrections give a PROJECTED lift with diminishing
+   returns, capped so ticking boxes can never reach a perfect score. A real
+   re-scan is what verifies the work and unlocks higher scores. */
+function projectScore(report, completedFixIds, excludedPhotoCount) {
+  const base = report?.hero?.score || 0;
+  const actions = report?.top_actions || [];
+  const fixPts = actions.reduce((s,a,i) =>
+    (completedFixIds && completedFixIds.has(i))
+      ? s + ((typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2))
+      : s, 0);
+  const photoPts = Math.min(excludedPhotoCount || 0, 4);   // photo corrections are a small nudge, capped
+  const raw = fixPts + photoPts;
+  if (raw <= 0) return base;
+  const gap = Math.max(0, 100 - base);
+  const maxLift = Math.min(Math.round(gap * 0.5), 18);      // close at most half the gap to 100
+  const eff = Math.round(maxLift * (1 - Math.exp(-raw / 12))); // diminishing returns
+  return Math.min(base + eff, base + maxLift);
+}
+
 // ── Background competitor-audit store ─────────────────────────────
 // Lives OUTSIDE the React tree so scans keep running (and their loading
 // state survives) even when you navigate to another dashboard page and the
@@ -558,18 +578,16 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
     saveOverride({ fixId: id, completed: nowDone });
   };
 
-  /* Score: use server-adjusted score if available, else calculate locally.
-     Count ALL completed fixes (the Fixes page can complete beyond the top 5
-     shown here), matching the server's computation across every top_action. */
+  /* Score: use server-adjusted score if available, else project locally with
+     the same conservative, capped model (diminishing returns; can't hit 100). */
   const allActions = report?.top_actions || [];
-  const completedPtsAll = allActions.reduce((s,a,i) => {
+  const completedPts = allActions.reduce((s,a,i) => {
     if (!completedFixIds.has(i)) return s;
     const pts = (typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2);
     return s + pts;
   }, 0);
-  const completedPts = completedPtsAll || fixDefs.filter(f => completedFixIds.has(f.id)).reduce((s,f)=>s+f.pts,0);
-  const photoBoost = excludedPhotoIds.size * 5;
-  const score = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts + photoBoost);
+  const score = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, excludedPhotoIds.size);
+  const scoreLift = Math.max(0, score - baseScore);
 
   const previousScore = baseScore; // base is the "last scan" reference
   const change = score - previousScore;
@@ -585,8 +603,10 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
     /* Boost photo score if some flagged photos were excluded */
     let s = normTQ(q.score);
     if (i === 1 && excludedPhotoIds.size > 0) {
-      /* "Do I believe these are real projects?" — each excluded flagged photo boosts this by ~5 pts */
-      s = Math.min(100, s + excludedPhotoIds.size * 5);
+      /* Correcting mis-flagged photos nudges the "Real projects" read, but only
+         a little and capped — the real lift comes from adding genuine project
+         photos, which a re-scan would detect. */
+      s = Math.min(s + Math.min(excludedPhotoIds.size, 4) * 2, Math.max(s, 70));
     }
     return { name: names[i]||q.question.slice(0,20), s, status: s>=75?'ok':s>=55?'warn':'risk' };
   }) : [
@@ -624,14 +644,14 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
           <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:28, alignItems:'center' }}>
             <Donut score={score} size={170}/>
             <div>
-              <Label>Latest audit {completedPts > 0 && <span style={{ marginLeft:6, padding:'2px 8px', background:P.green, color:'#fff', borderRadius:999, fontSize:10, fontWeight:700 }}>+{completedPts} pts from fixes</span>}</Label>
+              <Label>Latest audit {scoreLift > 0 && <span style={{ marginLeft:6, padding:'2px 8px', background:P.green, color:'#fff', borderRadius:999, fontSize:10, fontWeight:700 }}>+{scoreLift} projected</span>}</Label>
               <div style={{ fontFamily:F.display, fontWeight:800, fontSize:22, color:P.ink, marginBottom:6 }}>
                 {score>=80?'Looking solid':score>=60?'Could be better — climbing fast':'Needs work'}
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, fontFamily:F.body, fontSize:14, fontWeight:600 }}>
-                {completedPts > 0 ? (
+                {scoreLift > 0 ? (
                   <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.green, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
-                    ↑ +{completedPts} pts from {fixesDone} fix{fixesDone>1?'es':''}
+                    ↑ +{scoreLift} projected from {fixesDone} fix{fixesDone>1?'es':''}
                   </span>
                 ) : (
                   <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', background:P.muted, color:'#fff', borderRadius:999, fontSize:12, fontWeight:700 }}>
@@ -1534,7 +1554,7 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
   const reqCount       = Object.values(reqState).filter(r=>r.requested).length;
   const remaining      = fixes.filter(f=>!isDone(f.id)).reduce((a,b)=>a+b.impact,0);
   const completedPts   = fixes.filter(f=>isDone(f.id)).reduce((a,b)=>a+b.impact,0);
-  const liveScore      = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts);
+  const liveScore      = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, 0);
   const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
 
   return (
@@ -1574,8 +1594,10 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
             <div style={{ width:`${liveScore}%`, height:'100%', background:P.green, transition:'width .35s' }}/>
           </div>
         </div>
-        <span style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.55)', maxWidth:230, lineHeight:1.45 }}>
-          {completedPts > 0 ? 'Tick saves automatically. Re-scan to make this your official score.' : 'Tick fixes off to see your score climb — it saves as you go.'}
+        <span style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.55)', maxWidth:240, lineHeight:1.45 }}>
+          {doneCount === 0
+            ? 'Tick fixes off to see your projected score climb — it saves as you go.'
+            : 'This is a projection. Actually ship the changes, then re-scan to verify them and unlock a higher score — ticking alone can\'t reach the top.'}
         </span>
       </div>
 
@@ -1652,14 +1674,7 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
      reflects the work you've done, matching the dashboard. Server-adjusted
      score wins when present; otherwise compute the same way locally. */
   const baseScore = report?.hero?.score || 64;
-  const allActions = report?.top_actions || [];
-  const completedPts = allActions.reduce((s,a,i) => {
-    if (!completedFixIds.has(i)) return s;
-    const pts = (typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2);
-    return s + pts;
-  }, 0);
-  const photoBoost = excludedPhotoIds.size * 5;
-  const youScore = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts + photoBoost);
+  const youScore = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, excludedPhotoIds.size);
 
   /* YOUR card — built from the live audit */
   const you = {

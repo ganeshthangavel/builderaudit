@@ -827,6 +827,26 @@ const VALID_REGIONS = [
   'Scotland','Wales','Northern Ireland',
 ];
 
+/* ── UK phone validation ──────────────────────────────────────────────────
+   Normalises common UK formats (+44, 0044, 44, leading 0, spaces/dashes/parens)
+   to a canonical national 0-number and an E.164 (+44) form, and validates the
+   prefix + length. Returns { national, e164 } or null if it isn't a plausible
+   UK number. This proves the number is well-formed; it does NOT prove the line
+   is live (that needs an SMS one-time-code — see notes). */
+function normalizeUKPhone(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim().replace(/[\s().\-]/g, '');
+  if (/[^\d+]/.test(s)) return null;                 // only digits / leading +
+  if (s.startsWith('+44'))      s = '0' + s.slice(3);
+  else if (s.startsWith('0044')) s = '0' + s.slice(4);
+  else if (s.startsWith('44') && s.length >= 11) s = '0' + s.slice(2);
+  if (!/^0\d+$/.test(s)) return null;                // must reduce to a 0-number
+  // Valid UK ranges: 01/02/03 (geographic & non-geo), 05 (VoIP), 07 (mobile),
+  // 08 (freephone/special). Total length 10 or 11 digits incl. the leading 0.
+  if (!/^0(1\d{8,9}|2\d{9}|3\d{9}|5\d{9}|7[1-9]\d{8}|8\d{8,9})$/.test(s)) return null;
+  return { national: s, e164: '+44' + s.slice(1) };
+}
+
 app.post('/api/auth/signup', async (req, res) => {
   const {
     email, password, phone, companyName, businessType, region,
@@ -842,6 +862,10 @@ app.post('/api/auth/signup', async (req, res) => {
   }
   if (!phone || phone.replace(/\D/g, '').length < 10) {
     return res.status(400).json({ error: 'Please enter a valid UK phone number' });
+  }
+  const ukPhone = normalizeUKPhone(phone);
+  if (!ukPhone) {
+    return res.status(400).json({ error: "That doesn't look like a valid UK phone number. Use a mobile (07…) or landline (01/02/03…)." });
   }
   if (!companyName || companyName.trim().length < 2) {
     return res.status(400).json({ error: 'Please enter your company name' });
@@ -872,7 +896,7 @@ app.post('/api/auth/signup', async (req, res) => {
       companyName: companyName.trim(),
       businessType,
       region,
-      phone: phone.trim(),
+      phone: ukPhone.national,
       consentTos: !!consentTos,
       consentAuth: !!consentAuth,
       consentAgency: !!consentAgency,
@@ -894,15 +918,28 @@ app.post('/api/auth/signup', async (req, res) => {
 
     /* Notify the business owner of the new account (fire-and-forget). */
     email.sendNewSignupNotification({
-      user: { name: companyName.trim(), email, company_name: companyName.trim(), phone: phone.trim(), business_type: businessType, region },
+      user: { name: companyName.trim(), email, company_name: companyName.trim(), phone: ukPhone.national, business_type: businessType, region },
     }).catch(e => console.error('[signup] notify failed:', e.message));
+
+    /* Email verification — generate a one-time token, store it, and email the
+       user a confirmation link. Proves the address is real and theirs. */
+    try {
+      const verifyToken = nanoid() + nanoid() + nanoid();   // ~30 chars
+      await db.setVerifyToken(userId, verifyToken);
+      const base = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const verifyUrl = `${base}/api/auth/verify?token=${verifyToken}`;
+      email.sendVerificationEmail({ to: email, name: companyName.trim(), verifyUrl })
+        .catch(e => console.error('[signup] verification email failed:', e.message));
+    } catch (e) {
+      console.error('[signup] could not set verify token:', e.message);
+    }
 
     if (claimAuditId) {
       try { await db.claimAudit(claimAuditId, userId); } catch (e) { console.warn('claim failed:', e.message); }
     }
 
     auth.setSessionCookie(res, userId);
-    res.json({ success: true, user });
+    res.json({ success: true, user, emailVerified: false });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -937,6 +974,37 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+/* Email verification — user clicks the link in their inbox. We verify the
+   token, mark the email confirmed, log them in, and bounce to the dashboard. */
+app.get('/api/auth/verify', async (req, res) => {
+  const token = req.query.token;
+  try {
+    const u = token ? await db.verifyEmailByToken(token) : null;
+    if (!u) return res.redirect(302, '/login?verify=invalid');
+    auth.setSessionCookie(res, u.id);            // log them in on success
+    return res.redirect(302, '/dashboard?verified=1');
+  } catch (e) {
+    console.error('[verify] failed:', e.message);
+    return res.redirect(302, '/login?verify=error');
+  }
+});
+
+/* Resend the verification email to the logged-in user. */
+app.post('/api/auth/resend-verification', auth.requireAuth, async (req, res) => {
+  try {
+    if (req.user.email_verified) return res.json({ success: true, alreadyVerified: true });
+    const verifyToken = nanoid() + nanoid() + nanoid();
+    await db.setVerifyToken(req.user.id, verifyToken);
+    const base = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const verifyUrl = `${base}/api/auth/verify?token=${verifyToken}`;
+    await email.sendVerificationEmail({ to: req.user.email, name: req.user.company_name, verifyUrl });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[resend-verification] failed:', e.message);
+    res.status(500).json({ error: 'Could not resend the verification email. Please try again shortly.' });
+  }
+});
+
 app.get('/api/auth/me', (req, res) => {
   if (!req.user) return res.json({ user: null });
   res.json({
@@ -947,6 +1015,7 @@ app.get('/api/auth/me', (req, res) => {
       companyName: req.user.company_name,
       businessType: req.user.business_type,
       region: req.user.region,
+      emailVerified: !!req.user.email_verified,
       weeklyEmailOptIn: !!req.user.weekly_email_opt_in,
       lastWeeklyEmailAt: req.user.last_weekly_email_at,
       consentAgency: !!req.user.consent_agency,
@@ -1798,3 +1867,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
+                         

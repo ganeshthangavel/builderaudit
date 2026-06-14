@@ -892,6 +892,11 @@ app.post('/api/auth/signup', async (req, res) => {
       await db.logConsent({ userId, consentType: 'weekly_emails', granted: true, ipAddress: ip, userAgent: ua });
     }
 
+    /* Notify the business owner of the new account (fire-and-forget). */
+    email.sendNewSignupNotification({
+      user: { name: companyName.trim(), email, company_name: companyName.trim(), phone: phone.trim(), business_type: businessType, region },
+    }).catch(e => console.error('[signup] notify failed:', e.message));
+
     if (claimAuditId) {
       try { await db.claimAudit(claimAuditId, userId); } catch (e) { console.warn('claim failed:', e.message); }
     }
@@ -1079,9 +1084,20 @@ app.delete('/api/my/audit/:id/share', auth.requireAuth, async (req, res) => {
 /* PUBLIC: fetch the read-only summary data for a shared report. No auth. */
 app.get('/api/share/:token', async (req, res) => {
   try {
-    const a = await db.getAuditByShareToken(req.params.token);
+    const token = req.params.token;
+    const a = await db.getAuditByShareToken(token);
     if (!a) return res.status(404).json({ error: 'This shared report link is invalid or has been revoked.' });
     const report = a.report_json || {};
+
+    let domain = a.url;
+    try { domain = new URL(a.url).hostname.replace(/^www\./, ''); } catch(e){}
+    const bsName = (report.business_snapshot && report.business_snapshot.company_name) || domain;
+
+    /* Lead-capture gate: the viewer must give name/email/company once before the
+       full report is returned. We mark that with a cookie set by the lead POST. */
+    if (req.cookies['ba_lead_' + token] !== '1') {
+      return res.json({ gated: true, company: bsName, domain });
+    }
 
     /* Apply saved fix/photo overrides so the shared score matches what the
        owner sees on their dashboard (conservative projected score). */
@@ -1094,9 +1110,6 @@ app.get('/api/share/:token', async (req, res) => {
     const tq = report.trust_questions || [];
     const allTen = tq.length > 0 && tq.every(q => (q.score || 0) <= 10);
     const norm = (s) => allTen ? Math.round((s || 0) * 10) : (s || 0);
-
-    let domain = a.url;
-    try { domain = new URL(a.url).hostname.replace(/^www\./, ''); } catch(e){}
 
     const bs = report.business_snapshot || {};
 
@@ -1180,6 +1193,62 @@ app.get('/api/share/:token', async (req, res) => {
   } catch (err) {
     console.error('[share:data] failed:', err.message);
     res.status(500).json({ error: 'Could not load this report.' });
+  }
+});
+
+/* PUBLIC: capture a viewer's details before they can see a shared report.
+   Stores name/email/company in report_leads and sets a cookie that unlocks the
+   report on subsequent loads. */
+app.post('/api/share/:token/lead', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const { name, email, company } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Please enter your name.' });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) return res.status(400).json({ error: 'Please enter a valid email address.' });
+
+    const a = await db.getAuditByShareToken(token);
+    if (!a) return res.status(404).json({ error: 'This shared report link is invalid or has been revoked.' });
+
+    await db.saveReportLead({
+      shareToken: token,
+      auditId: a.id,
+      ownerUserId: a.user_id || null,
+      name: String(name).trim().slice(0, 120),
+      email: String(email).trim().toLowerCase().slice(0, 160),
+      company: company ? String(company).trim().slice(0, 160) : null,
+      ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 60),
+      userAgent: (req.get('user-agent') || '').slice(0, 250),
+    });
+
+    /* Notify the business owner of the new report view (fire-and-forget). */
+    let reportCompany = null;
+    try { reportCompany = (a.report_json && a.report_json.business_snapshot && a.report_json.business_snapshot.company_name) || new URL(a.url).hostname.replace(/^www\./,''); } catch(e){}
+    email.sendReportLeadNotification({
+      lead: { name: String(name).trim(), email: String(email).trim().toLowerCase(), company: company ? String(company).trim() : null },
+      reportCompany,
+      reportUrl: `${req.protocol}://${req.get('host')}/r/${token}`,
+    }).catch(e => console.error('[share:lead] notify failed:', e.message));
+
+    /* Unlock the report for this browser for 30 days */
+    res.cookie('ba_lead_' + token, '1', {
+      httpOnly: false, sameSite: 'lax', secure: req.secure || req.get('x-forwarded-proto') === 'https',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[share:lead] failed:', err.message);
+    res.status(500).json({ error: 'Could not save your details. Please try again.' });
+  }
+});
+
+/* Owner: the leads captured against this user's shared reports. */
+app.get('/api/my/report-leads', auth.requireAuth, async (req, res) => {
+  try {
+    const leads = await db.listReportLeadsForUser(req.user.id);
+    res.json({ leads });
+  } catch (err) {
+    console.error('[my/report-leads] failed:', err.message);
+    res.json({ leads: [] });
   }
 });
 

@@ -132,7 +132,7 @@
       +   '<div id="gateErr" style="display:none;font-family:var(--body);font-size:13px;color:var(--red);margin-bottom:12px"></div>'
       +   '<label class="gl">Your name</label><input id="gName" class="gi" type="text" autocomplete="name" placeholder="Jane Smith">'
       +   '<label class="gl">Email</label><input id="gEmail" class="gi" type="email" autocomplete="email" placeholder="jane@company.co.uk">'
-      +   '<label class="gl">Company <span style="font-weight:500;color:var(--muted)">(optional)</span></label><input id="gCompany" class="gi" type="text" autocomplete="organization" placeholder="Smith & Co Builders">'
+      +   '<label class="gl">Company</label><input id="gCompany" class="gi" type="text" autocomplete="organization" placeholder="Smith & Co Builders">'
       +   '<button id="gSubmit" class="gbtn" type="button">View the report \u2192</button>'
       +   '<div style="font-family:var(--body);font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.45">Your details are shared with ' + esc(name) + ' (whose report this is) and BuilderAudit. We won\u2019t spam you.</div>'
       + '</div></div>';
@@ -146,6 +146,7 @@
       var co = (document.getElementById('gCompany').value||'').trim();
       if (!nm) return showErr('Please enter your name.');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return showErr('Please enter a valid email address.');
+      if (!co) return showErr('Please enter your company name.');
       btn.disabled = true; btn.textContent = 'Loading\u2026';
       fetch('/api/share/' + encodeURIComponent(token) + '/lead', {
         method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',

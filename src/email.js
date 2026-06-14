@@ -225,6 +225,7 @@ module.exports = {
   sendBuilderMatchLead,
   sendNewSignupNotification,
   sendReportLeadNotification,
+  sendFeedbackNotification,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -392,9 +393,38 @@ async function sendNewSignupNotification({ user }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REPORT-VIEW LEAD NOTIFICATION — sent to you whenever someone enters their
-   details to view a shared report.
+   FEEDBACK NOTIFICATION — sent to you whenever someone uses the feedback widget.
    ═══════════════════════════════════════════════════════════════════════════ */
+async function sendFeedbackNotification({ feedback, user }) {
+  if (!resend) { console.warn('Email skipped (no Resend key): feedback'); return { skipped: true }; }
+  const row = (label, val) => `<tr><td style="padding:6px 0;color:#64748B;width:140px;vertical-align:top">${label}</td><td style="padding:6px 0;font-weight:500">${val || '—'}</td></tr>`;
+  const kindLabel = { error: '🐞 Error / inaccurate audit', idea: '💡 Idea / feedback', other: '💬 Other' }[feedback.kind] || '💬 Feedback';
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0F172A">
+      <h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-0.01em">${kindLabel}</h2>
+      <p style="margin:0 0 18px;font-size:14px;color:#64748B">New feedback from the in-app widget.</p>
+      <div style="background:#FBF5E1;border:2px solid #1B1A17;border-radius:12px;padding:16px;margin-bottom:18px;white-space:pre-wrap;font-size:15px;line-height:1.5">${(feedback.message||'').replace(/</g,'&lt;')}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        ${row('Type', kindLabel)}
+        ${row('From', feedback.email ? `<a href="mailto:${feedback.email}" style="color:#2F6BFF">${feedback.email}</a>` : (user?.email || 'anonymous'))}
+        ${row('Account', user ? (user.company_name || user.email) : 'not logged in')}
+        ${row('Page', feedback.pageUrl)}
+        ${row('Submitted', new Date().toISOString())}
+      </table>
+    </div>`;
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ENQUIRY_TO_EMAIL,
+      subject: `${kindLabel} — BuilderAudit feedback`,
+      html,
+    });
+    return { success: true, id: result?.data?.id };
+  } catch (err) {
+    console.error('[email] sendFeedbackNotification failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
 async function sendReportLeadNotification({ lead, reportCompany, reportUrl }) {
   if (!resend) { console.warn('Email skipped (no Resend key): report lead', lead?.email); return { skipped: true }; }
   const row = (label, val) => `<tr><td style="padding:6px 0;color:#64748B;width:160px;vertical-align:top">${label}</td><td style="padding:6px 0;font-weight:500">${val || '—'}</td></tr>`;

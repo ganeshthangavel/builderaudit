@@ -735,6 +735,25 @@ body {
   .two-card h3 { font-size: 26px; max-width: 100%; }
   .two-card .corner-icon img { width: 80px; height: 80px; }
 }
+/* ── Small phones ── */
+html, body { overflow-x: hidden; }
+@media (max-width: 560px) {
+  .hero, .section, .footer { padding-left: 16px; padding-right: 16px; }
+  .h1 { font-size: 31px; }
+  .lead { font-size: 16px; margin-bottom: 26px; }
+  .section-h2, .final-h2 { font-size: 26px; }
+  .kicker { font-size: 11px; }
+  .hero-scene { padding: 46px 6px 14px; }
+  /* Topbar tidies into two rows: brand+links, then the toggle full-width */
+  .topbar { align-items: center; gap: 14px; }
+  .audience-toggle { order: 3; width: 100%; justify-content: center; }
+  /* URL forms: keep prefix+input on one line, button full-width beneath */
+  .url-input, .final-url { flex-wrap: wrap; }
+  .url-input input, .final-url input { flex: 1 1 auto; font-size: 16px; }
+  .url-input button, .final-url button { flex: 1 1 100%; width: 100%; justify-content: center; text-align: center; margin-top: 6px; padding: 14px 18px; }
+  .url-input .prefix { padding: 0 10px; }
+  .trust-row { gap: 9px 14px; font-size: 12.5px; }
+}
 </style>
 </head>
 <body>

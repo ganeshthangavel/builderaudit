@@ -1574,17 +1574,30 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
 }
 
 // ── Builder: Competitor Audits ───────────────────────────────────
-function BuilderCompetitors({ latestAudit, user }) {
+function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), adjustedScore = null, excludedPhotoIds = new Set() }) {
   const report   = latestAudit?.report_json;
   const domain   = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){ return 'yoursite.co.uk'; } })();
   const isLoggedIn = !!user;
+
+  /* Your score, WITH the fixes you've ticked off applied — so the head-to-head
+     reflects the work you've done, matching the dashboard. Server-adjusted
+     score wins when present; otherwise compute the same way locally. */
+  const baseScore = report?.hero?.score || 64;
+  const allActions = report?.top_actions || [];
+  const completedPts = allActions.reduce((s,a,i) => {
+    if (!completedFixIds.has(i)) return s;
+    const pts = (typeof a === 'object' && a && a.impact_pts) ? a.impact_pts : ([8,6,5,3,2][i] || 2);
+    return s + pts;
+  }, 0);
+  const photoBoost = excludedPhotoIds.size * 5;
+  const youScore = adjustedScore != null ? adjustedScore : Math.min(100, baseScore + completedPts + photoBoost);
 
   /* YOUR card — built from the live audit */
   const you = {
     name:      report?.business_snapshot?.company_name || 'Your company',
     url:       domain,
     loc:       report?.business_snapshot?.location || 'UK',
-    score:     report?.hero?.score || 64,
+    score:     youScore,
     breakdown: (() => {
       const tq = report?.trust_questions || [];
       const allTen = tq.length > 0 && tq.every(q => (q.score || 0) <= 10);
@@ -1600,6 +1613,8 @@ function BuilderCompetitors({ latestAudit, user }) {
     })(),
     good: report?.competitor_gap?.you_have?.[0] || 'Mobile experience and copy feel genuine.',
     bad:  report?.trust_breakpoints?.[0]?.title  || 'Stock photos and missing trade badges undermine trust.',
+    fixLift:  Math.max(0, youScore - baseScore),
+    fixCount: completedFixIds.size,
   };
 
   /* ── Paywall modal state ── */
@@ -1701,8 +1716,10 @@ function BuilderCompetitors({ latestAudit, user }) {
           </div>
           <div style={{ flex:'0 0 auto', padding:'10px 14px', background:color, color:color===P.fill?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:24, lineHeight:1, textAlign:'center', boxShadow:`3px 3px 0 ${P.line}`, minWidth:60 }}>
             {b.score}<div style={{ fontSize:9, fontWeight:700, marginTop:2, opacity:0.85, letterSpacing:'0.08em' }}>/ 100</div>
+            {b.fixLift > 0 && <div style={{ fontSize:8.5, fontWeight:800, marginTop:3, letterSpacing:'0.04em' }}>▲{b.fixLift} fixes</div>}
           </div>
         </div>
+        {b.fixLift > 0 && <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, margin:'-6px 0 12px', lineHeight:1.4 }}>Includes the {b.fixCount} fix{b.fixCount>1?'es':''} you've ticked off — re-scan to lock it in.</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
           {b.breakdown.map((cat,j) => {
             const cc = cat.s >= 75 ? P.green : cat.s >= 55 ? P.fill : P.red;
@@ -3324,7 +3341,7 @@ function DashboardApp() {
     review:      <BuilderReview      latestAudit={latestAudit}/>,
     photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride}/>,
     fixes:       <BuilderFixes       latestAudit={latestAudit} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
-    competitors: <BuilderCompetitors latestAudit={latestAudit} user={user}/>,
+    competitors: <BuilderCompetitors latestAudit={latestAudit} user={user} completedFixIds={completedFixIds} adjustedScore={adjustedScore} excludedPhotoIds={excludedPhotoIds}/>,
   } : {
     dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
     compare:   <HomeownerCompare user={user}/>,

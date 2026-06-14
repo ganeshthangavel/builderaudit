@@ -2232,7 +2232,7 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
           {/* Company */}
           <div>
             <label style={{ fontFamily:F.body, fontSize:12, fontWeight:700, color:P.ink, letterSpacing:'0.05em', textTransform:'uppercase', display:'block', marginBottom:5 }}>Company name *</label>
-            <input value={form.company} onChange={e=>setF('company',e.target.value)} placeholder="Heartly Builders Ltd"
+            <input value={form.company} onChange={e=>setF('company',e.target.value)} placeholder="Your building company's name"
               style={{ width:'100%', border:`2px solid ${P.line}`, borderRadius:4, padding:'10px 12px', fontFamily:F.body, fontSize:14, color:P.ink, boxSizing:'border-box', outline:'none' }}/>
           </div>
 
@@ -3683,6 +3683,19 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
   };
   const copyShare = () => { try { navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(()=>setShareCopied(false), 1800); } catch(e){} };
 
+  /* Real "recent checks" — the builders this homeowner has actually audited.
+     null = still loading; [] = none yet. Never fabricated. */
+  const [recent, setRecent] = React.useState(isLoggedIn ? null : []);
+  React.useEffect(() => {
+    if (!isLoggedIn) { setRecent([]); return; }
+    let alive = true;
+    fetch('/api/my/audits', { credentials:'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (alive) setRecent(Array.isArray(d?.audits) ? d.audits : []); })
+      .catch(() => { if (alive) setRecent([]); });
+    return () => { alive = false; };
+  }, [isLoggedIn]);
+
   /* Show the 5-tab report if we have real data */
   if (latestAudit && report) {
 
@@ -3771,10 +3784,18 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
 
   /* No audit data — show the landing/empty state */
 
-  const builders = auditData?.builders || [
-    { name:'Heartly Builders Ltd', url:'heartlybuilders.co.uk', loc:'Bath', score:64, lastChecked:'2 days ago', notes:'Stock photos · no accreditations shown', saved:true },
-    { name:'Greenfield Construction', url:'greenfieldconstruction.co.uk', loc:'Bristol', score:78, lastChecked:'5 days ago', notes:'FMB accredited · 14 real photos', saved:true },
-  ];
+  const domainOf = (u) => { try { return new URL(/^https?:\/\//.test(u)?u:('https://'+u)).hostname.replace(/^www\./,''); } catch(e){ return u; } };
+  const timeAgo = (d) => {
+    if (!d) return '';
+    const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+    if (isNaN(days)) return '';
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days < 7) return days + ' days ago';
+    if (days < 14) return 'last week';
+    return Math.floor(days/7) + ' weeks ago';
+  };
+  const checks = (recent || []).filter(a => a && a.id);
 
   return (
     <main style={{ padding:'40px 36px', maxWidth:900, margin:'0 auto' }}>
@@ -3784,21 +3805,36 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
         <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:'0 0 24px' }}>Paste any UK builder's website. We'll run a forensic trust audit — photos, accreditations, Companies House, the lot.</p>
         <ScanBar placeholder="theirsite.co.uk" cta="Vet this builder" onSubmit={(u)=>{ window.location.href=`/audit?url=https://${u}&audience=homeowner`; }}/>
       </div>
-      {builders.length > 0 && (
-        <Card>
-          <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Recent checks</h3>
-          {builders.map((b,i) => (
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:16, padding:'12px 0', borderBottom:i<builders.length-1?`1px solid ${P.surface}`:'none' }}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{b.name}</div>
-                <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, marginTop:2 }}>{b.url} · {b.loc}</div>
+
+      <Card>
+        <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:18, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>Your recent checks</h3>
+
+        {recent === null ? (
+          <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, padding:'8px 0' }}>Loading your checks…</div>
+        ) : checks.length === 0 ? (
+          <div style={{ fontFamily:F.body, fontSize:14, color:P.muted, lineHeight:1.55, padding:'4px 0' }}>
+            {isLoggedIn
+              ? "You haven't vetted any builders yet. Paste a builder's website above and your checks will appear here."
+              : <>Builders you check will be saved here. <a href="#" onClick={e=>{e.preventDefault(); requireAccount({ title:'Save your checks', benefit:'Create a free account to keep every builder you vet in one place and compare them.', cta:'Create free account' });}} style={{ color:P.accent, fontWeight:700 }}>Create a free account</a> to keep them.</>
+            }
+          </div>
+        ) : (
+          checks.map((a,i) => {
+            const dom = domainOf(a.url);
+            const sc = a.score == null ? null : a.score;
+            return (
+              <div key={a.id} style={{ display:'flex', alignItems:'center', gap:16, padding:'12px 0', borderBottom:i<checks.length-1?`1px solid ${P.surface}`:'none' }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dom}</div>
+                  <div style={{ fontFamily:F.body, fontSize:13, color:P.muted, marginTop:2 }}>Checked {timeAgo(a.created_at)}</div>
+                </div>
+                {sc != null && <div style={{ padding:'8px 14px', background:sc>=75?P.green:sc>=55?P.fill:P.red, color:sc>=55&&sc<75?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:20 }}>{sc}</div>}
+                <Btn style={{ padding:'8px 12px', fontSize:12, boxShadow:'none' }} onClick={()=>window.location.href=`/dashboard?id=${a.id}&role=homeowner`}>View</Btn>
               </div>
-              <div style={{ padding:'8px 14px', background:b.score>=75?P.green:b.score>=55?P.fill:P.red, color:b.score>=55&&b.score<75?P.ink:'#fff', border:`2px solid ${P.line}`, borderRadius:6, fontFamily:F.display, fontWeight:900, fontSize:20 }}>{b.score}</div>
-              <Btn style={{ padding:'8px 12px', fontSize:12, boxShadow:'none' }} onClick={()=>window.location.href=`/audit?url=https://${b.url}&audience=homeowner`}>Re-check</Btn>
-            </div>
-          ))}
-        </Card>
-      )}
+            );
+          })
+        )}
+      </Card>
     </main>
   );
 }
@@ -4127,4 +4163,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(<DashboardApp/>);
 <script src="/assets/feedback-widget.js" defer></script>
 </body>
 </html>
- 

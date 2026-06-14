@@ -755,7 +755,7 @@ body {
 
       <div style="display:flex;align-items:center;gap:18px">
         <a href="/insights" class="signin">Insights</a>
-        <a href="/login" class="signin">Sign in</a>
+        <a href="/login" class="signin" id="navAuthLink">Sign in</a>
       </div>
     </div>
 
@@ -1115,7 +1115,7 @@ body {
       <div class="comp-cta-text">
         <strong>Free with your BuilderAudit account.</strong> Run as many competitor checks as you like — they'll never know.
       </div>
-      <a href="/signup?audience=builder" class="comp-cta-btn">Get my free account →</a>
+      <a href="/signup?audience=builder" class="comp-cta-btn authCta" data-signed-in-text="Enter your account →">Get my free account →</a>
     </div>
   </section>
 
@@ -1206,7 +1206,7 @@ body {
       <div class="comp-cta-text">
         <strong>Free with a BuilderAudit account.</strong> Run as many checks as you like. The builder never knows you looked.
       </div>
-      <a href="/signup?audience=homeowner" class="comp-cta-btn">Start comparing free →</a>
+      <a href="/signup?audience=homeowner" class="comp-cta-btn authCta" data-signed-in-text="Enter your account →">Start comparing free →</a>
     </div>
   </section>
 
@@ -1518,6 +1518,34 @@ function startAuditFromBottom(e) {
   window.location.href = '/audit?' + qs.toString();
   return false;
 }
+</script>
+
+<script>
+/* If the visitor already has a session, reflect that in the header + CTAs
+   instead of asking them to sign up/in again. Their JWT cookie persists, so
+   clicking the logo to come home never logs them out — this just updates the UI. */
+(function(){
+  fetch('/api/auth/me', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d || !d.user) return;   // not signed in — leave default buttons
+
+      /* Nav: "Sign in" → dashboard link */
+      var nav = document.getElementById('navAuthLink');
+      if (nav) { nav.textContent = 'Go to dashboard'; nav.setAttribute('href', '/dashboard'); }
+
+      /* Hero/section CTAs: swap copy + point at the dashboard.
+         Builder CTAs go to the builder view, homeowner CTAs to the homeowner view. */
+      document.querySelectorAll('.authCta').forEach(function(el){
+        var alt = el.getAttribute('data-signed-in-text');
+        if (alt) el.textContent = alt;
+        var href = el.getAttribute('href') || '';
+        var role = href.indexOf('homeowner') !== -1 ? 'homeowner' : 'builder';
+        el.setAttribute('href', '/dashboard?role=' + role);
+      });
+    })
+    .catch(function(){ /* offline / not signed in — keep defaults */ });
+})();
 </script>
 
 </body>

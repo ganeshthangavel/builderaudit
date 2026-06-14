@@ -223,6 +223,8 @@ module.exports = {
   sendWeeklyCheckIn,
   sendAuditReady,
   sendBuilderMatchLead,
+  sendNewSignupNotification,
+  sendReportLeadNotification,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -351,6 +353,74 @@ async function sendAuditReady({ email, auditId, auditUrl, score, appBaseUrl }) {
     return { success: true, id: result?.data?.id };
   } catch (err) {
     console.error('[email] sendAuditReady failed for', email, ':', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW ACCOUNT NOTIFICATION — sent to you whenever someone creates an account.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function sendNewSignupNotification({ user }) {
+  if (!resend) { console.warn('Email skipped (no Resend key): new signup', user?.email); return { skipped: true }; }
+  const row = (label, val) => `<tr><td style="padding:6px 0;color:#64748B;width:160px;vertical-align:top">${label}</td><td style="padding:6px 0;font-weight:500">${val || '—'}</td></tr>`;
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0F172A">
+      <h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-0.01em">👤 New BuilderAudit account</h2>
+      <p style="margin:0 0 18px;font-size:14px;color:#64748B">Someone just created an account.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+        ${row('Name', user.name || user.company_name)}
+        ${row('Email', `<a href="mailto:${user.email}" style="color:#2F6BFF">${user.email}</a>`)}
+        ${row('Company', user.company_name)}
+        ${row('Phone', user.phone)}
+        ${row('Business type', user.business_type)}
+        ${row('Region', user.region)}
+        ${row('Created', new Date().toISOString())}
+      </table>
+    </div>`;
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ENQUIRY_TO_EMAIL,
+      subject: `👤 New account: ${user.company_name || user.name || user.email}`,
+      html,
+    });
+    return { success: true, id: result?.data?.id };
+  } catch (err) {
+    console.error('[email] sendNewSignupNotification failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REPORT-VIEW LEAD NOTIFICATION — sent to you whenever someone enters their
+   details to view a shared report.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function sendReportLeadNotification({ lead, reportCompany, reportUrl }) {
+  if (!resend) { console.warn('Email skipped (no Resend key): report lead', lead?.email); return { skipped: true }; }
+  const row = (label, val) => `<tr><td style="padding:6px 0;color:#64748B;width:160px;vertical-align:top">${label}</td><td style="padding:6px 0;font-weight:500">${val || '—'}</td></tr>`;
+  const html = `
+    <div style="font-family:-apple-system,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0F172A">
+      <h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-0.01em">📄 New report view</h2>
+      <p style="margin:0 0 18px;font-size:14px;color:#64748B">Someone entered their details to view a shared trust report${reportCompany ? ' for <b>' + reportCompany + '</b>' : ''}.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+        ${row('Name', lead.name)}
+        ${row('Email', `<a href="mailto:${lead.email}" style="color:#2F6BFF">${lead.email}</a>`)}
+        ${row('Company', lead.company)}
+        ${row('Report viewed', reportCompany)}
+        ${reportUrl ? row('Link', `<a href="${reportUrl}" style="color:#2F6BFF">${reportUrl}</a>`) : ''}
+        ${row('Viewed', new Date().toISOString())}
+      </table>
+    </div>`;
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ENQUIRY_TO_EMAIL,
+      subject: `📄 Report view: ${lead.name}${lead.company ? ' (' + lead.company + ')' : ''}`,
+      html,
+    });
+    return { success: true, id: result?.data?.id };
+  } catch (err) {
+    console.error('[email] sendReportLeadNotification failed:', err.message);
     return { success: false, error: err.message };
   }
 }

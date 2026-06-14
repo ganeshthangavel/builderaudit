@@ -691,7 +691,7 @@ function ShareReport({ user, latestAudit }) {
   );
 }
 
-function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
+function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{}, requireAccount = ()=>{}, isLoggedIn = false }) {
   const report = latestAudit?.report_json || null;
   const baseScore = report?.hero?.score ?? 64;
 
@@ -883,15 +883,34 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
         </div>}
       </Card>
 
-      {/* New scan CTA */}
+      {/* Track your score over time — prompt to create an account (logged out) */}
+      {!isLoggedIn && (
+        <Card style={{ background:P.accent, color:'#fff', borderColor:P.line }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', opacity:0.8, marginBottom:8 }}>📈 Free account</div>
+              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Track your score over time</h3>
+              <p style={{ fontFamily:F.body, fontSize:14.5, margin:0, opacity:0.88, lineHeight:1.5, maxWidth:560 }}>Create a free account to watch your score climb as you make fixes, save your progress, and get an optional weekly check-in by email.</p>
+            </div>
+            <Btn primary onClick={()=>requireAccount({ title:'Track your score over time', benefit:'Create a free account to save your progress and get an optional weekly check-in as your score improves.', cta:'Start tracking' })} style={{ whiteSpace:'nowrap', flexShrink:0 }}>Start tracking →</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* New scan CTA — re-scan is gated to account holders */}
       <Card style={{ background:P.fill, borderColor:P.line }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
           <div>
             <Kicker color={P.ink}>Ready for a fresh scan?</Kicker>
             <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:28, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Re-scan your site</h3>
-            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste your URL to run a new audit and see if your fixes have improved your score.</p>
+            <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:0, opacity:0.75 }}>Paste your URL to run a new audit and see if your fixes have improved your score.{!isLoggedIn ? ' Re-scanning is free with an account.' : ''}</p>
           </div>
-          <ScanBar placeholder="yoursite.co.uk" cta="Run audit"/>
+          <ScanBar placeholder="yoursite.co.uk" cta="Run audit"
+            onSubmit={(u)=>{
+              const dest = `/audit?url=https://${u.replace(/^https?:\/\//,'')}&audience=builder`;
+              if (isLoggedIn) { window.location.href = dest; }
+              else { requireAccount({ title:'Re-scan your site', benefit:'Create a free account to re-run your audit and track how your score changes as you make fixes.', cta:'Create free account', onSuccess: () => { window.location.href = dest; } }); }
+            }}/>
         </div>
       </Card>
     </main>
@@ -1443,10 +1462,17 @@ function BuilderReview({ latestAudit }) {
 }
 
 // ── Builder: Photo Review ────────────────────────────────────────
-function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{}, saveOverride = ()=>{} }) {
+function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set(), setExcludedPhotoIds = ()=>{}, saveOverride = ()=>{}, requireAccount = ()=>{}, isLoggedIn = false }) {
   const report = latestAudit?.report_json;
   const pa = report?.photo_analysis;
-  const excludePhoto = (id) => { setExcludedPhotoIds(ex => new Set([...ex, id])); saveOverride({ photoId: id, excluded: true }); };
+  const promptedSavePhoto = React.useRef(false);
+  const excludePhoto = (id) => {
+    setExcludedPhotoIds(ex => new Set([...ex, id])); saveOverride({ photoId: id, excluded: true });
+    if (!isLoggedIn && !promptedSavePhoto.current) {
+      promptedSavePhoto.current = true;
+      requireAccount({ title:'Save your changes', benefit:'Create a free account to save your photo corrections and keep your updated score.', cta:'Save my changes' });
+    }
+  };
   const includePhoto = (id) => { setExcludedPhotoIds(ex => { const n = new Set(ex); n.delete(id); return n; }); saveOverride({ photoId: id, excluded: false }); };
 
   /* Smart pairing — match AI descriptions to image URLs using keyword overlap.
@@ -1639,7 +1665,7 @@ function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set
 }
 
 // ── Builder: Top 10 Fixes ────────────────────────────────────────
-function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
+function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{}, requireAccount = ()=>{}, isLoggedIn = false }) {
   const report = latestAudit?.report_json;
   const baseScore = report?.hero?.score ?? 64;
 
@@ -1683,12 +1709,19 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
      navigation + reload, and updates the score). Request-the-team flow stays
      local UI state. */
   const isDone = (id) => completedFixIds.has(id);
+  const promptedSave = React.useRef(false);
   const toggleDone = (id) => {
     const nowDone = !completedFixIds.has(id);
     const next = new Set(completedFixIds);
     if (nowDone) next.add(id); else next.delete(id);
     setCompletedFixIds(next);
     saveOverride({ fixId: id, completed: nowDone });
+    /* Logged-out: progress lives only in this browser tab — nudge them to make
+       a free account so it's saved. Prompt once, on the first tick. */
+    if (!isLoggedIn && nowDone && !promptedSave.current) {
+      promptedSave.current = true;
+      requireAccount({ title:'Save your progress', benefit:'Create a free account to save the fixes you tick off and keep your score next time you visit.', cta:'Save my progress' });
+    }
   };
   const [reqState, setReqState] = useState({});   // { [id]: { open, requested } }
   const toggleReq  = (id) => setReqState(s => ({ ...s, [id]: { ...s[id], open: !s[id]?.open } }));
@@ -1723,6 +1756,16 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>The to-do list, in priority order</h1>
         <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:760 }}>Sorted by impact — biggest score lifts at the top. Tick them off as you go, or have the BuilderAudit team handle any of them.</p>
       </div>
+
+      {!isLoggedIn && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginBottom:20, padding:'14px 18px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+            <span style={{ fontSize:18 }}>💾</span>
+            <span style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.45 }}><b>You're not signed in.</b> Your ticked fixes are kept in this browser only — create a free account to save them and keep your score.</span>
+          </div>
+          <Btn primary onClick={()=>requireAccount({ title:'Save your progress', benefit:'Create a free account to save the fixes you tick off and keep your score next time you visit.', cta:'Save my progress' })} style={{ whiteSpace:'nowrap', flexShrink:0 }}>Save my progress →</Btn>
+        </div>
+      )}
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18, marginBottom:24 }}>
         <Card pad={22}>
@@ -1884,7 +1927,7 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
 }
 
 // ── Builder: Competitor Audits ───────────────────────────────────
-function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), adjustedScore = null, excludedPhotoIds = new Set() }) {
+function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), adjustedScore = null, excludedPhotoIds = new Set(), onSignedUp = ()=>{} }) {
   const report   = latestAudit?.report_json;
   const domain   = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){ return 'yoursite.co.uk'; } })();
   const isLoggedIn = !!user;
@@ -1969,6 +2012,7 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
       /* Unlock and run the pending slot straight away */
       setSignedUpNow(true);
       setShowModal(false);
+      onSignedUp();
       if (pendingSlot !== null) runAudit(pendingSlot, true);
     } catch(err) {
       setFormErr(err.message);
@@ -2772,7 +2816,7 @@ function HoCompanyCheck({ report, latestAudit }) {
 }
 
 // ── Homeowner: Compare Builders ─────────────────────────────────
-function HomeownerCompare({ user, latestAudit }) {
+function HomeownerCompare({ user, latestAudit, onSignedUp = ()=>{}, requireAccount = ()=>{} }) {
   const isLoggedIn = !!user;
   const [signedUpNow, setSignedUpNow] = useState(false);
   const unlocked = isLoggedIn || signedUpNow;
@@ -2806,6 +2850,7 @@ function HomeownerCompare({ user, latestAudit }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Sign-up failed');
       setSignedUpNow(true); setShowModal(false);
+      onSignedUp();
       if (pendingSlot !== null) runAudit(pendingSlot, true);
     } catch(err) { setFormErr(err.message); }
     finally { setSubmitting(false); }
@@ -2853,8 +2898,15 @@ function HomeownerCompare({ user, latestAudit }) {
   const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
 
   /* Export a comparison report of every builder summary — reads `ranked` at
-     click time, so it always reflects the builders added so far. */
+     click time, so it always reflects the builders added so far. Gated. */
   const exportComparison = () => {
+    if (!unlocked) {
+      requireAccount({ title:'Export your comparison', benefit:'Create a free account to download a full report of every builder you\u2019ve compared — ranked, with each one\u2019s breakdown.', cta:'Create free account', onSuccess: () => setTimeout(doExportComparison, 80) });
+      return;
+    }
+    doExportComparison();
+  };
+  const doExportComparison = () => {
     const list = ranked.map(r => r.data);
     if (!list.length) return;
     const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3451,13 +3503,20 @@ function HomeownerMatch({ user }) {
 }
 
 /* ── Main HomeownerDashboard ─────────────────────────────────────────────── */
-function HomeownerDashboard({ auditData, latestAudit }) {
+function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, isLoggedIn = false }) {
   const report = latestAudit?.report_json || null;
   const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
   const [tab, setTab] = React.useState('verdict');
 
-  /* Export this builder's safety report as a clean, printable/PDF document. */
+  /* Export this builder's safety report as a clean, printable/PDF document. Gated. */
   const exportHoReport = () => {
+    if (!isLoggedIn) {
+      requireAccount({ title:'Export this report', benefit:'Create a free account to download this builder\u2019s full trust report as a PDF you can keep or share.', cta:'Create free account', onSuccess: () => setTimeout(doExportHoReport, 80) });
+      return;
+    }
+    doExportHoReport();
+  };
+  const doExportHoReport = () => {
     if (!report) return;
     const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
@@ -3610,6 +3669,74 @@ function ErrorState({ msg }) {
 // ═══════════════════════════════════════════════════════════════
 // ROOT APP
 // ═══════════════════════════════════════════════════════════════
+
+/* Shared signup gate. Renders when `gate` is set. On success: creates the
+   account (session cookie set server-side), refreshes app-wide user, then runs
+   the pending action. */
+function AccountGateModal({ gate, onClose, onSignedUp }) {
+  const [form, setForm] = useState({ name:'', email:'', phone:'', company:'' });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const setF = (k,v) => setForm(f => ({ ...f, [k]:v }));
+  if (!gate) return null;
+
+  const submit = async () => {
+    if (!form.name.trim()) return setErr('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setErr('Please enter a valid email address.');
+    setBusy(true); setErr('');
+    try {
+      const tempPw = 'BA-' + Math.random().toString(36).slice(2,10) + '!';
+      const res = await fetch('/api/auth/signup', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({
+          email: form.email.trim().toLowerCase(), password: tempPw,
+          phone: form.phone.trim(), companyName: (form.company.trim() || form.name.trim()),
+          name: form.name.trim(), businessType:'other', region:'other',
+          consentTos:true, consentAuth:true, consentAgency:true, consentWeekly:false,
+        }),
+      });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.error || 'Sign-up failed');
+      const cb = gate.onSuccess;
+      await onSignedUp();          // refresh app-wide user state
+      onClose();
+      if (cb) setTimeout(cb, 0);   // run the pending action once logged in
+    } catch(e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div onClick={(e)=>{ if(e.target===e.currentTarget && !busy) onClose(); }}
+      style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.6)', display:'grid', placeItems:'center', zIndex:1000, padding:20 }}>
+      <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:16, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:440, width:'100%', overflow:'hidden' }}>
+        <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'18px 24px' }}>
+          <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:4 }}>Free account</div>
+          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.05 }}>{gate.title}</h3>
+        </div>
+        <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:12 }}>
+          {gate.benefit && <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, lineHeight:1.5 }}>{gate.benefit}</p>}
+          <input value={form.name} onChange={e=>setF('name',e.target.value)} placeholder="Your name"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          <input value={form.email} onChange={e=>setF('email',e.target.value)} type="email" placeholder="Email"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          <input value={form.phone} onChange={e=>setF('phone',e.target.value)} placeholder="Phone (optional)"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          <input value={form.company} onChange={e=>setF('company',e.target.value)} placeholder="Company (optional)"
+            style={{ fontFamily:F.body, fontSize:14.5, border:`2px solid ${P.line}`, borderRadius:8, padding:'11px 13px', outline:'none' }}/>
+          {err && <div style={{ fontFamily:F.body, fontSize:13, color:P.red }}>{err}</div>}
+          <button onClick={submit} disabled={busy}
+            style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:9, padding:'13px 18px', fontFamily:F.display, fontWeight:900, fontSize:15.5, cursor:busy?'not-allowed':'pointer', boxShadow:`4px 4px 0 ${P.line}`, opacity:busy?0.7:1, textTransform:'uppercase', letterSpacing:'-0.01em' }}>
+            {busy ? 'Setting up…' : (gate.cta + ' →')}
+          </button>
+          <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, textAlign:'center', lineHeight:1.5 }}>
+            Free forever. No payment needed. Already have an account? <a href="/login" style={{ color:P.accent, fontWeight:600 }}>Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardApp() {
   const params = new URLSearchParams(window.location.search);
   const auditIdFromUrl = params.get('id') || null;    // set when redirected from /audit
@@ -3647,6 +3774,39 @@ function DashboardApp() {
       }
     } catch(e) { /* silent — state still updates locally */ }
   }, [auditIdFromUrl, latestAudit]);
+
+  /* ── Account gate (shared) ───────────────────────────────────────────────
+     One signup modal for the whole dashboard. `requireAccount(opts)` runs the
+     action immediately if logged in, otherwise opens the gate; on success it
+     refreshes app-wide user state (so the app remembers the new account without
+     a re-login) and then runs the pending action. */
+  const [gate, setGate] = useState(null);   // { title, benefit, cta, onSuccess } | null
+  const isLoggedIn = !!user;
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const r = await fetch('/api/auth/me', { credentials:'include' });
+      const d = await r.json().catch(()=>null);
+      if (d?.user) { setUser(d.user); return d.user; }
+    } catch(e){}
+    return null;
+  }, []);
+
+  const requireAccount = useCallback((opts = {}) => {
+    if (user) { opts.onSuccess && opts.onSuccess(); return; }
+    setGate({ title: opts.title || 'Create your free account', benefit: opts.benefit || '', cta: opts.cta || 'Create free account', onSuccess: opts.onSuccess || null });
+  }, [user]);
+
+  /* When the user becomes logged in, persist any progress they made while
+     logged out, so nothing they ticked is lost. */
+  const prevLoggedIn = React.useRef(isLoggedIn);
+  useEffect(() => {
+    if (!prevLoggedIn.current && isLoggedIn) {
+      completedFixIds.forEach(id => saveOverride({ fixId: id, completed: true }));
+      excludedPhotoIds.forEach(pid => saveOverride({ photoId: pid, decision: 'rejected' }));
+    }
+    prevLoggedIn.current = isLoggedIn;
+  }, [isLoggedIn]);
 
   // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
@@ -3762,22 +3922,23 @@ function DashboardApp() {
   if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/><Loading/></div>;
 
   const pages = role==='builder' ? {
-    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} user={user} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
+    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} user={user} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
     about:       <BuilderAbout       latestAudit={latestAudit}/>,
     review:      <BuilderReview      latestAudit={latestAudit}/>,
-    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride}/>,
-    fixes:       <BuilderFixes       latestAudit={latestAudit} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
-    competitors: <BuilderCompetitors latestAudit={latestAudit} user={user} completedFixIds={completedFixIds} adjustedScore={adjustedScore} excludedPhotoIds={excludedPhotoIds}/>,
+    photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    fixes:       <BuilderFixes       latestAudit={latestAudit} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    competitors: <BuilderCompetitors latestAudit={latestAudit} user={user} completedFixIds={completedFixIds} adjustedScore={adjustedScore} excludedPhotoIds={excludedPhotoIds} onSignedUp={refreshUser}/>,
   } : {
-    dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
-    compare:   <HomeownerCompare user={user} latestAudit={latestAudit}/>,
+    dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
+    compare:   <HomeownerCompare user={user} latestAudit={latestAudit} onSignedUp={refreshUser} requireAccount={requireAccount}/>,
     advice:    <HomeownerAdvice/>,
     match:     <HomeownerMatch user={user}/>,
-    account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
+    account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit} requireAccount={requireAccount} isLoggedIn={isLoggedIn}/>,
   };
 
   return (
     <div style={{ minHeight:'100vh', background:P.surface }}>
+      <AccountGateModal gate={gate} onClose={()=>setGate(null)} onSignedUp={refreshUser}/>
       {role === 'builder' ? (
         <>
           <Nav role={role} page={activeSection} setPage={scrollToSection} user={user} website={latestAudit?.url}/>

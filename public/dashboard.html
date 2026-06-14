@@ -514,16 +514,32 @@ function ShareReport({ user, latestAudit }) {
   };
 
   return (
-    <Card style={{ marginBottom:24, background:'#fff' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+    <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+      {/* Yellow header strip */}
+      <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontSize:15 }}>🔗</span>
+        <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Share your audit report</span>
+      </div>
+      <div style={{ padding:'22px 24px', display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
         <div>
-          <Kicker color={P.accent}>Share your report</Kicker>
-          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Send a shareable summary</h3>
-          <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, maxWidth:540, lineHeight:1.5 }}>
-            Generate a public link to a clean, read-only summary — your score, the six trust checks, strengths, and priority fixes. Anyone with the link can view it; no account needed to open it.
+          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:P.ink, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.05 }}>One link. Your whole report, ready to send.</h3>
+          <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 12px', maxWidth:600, lineHeight:1.55 }}>
+            Turn this audit into a polished, read-only web page you can hand to anyone — your <b style={{color:P.ink}}>team</b>, your <b style={{color:P.ink}}>web designer</b>, or your <b style={{color:P.ink}}>marketing agency</b>. They see your score, the six trust checks, what's working, where you're losing enquiries, the priority fixes, and how you stack up against competitors — without needing a BuilderAudit login.
           </p>
+          {/* Sell points */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:state==='ready'?14:0 }}>
+            {[
+              ['🧑‍🤝‍🧑','Brief your team in one click'],
+              ['🎨','Hand your agency a clear spec'],
+              ['📊','No login needed to view'],
+            ].map((p,i)=>(
+              <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:6, fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, padding:'5px 12px' }}>
+                <span>{p[0]}</span>{p[1]}
+              </span>
+            ))}
+          </div>
           {state === 'ready' && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4, flexWrap:'wrap' }}>
               <input readOnly value={url} onFocus={e=>e.target.select()}
                 style={{ flex:1, minWidth:220, fontFamily:F.body, fontSize:13.5, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 12px', background:P.surface }}/>
               <Btn primary onClick={copy} style={{ padding:'10px 16px' }}>{copied ? '✓ Copied' : 'Copy link'}</Btn>
@@ -535,21 +551,22 @@ function ShareReport({ user, latestAudit }) {
         <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8 }}>
           {isLoggedIn ? (
             state !== 'ready' && (
-              <Btn primary onClick={create} disabled={state==='loading'} style={{ padding:'14px 22px', fontSize:15, whiteSpace:'nowrap' }}>
-                {state==='loading' ? 'Creating…' : '🔗 Create link'}
+              <Btn primary onClick={create} disabled={state==='loading'} style={{ padding:'16px 26px', fontSize:16, whiteSpace:'nowrap' }}>
+                {state==='loading' ? 'Creating…' : '🔗 Create shareable link'}
               </Btn>
             )
           ) : (
             <>
-              <div style={{ display:'flex', alignItems:'center', gap:8, fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.muted }}>
-                <span style={{ fontSize:15 }}>🔒</span> Account required
+              <div style={{ display:'flex', alignItems:'center', gap:7, fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.muted }}>
+                <span style={{ fontSize:15 }}>🔒</span> Free account required
               </div>
-              <a href="/signup" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'12px 20px', fontSize:14, whiteSpace:'nowrap' }}>Create free account</Btn></a>
+              <a href="/signup" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'14px 22px', fontSize:15, whiteSpace:'nowrap' }}>Create free account →</Btn></a>
+              <span style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, maxWidth:170, textAlign:'right', lineHeight:1.4 }}>Takes 30 seconds — then share unlimited reports.</span>
             </>
           )}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -637,6 +654,9 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
         <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:44, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>{auditData?.company||'Your company'}</h1>
         <p style={{ fontFamily:F.body, fontSize:16, color:P.muted, margin:0 }}>{domain} · Last scanned {latestAudit?'recently':'never'} · {fixDefs.length - completedFixIds.size} fixes outstanding</p>
       </div>
+
+      {/* Share report — key feature, top of page, gated to account holders */}
+      <ShareReport user={user} latestAudit={latestAudit}/>
 
       {/* Top row: score + stats */}
       <div style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr', gap:24, marginBottom:24 }}>
@@ -734,9 +754,6 @@ function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new
           ↑ Your projected score with these fixes applied: <b style={{ fontFamily:F.display, fontSize:16 }}>{score}</b> / 100. Re-scan to make it official.
         </div>}
       </Card>
-
-      {/* Share report (gated) */}
-      <ShareReport user={user} latestAudit={latestAudit}/>
 
       {/* New scan CTA */}
       <Card style={{ background:P.fill, borderColor:P.line }}>

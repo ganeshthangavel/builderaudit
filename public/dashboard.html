@@ -238,6 +238,8 @@ function exportReport(title, innerHtml) {
     body{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif;color:#1B1A17;background:#FBF5E1;padding:36px;line-height:1.5}
     .doc{max-width:780px;margin:0 auto;background:#fff;border:2.5px solid #1B1A17;border-radius:14px;overflow:hidden}
     .head{background:#FFD24D;border-bottom:2.5px solid #1B1A17;padding:22px 28px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+    .brandblock{display:flex;align-items:center;gap:12px}
+    .logo{width:42px;height:42px;display:block;flex-shrink:0}
     .brand{font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:20px;letter-spacing:-0.01em}
     .brand .a{color:#5247B8}
     .eyebrow{font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#5C5851}
@@ -272,7 +274,7 @@ function exportReport(title, innerHtml) {
     '<style>' + css + '</style></head><body>' +
     '<div class="actions"><button class="print" onclick="window.print()">⬇ Save as PDF / Print</button><button class="close" onclick="window.close()">Close</button></div>' +
     '<div class="doc">' +
-      '<div class="head"><div><div class="eyebrow">BuilderAudit · independent trust report</div><div class="brand">Builder<span class="a">Audit</span></div></div>' +
+      '<div class="head"><div class="brandblock"><img class="logo" src="' + window.location.origin + '/assets/logo/builderaudit-mark-mono.svg" alt=""><div><div class="eyebrow">Independent trust report</div><div class="brand">Builder<span class="a">Audit</span></div></div></div>' +
       '<div class="muted" style="font-size:12px">' + esc(new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})) + '</div></div>' +
       '<div class="body">' + innerHtml + '</div>' +
     '</div></body></html>'

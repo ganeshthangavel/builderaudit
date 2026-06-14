@@ -652,17 +652,52 @@ function phaseToActiveCheckIdx(phase) {
   return CHECKS.length - 1;
 }
 
+/* ─── Time-based progress engine ─────────────────────────────────────────────
+ * Instead of waiting on sparse backend phase events (which made the bar freeze
+ * then jump 5% → 55% → 100%), we advance the bar AND the active category purely
+ * on wall-clock time, paced to the 7-minute counter. We walk through the first
+ * N-1 categories over the active window, then PARK on the final category and
+ * creep toward ~97% as the "compiling your report" wait. The real 'complete'
+ * event always wins — it jumps straight to 100% and redirects, whether that
+ * happens early (fast site) or after the bar has parked (slow site). ─────────── */
+var finalizingShown = false;
+function showFinalizing() {
+  if (timerInterval) clearInterval(timerInterval);
+  var el = document.getElementById('timerDisplay');
+  if (el) {
+    el.textContent = audience === 'homeowner' ? 'Compiling the verdict…' : 'Compiling your report…';
+    el.className = 'sc-timer urgent';
+  }
+}
 function startSmoothTick() {
   if (smoothInterval) return;
+  auditStartTime = Date.now();          // anchor the engine clock to engine start
+  var N = CHECKS.length;
+  var TARGET = 420;                     // 7 min — matches the countdown
+  var ACTIVE = TARGET * 0.85;           // first N-1 categories spread across this
+  var lastIdxShown = -1;
   smoothInterval = setInterval(function(){
-    var ceiling = phaseToPct(currentPhase, true);
-    var floor = phaseToPct(currentPhase, false);
-    var displayed = parseFloat(document.getElementById('pctDisplay').textContent) || 0;
-    if (displayed < ceiling - 0.5) {
-      var step = Math.max(0.2, (ceiling - floor) / 90);
-      setProgress(Math.min(ceiling, displayed + step), false);
+    var elapsed = (Date.now() - auditStartTime) / 1000;
+    var pct, idx;
+    if (elapsed < ACTIVE) {
+      var f = elapsed / ACTIVE;                       // 0 → 1 across active window
+      idx = Math.min(N - 2, Math.floor(f * (N - 1))); // walk categories 0 … N-2
+      pct = 2 + f * 86;                               // 2% → ~88%
+    } else {
+      idx = N - 1;                                    // park on the final category
+      var over = elapsed - ACTIVE;
+      pct = 88 + (97 - 88) * (1 - Math.exp(-over / 110)); // creep 88% → ~97%
+      if (!finalizingShown) { showFinalizing(); finalizingShown = true; }
     }
-  }, 100);
+    /* Safety floors — never let the bar look stalled. If for any reason it's
+       lagging, guarantee it has visibly moved on by these checkpoints. */
+    if (elapsed >= 60  && pct < 10) pct = 10;
+    if (elapsed >= 180 && pct < 20) pct = 20;
+
+    var displayed = parseFloat(document.getElementById('pctDisplay').textContent) || 0;
+    if (pct > displayed) setProgress(Math.min(98, pct), false);  // never go backward; never hit 100 here
+    if (idx !== lastIdxShown) { setActiveIdx(idx, false); lastIdxShown = idx; }
+  }, 150);
 }
 function stopSmoothTick() {
   if (smoothInterval) clearInterval(smoothInterval);
@@ -674,13 +709,10 @@ function handle(name, data) {
     /* Server sends this first so we know the ID for the email-notify POST */
     currentAuditId = data.id;
   } else if (name === 'status') {
+    /* Backend phase events no longer drive the bar — the time-based engine does,
+       so the progress stays smooth instead of jumping. We just note the phase. */
     var step = data.step || 1;
-    if (step > currentPhase) {
-      currentPhase = step;
-      setProgress(phaseToPct(step, false), false);
-      setActiveIdx(phaseToActiveCheckIdx(step), false);
-      recalibrateTimer(step);
-    }
+    if (step > currentPhase) currentPhase = step;
   } else if (name === 'complete') {
     stopSmoothTick();
     stopTimer(true);

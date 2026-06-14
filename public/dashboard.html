@@ -2419,21 +2419,25 @@ function HoVerdict({ report, domain }) {
 
   return (
     <div>
-      {/* Hero verdict */}
-      <Card style={{ background:P.ink, color:'#fff', marginBottom:24 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:24, alignItems:'center' }}>
-          <div style={{ textAlign:'center' }}>
-            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:72, color:scoreColor, lineHeight:1, letterSpacing:'-0.04em' }}>{score ?? '?'}</div>
-            <div style={{ fontFamily:F.body, fontSize:11, color:'rgba(255,255,255,0.55)', marginTop:2, textTransform:'uppercase', letterSpacing:'0.08em' }}>/ 100</div>
+      {/* Hero verdict — BA3 */}
+      <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+        <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:15 }}>🔍</span>
+          <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Overall verdict</span>
+        </div>
+        <div style={{ padding:'24px', display:'grid', gridTemplateColumns:'auto 1fr', gap:24, alignItems:'center' }}>
+          <div style={{ textAlign:'center', background:P.surface, border:`2.5px solid ${P.line}`, borderRadius:14, padding:'16px 22px', boxShadow:`4px 4px 0 ${P.line}` }}>
+            <div style={{ fontFamily:F.display, fontWeight:900, fontSize:64, color:scoreColor, lineHeight:1, letterSpacing:'-0.04em' }}>{score ?? '?'}</div>
+            <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, marginTop:4, textTransform:'uppercase', letterSpacing:'0.08em' }}>out of 100</div>
           </div>
           <div>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:8 }}>Overall verdict</div>
-            <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:'#fff', margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase' }}>{report?.hero?.headline || verdict}</h2>
-            {report?.hero?.subtext && <p style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.78)', margin:'0 0 12px', lineHeight:1.55 }}>{report.hero.subtext}</p>}
-            {report?.hero?.ai_voice_intro && <p style={{ fontFamily:F.body, fontSize:13.5, fontStyle:'italic', color:'rgba(255,255,255,0.7)', margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.fill}`, paddingLeft:12 }}>{report.hero.ai_voice_intro}</p>}
+            <div style={{ display:'inline-block', fontFamily:F.body, fontSize:11, fontWeight:800, color:scoreColor, letterSpacing:'0.04em', textTransform:'uppercase', marginBottom:8 }}>{verdict}</div>
+            <h2 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'0 0 8px', letterSpacing:'-0.02em', textTransform:'uppercase', lineHeight:1.1 }}>{report?.hero?.headline || verdict}</h2>
+            {report?.hero?.subtext && <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 12px', lineHeight:1.55 }}>{report.hero.subtext}</p>}
+            {report?.hero?.ai_voice_intro && <p style={{ fontFamily:F.body, fontSize:13.5, fontStyle:'italic', color:P.ink, margin:0, lineHeight:1.6, borderLeft:`3px solid ${P.accent}`, paddingLeft:12, background:P.surface, padding:'10px 12px', borderRadius:'0 6px 6px 0' }}>{report.hero.ai_voice_intro}</p>}
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* 6 trust question scores */}
       {tq.length > 0 && (

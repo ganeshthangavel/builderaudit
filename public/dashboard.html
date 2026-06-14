@@ -377,10 +377,14 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
 
   const domain = (() => { try { return new URL(latestAudit?.url||'https://yoursite.co.uk').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||'yoursite.co.uk';} })();
 
+  const tqRaw = report?.trust_questions || [];
+  const tqAllLooksLikeTen = tqRaw.length > 0 && tqRaw.every(q => (q.score || 0) <= 10);
+  const normTQ = (s) => tqAllLooksLikeTen ? Math.round((s || 0) * 10) : (s || 50);
+
   const categories = report?.trust_questions ? report.trust_questions.map((q,i)=>{
     const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
     /* Boost photo score if some flagged photos were excluded */
-    let s = q.score||50;
+    let s = normTQ(q.score);
     if (i === 1 && excludedPhotoIds.size > 0) {
       /* "Do I believe these are real projects?" — each excluded flagged photo boosts this by ~5 pts */
       s = Math.min(100, s + excludedPhotoIds.size * 5);
@@ -1410,14 +1414,19 @@ function BuilderCompetitors({ latestAudit, user }) {
     url:       domain,
     loc:       report?.business_snapshot?.location || 'UK',
     score:     report?.hero?.score || 64,
-    breakdown: (report?.trust_questions || []).slice(0,6).map((q,i) => {
-      const labels = ['Trust','Real projects','Reviews','Credentials','Contact','Trading'];
-      return { name: labels[i] || q.question.slice(0,12), s: q.score || 50 };
-    }).concat(
-      /* fallback if no trust_questions yet */
-      report?.trust_questions?.length ? [] :
-      [{ name:'Photos',s:48},{ name:'Trust',s:72},{ name:'Mobile',s:86},{ name:'Speed',s:54},{ name:'Clarity',s:58},{ name:'Quote flow',s:68}]
-    ).slice(0,6),
+    breakdown: (() => {
+      const tq = report?.trust_questions || [];
+      const allTen = tq.length > 0 && tq.every(q => (q.score || 0) <= 10);
+      const norm = (s) => allTen ? Math.round((s || 0) * 10) : (s || 50);
+      return tq.slice(0,6).map((q,i) => {
+        const labels = ['Trust','Real projects','Reviews','Credentials','Contact','Trading'];
+        return { name: labels[i] || q.question.slice(0,12), s: norm(q.score) };
+      }).concat(
+        /* fallback if no trust_questions yet */
+        tq.length ? [] :
+        [{ name:'Photos',s:48},{ name:'Trust',s:72},{ name:'Mobile',s:86},{ name:'Speed',s:54},{ name:'Clarity',s:58},{ name:'Quote flow',s:68}]
+      ).slice(0,6);
+    })(),
     good: report?.competitor_gap?.you_have?.[0] || 'Mobile experience and copy feel genuine.',
     bad:  report?.trust_breakpoints?.[0]?.title  || 'Stock photos and missing trade badges undermine trust.',
   };
@@ -1921,7 +1930,8 @@ function HoVerdict({ report, domain }) {
           <h3 style={{ fontFamily:F.display, fontWeight:800, fontSize:17, color:P.ink, margin:'0 0 16px', textTransform:'uppercase', letterSpacing:'-0.01em' }}>6 things we checked</h3>
           <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
             {tq.map((q,i) => {
-              const s = q.score || 0;
+              const _allTen = tq.length > 0 && tq.every(x => (x.score || 0) <= 10);
+              const s = _allTen ? Math.round((q.score || 0) * 10) : (q.score || 0);
               const c = s>=75?P.green:s>=55?'#D97706':P.red;
               return (
                 <div key={i}>

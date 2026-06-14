@@ -8,7 +8,7 @@ const { Resend } = require('resend');
 const config = require('./config');
 
 const RESEND_API_KEY = config.RESEND_API_KEY;
-const ENQUIRY_TO_EMAIL = config.ENQUIRY_TO_EMAIL || 'gthangavel1@gmail.com';
+const ENQUIRY_TO_EMAIL = config.ENQUIRY_TO_EMAIL || 'hello@builderaudit.co.uk';
 const FROM_EMAIL = config.FROM_EMAIL || 'BuilderAudit <onboarding@resend.dev>';
 
 if (!RESEND_API_KEY) {

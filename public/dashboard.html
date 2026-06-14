@@ -1540,7 +1540,22 @@ function BuilderCompetitors({ latestAudit, user }) {
         credentials: 'include',
         body: JSON.stringify({ url: fullUrl }),
       });
-      const data = await res.json();
+
+      /* The response may not be JSON — e.g. Railway's proxy returns plain-text
+         "upstream error" / a gateway timeout if the audit runs too long. Parse
+         defensively so we show a useful message instead of a parser crash. */
+      let data;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      } else {
+        const text = await res.text().catch(() => '');
+        if (/upstream|timeout|gateway|502|503|504/i.test(text) || res.status >= 500) {
+          throw new Error('That audit took too long and timed out. Some large or slow sites can\'t finish in time — try again, it often works on a second attempt.');
+        }
+        throw new Error('Unexpected response from the server. Please try again.');
+      }
+      if (!data) throw new Error('The server sent back an empty response. Please try again.');
 
       /* If the server still says locked (e.g. cookie expired) re-show modal */
       if (data.locked) {
@@ -2366,7 +2381,18 @@ function HomeownerCompare({ user }) {
         method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
         body: JSON.stringify({ url: fullUrl }),
       });
-      const data = await res.json();
+      let data;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      } else {
+        const text = await res.text().catch(() => '');
+        if (/upstream|timeout|gateway|502|503|504/i.test(text) || res.status >= 500) {
+          throw new Error('That audit took too long and timed out. Some large or slow sites can\'t finish in time — try again, it often works on a second attempt.');
+        }
+        throw new Error('Unexpected response from the server. Please try again.');
+      }
+      if (!data) throw new Error('The server sent back an empty response. Please try again.');
       if (data.locked) { setSlots(s=>s.map((sl,j)=>j===i?{...sl,loading:false}:sl)); setPendingSlot(i); setShowModal(true); return; }
       if (!res.ok) throw new Error(data.error||'Audit failed');
       const domain = (() => { try { return new URL(fullUrl).hostname.replace(/^www\./,''); } catch(e){return raw;} })();

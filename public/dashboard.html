@@ -22,6 +22,33 @@
   ::-webkit-scrollbar-thumb { background: #1B1A17; border-radius: 3px; }
   /* Global spinner animation — used by all loading spinners across the app */
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Responsive / mobile ---------- */
+  img, svg { max-width: 100%; }
+  @media (max-width: 768px){
+    main { padding-left: 16px !important; padding-right: 16px !important; padding-top: 22px !important; }
+    nav { gap: 8px !important; }
+    main h1 { font-size: 30px !important; line-height: 1.06 !important; }
+    main h2 { font-size: 22px !important; }
+    main input, main textarea, main select { max-width: 100%; }
+  }
+  @media (max-width: 560px){
+    main h1 { font-size: 25px !important; }
+    /* Compare tiles: swipe horizontally instead of 5 squashed columns */
+    .ba-compare-grid {
+      grid-template-columns: none !important;
+      grid-auto-flow: column !important;
+      grid-auto-columns: 82% !important;
+      overflow-x: auto !important;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 8px;
+    }
+    .ba-compare-grid > * { scroll-snap-align: start; }
+    /* Two-column blocks stack */
+    .ba-stack-sm { grid-template-columns: 1fr !important; }
+    .ba-wrap-sm { flex-wrap: wrap !important; }
+  }
 </style>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
@@ -2448,7 +2475,7 @@ function HoVerdict({ report, domain }) {
           <span style={{ fontSize:15 }}>🔍</span>
           <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>Overall verdict</span>
         </div>
-        <div style={{ padding:'24px', display:'grid', gridTemplateColumns:'auto 1fr', gap:24, alignItems:'center' }}>
+        <div className="ba-stack-sm" style={{ padding:'24px', display:'grid', gridTemplateColumns:'auto 1fr', gap:24, alignItems:'center' }}>
           <div style={{ textAlign:'center', background:P.surface, border:`2.5px solid ${P.line}`, borderRadius:14, padding:'16px 22px', boxShadow:`4px 4px 0 ${P.line}` }}>
             <div style={{ fontFamily:F.display, fontWeight:900, fontSize:64, color:scoreColor, lineHeight:1, letterSpacing:'-0.04em' }}>{score ?? '?'}</div>
             <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, marginTop:4, textTransform:'uppercase', letterSpacing:'0.08em' }}>out of 100</div>
@@ -3145,7 +3172,7 @@ function HomeownerCompare({ user, latestAudit, onSignedUp = ()=>{}, requireAccou
         )}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5, minmax(0, 1fr))', gap:16, marginBottom:24, alignItems:'stretch' }}>
+      <div className="ba-compare-grid" style={{ display:'grid', gridTemplateColumns:'repeat(5, minmax(0, 1fr))', gap:16, marginBottom:24, alignItems:'stretch' }}>
         {slots.map((slot, i) => renderTile(slot, i))}
       </div>
 
@@ -4064,3 +4091,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<DashboardApp/>);
 <script src="/assets/feedback-widget.js" defer></script>
 </body>
 </html>
+ 

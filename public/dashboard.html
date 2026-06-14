@@ -1577,29 +1577,49 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
         <Card pad={22} style={{ background:P.fill }}><Label>Points available</Label><BigNum n={`+${remaining}`} sub="still on the table" yellow/></Card>
       </div>
 
-      {/* Live projected score — climbs as fixes are ticked, persists across the dashboard */}
-      <div style={{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap', background:P.ink, border:`2.5px solid ${P.line}`, borderRadius:12, boxShadow:`5px 5px 0 ${P.line}`, padding:'18px 22px', marginBottom:24 }}>
-        <div style={{ display:'flex', alignItems:'baseline', gap:10 }}>
-          <span style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>Projected score</span>
-        </div>
-        <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
-          <span style={{ fontFamily:F.display, fontWeight:900, fontSize:34, color:'#fff', lineHeight:1 }}>{liveScore}</span>
-          <span style={{ fontFamily:F.body, fontSize:14, color:'rgba(255,255,255,0.55)' }}>/ 100</span>
-          {liveScore > baseScore && (
-            <span style={{ fontFamily:F.display, fontWeight:800, fontSize:14, color:'#7BE0AE', marginLeft:4 }}>▲ {liveScore - baseScore} from {baseScore}</span>
-          )}
-        </div>
-        <div style={{ flex:1, minWidth:160 }}>
-          <div style={{ height:10, background:'rgba(255,255,255,0.12)', borderRadius:5, overflow:'hidden' }}>
-            <div style={{ width:`${liveScore}%`, height:'100%', background:P.green, transition:'width .35s' }}/>
+      {/* Live projected score — BA3 themed: yellow header strip, tilted chip,
+          chunky offset shadow, inset progress track */}
+      {(() => {
+        const sCol = liveScore >= 75 ? P.green : liveScore >= 55 ? P.fill : P.red;
+        const lift = Math.max(0, liveScore - baseScore);
+        const pct = Math.max(0, Math.min(100, liveScore));
+        const basePct = Math.max(0, Math.min(100, baseScore));
+        return (
+          <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+            {/* Yellow header strip */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 20px' }}>
+              <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>📈 Your projected score</span>
+              {lift > 0 && (
+                <span style={{ transform:'rotate(2deg)', background:P.green, color:'#fff', border:`2px solid ${P.line}`, borderRadius:6, padding:'3px 10px', boxShadow:`2px 2px 0 ${P.line}`, fontFamily:F.display, fontWeight:800, fontSize:12 }}>▲ +{lift} so far</span>
+              )}
+            </div>
+            <div style={{ padding:'20px 22px', display:'flex', alignItems:'center', gap:22, flexWrap:'wrap' }}>
+              {/* Tilted score chip */}
+              <div style={{ flexShrink:0, transform:'rotate(-2deg)', background:sCol, color:sCol===P.fill?P.ink:'#fff', border:`2.5px solid ${P.line}`, borderRadius:10, padding:'10px 16px', boxShadow:`3px 3px 0 ${P.line}`, textAlign:'center', minWidth:92 }}>
+                <div style={{ fontFamily:F.display, fontWeight:900, fontSize:34, lineHeight:1 }}>{liveScore}</div>
+                <div style={{ fontFamily:F.body, fontSize:9, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginTop:3, opacity:0.9 }}>/ 100 trust</div>
+              </div>
+              {/* Progress track with base marker */}
+              <div style={{ flex:1, minWidth:200 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontFamily:F.body, fontSize:11, fontWeight:700, color:P.muted, marginBottom:6 }}>
+                  <span>Started at {baseScore}</span>
+                  {lift > 0 && <span style={{ color:P.green }}>Now projecting {liveScore}</span>}
+                </div>
+                <div style={{ position:'relative', height:14, background:P.surface, border:`2px solid ${P.line}`, borderRadius:7, overflow:'hidden' }}>
+                  <div style={{ width:`${pct}%`, height:'100%', background:sCol, transition:'width .35s' }}/>
+                  {/* base-score marker */}
+                  <div style={{ position:'absolute', top:-2, bottom:-2, left:`${basePct}%`, width:2, background:P.ink, opacity:0.45 }}/>
+                </div>
+                <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, marginTop:9, lineHeight:1.45, maxWidth:560 }}>
+                  {doneCount === 0
+                    ? 'Tick fixes off to watch your projected score climb — it saves as you go.'
+                    : 'This is a projection. Ship the changes for real, then re-scan to verify them and unlock a higher score — ticking alone can\'t reach the top.'}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <span style={{ fontFamily:F.body, fontSize:12, color:'rgba(255,255,255,0.55)', maxWidth:240, lineHeight:1.45 }}>
-          {doneCount === 0
-            ? 'Tick fixes off to see your projected score climb — it saves as you go.'
-            : 'This is a projection. Actually ship the changes, then re-scan to verify them and unlock a higher score — ticking alone can\'t reach the top.'}
-        </span>
-      </div>
+        );
+      })()}
 
       <Card pad={22} style={{ marginBottom:24 }}>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>

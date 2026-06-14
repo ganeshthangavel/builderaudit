@@ -411,6 +411,8 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
   let rateLimitHit = false;
   let homepageProcessed = false;
   let sitemapAttempted = false;
+  /* Capture why the homepage failed (surfaced in logs even in non-debug mode) */
+  let homepageDiag = { status: null, bytes: 0, error: null, modesTried: [] };
 
   while (queue.length > 0 && pages.length < MAX_PAGES) {
     const url = queue.shift();
@@ -455,6 +457,12 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
       }
 
       consecutiveErrors = 0;
+
+      if (isHomepage) {
+        homepageDiag.status = result.statusCode;
+        homepageDiag.bytes = (result.html || '').length;
+        homepageDiag.modesTried.push(result.mode || 'standard');
+      }
 
       if (result.statusCode >= 400) {
         if (debug) debugLog.push({ url, stage: 'http-error', status: result.statusCode, cost: result.cost, mode: result.mode });
@@ -523,6 +531,7 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
     } catch (err) {
       const msg = err.message || '';
       console.warn('ScrapFly crawl failed:', url, msg);
+      if (isHomepage) { homepageDiag.error = msg; homepageDiag.modesTried.push('exception'); }
       if (debug) debugLog.push({ url, stage: 'exception', message: msg });
 
       consecutiveErrors++;
@@ -570,6 +579,18 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 
   console.log(`[scrapfly] Crawl complete: ${pages.length} pages, total cost ${totalCost} credits${rateLimitHit ? ' (rate limited)' : ''}`);
 
+  /* If we got nothing, log WHY in plain terms so failures are diagnosable from
+     the deploy logs without turning on debug mode. */
+  if (pages.length === 0) {
+    let diagnosis;
+    if (rateLimitHit) diagnosis = 'rate-limited by ScrapFly (too many requests)';
+    else if (homepageDiag.error) diagnosis = 'homepage request errored: ' + homepageDiag.error;
+    else if (homepageDiag.status && homepageDiag.status >= 400) diagnosis = 'site returned HTTP ' + homepageDiag.status + ' (likely a hard block/WAF)';
+    else if (homepageDiag.bytes > 0 && homepageDiag.bytes < 800) diagnosis = 'homepage rendered but near-empty (' + homepageDiag.bytes + ' bytes) — JS-heavy or challenge page';
+    else diagnosis = 'no readable homepage content';
+    console.warn(`[scrapfly] CRAWL FAILED for ${startUrl} — ${diagnosis}. Modes tried: ${homepageDiag.modesTried.join(' → ') || 'none'}`);
+  }
+
   if (debug) return { pages, debugLog, totalCost, rateLimitHit };
   return pages;
 }
@@ -577,5 +598,5 @@ async function crawlWebsiteScrapFly(startUrl, opts = {}) {
 module.exports = {
   crawlWebsiteScrapFly,
   isAvailable: () => !!config.SCRAPFLY_API_KEY,
-  version: '2026-06-14-broad-image-extraction',
+  version: '2026-06-14-competitor-crawl-fix',
 };

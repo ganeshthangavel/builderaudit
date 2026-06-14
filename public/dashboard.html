@@ -3139,7 +3139,7 @@ function HomeownerCompare({ user, latestAudit, onSignedUp = ()=>{}, requireAccou
         )}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(255px, 1fr))', gap:16, marginBottom:24, alignItems:'stretch' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5, minmax(0, 1fr))', gap:16, marginBottom:24, alignItems:'stretch' }}>
         {slots.map((slot, i) => renderTile(slot, i))}
       </div>
 

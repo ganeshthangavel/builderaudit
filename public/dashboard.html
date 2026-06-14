@@ -1094,8 +1094,18 @@ function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set
     const usedIndices = new Set();
     const allUrls = imageUrls;
 
+    /* Prefer the AI's direct image_ref (e.g. "img_3") → exact URL. Only fall
+       back to keyword guessing if the AI didn't supply a usable ref. */
+    const resolveIdx = (p) => {
+      if (p.image_ref) {
+        const byRef = allUrls.findIndex(u => u && u.ref === p.image_ref);
+        if (byRef !== -1 && !usedIndices.has(byRef)) return byRef;
+      }
+      return findBestUrl(p.description, usedIndices, allUrls);
+    };
+
     const strong = (pa?.strong_images || []).map((p, i) => {
-      const idx = findBestUrl(p.description, usedIndices, allUrls);
+      const idx = resolveIdx(p);
       if (idx !== null && idx !== -1) usedIndices.add(idx);
       const img = idx !== null && idx !== -1 ? allUrls[idx] : null;
       return {
@@ -1112,7 +1122,7 @@ function BuilderPhotos({ latestAudit, imageUrls = [], excludedPhotoIds = new Set
     });
 
     const weak = (pa?.weak_images || []).map((p, i) => {
-      const idx = findBestUrl(p.description, usedIndices, allUrls);
+      const idx = resolveIdx(p);
       if (idx !== null && idx !== -1) usedIndices.add(idx);
       const img = idx !== null && idx !== -1 ? allUrls[idx] : null;
       return {
@@ -1958,14 +1968,21 @@ function HoPhotoCheck({ report, imageUrls }) {
   }
 
   const usedIndices = new Set();
+  const resolveIdx = (p) => {
+    if (p.image_ref) {
+      const byRef = imageUrls.findIndex(u => u && u.ref === p.image_ref);
+      if (byRef !== -1 && !usedIndices.has(byRef)) return byRef;
+    }
+    return findBestUrl(p.description, usedIndices, imageUrls);
+  };
   const strong = (pa?.strong_images || []).map((p, i) => {
-    const idx = findBestUrl(p.description, usedIndices, imageUrls);
+    const idx = resolveIdx(p);
     if (idx != null && idx !== -1) usedIndices.add(idx);
     const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
     return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Real photo', detail:p.why_it_works||'', verdict:'real' };
   });
   const weak = (pa?.weak_images || []).map((p, i) => {
-    const idx = findBestUrl(p.description, usedIndices, imageUrls);
+    const idx = resolveIdx(p);
     if (idx != null && idx !== -1) usedIndices.add(idx);
     const img = idx != null && idx !== -1 ? imageUrls[idx] : null;
     return { src:img?.src, pageUrl:img?.pageUrl, label:p.description||'Flagged photo', detail:p.issue||'', verdict:'stock', confirmed:p.confirmed_stock, source:p.stock_source };

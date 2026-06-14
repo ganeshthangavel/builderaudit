@@ -1093,9 +1093,11 @@ app.get('/api/share/:token', async (req, res) => {
     try { domain = new URL(a.url).hostname.replace(/^www\./, ''); } catch(e){}
     const bsName = (report.business_snapshot && report.business_snapshot.company_name) || domain;
 
-    /* Lead-capture gate: the viewer must give name/email/company once before the
-       full report is returned. We mark that with a cookie set by the lead POST. */
-    if (req.cookies['ba_lead_' + token] !== '1') {
+    /* Lead-capture gate: external viewers give name/email/company once (marked
+       by a cookie). But the OWNER viewing their own report is never gated —
+       they shouldn't have to capture their own details to see their own audit. */
+    const isOwner = req.user && a.user_id && req.user.id === a.user_id;
+    if (!isOwner && req.cookies['ba_lead_' + token] !== '1') {
       return res.json({ gated: true, company: bsName, domain });
     }
 
@@ -1210,22 +1212,29 @@ app.post('/api/share/:token/lead', async (req, res) => {
     const a = await db.getAuditByShareToken(token);
     if (!a) return res.status(404).json({ error: 'This shared report link is invalid or has been revoked.' });
 
-    await db.saveReportLead({
-      shareToken: token,
-      auditId: a.id,
-      ownerUserId: a.user_id || null,
-      name: String(name).trim().slice(0, 120),
-      email: String(email).trim().toLowerCase().slice(0, 160),
-      company: company ? String(company).trim().slice(0, 160) : null,
-      ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 60),
-      userAgent: (req.get('user-agent') || '').slice(0, 250),
-    });
+    /* Save the lead. If storage hiccups (e.g. a migration hasn't run yet) we
+       still let them through rather than blocking access to the report — the
+       capture is a marketing nicety, not a gate that should break viewing. */
+    try {
+      await db.saveReportLead({
+        shareToken: token,
+        auditId: a.id,
+        ownerUserId: a.user_id || null,
+        name: String(name).trim().slice(0, 120),
+        email: String(email).trim().toLowerCase().slice(0, 160),
+        company: String(company).trim().slice(0, 160),
+        ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 60),
+        userAgent: (req.get('user-agent') || '').slice(0, 250),
+      });
+    } catch (saveErr) {
+      console.error('[share:lead] save failed (continuing):', saveErr.message);
+    }
 
     /* Notify the business owner of the new report view (fire-and-forget). */
     let reportCompany = null;
     try { reportCompany = (a.report_json && a.report_json.business_snapshot && a.report_json.business_snapshot.company_name) || new URL(a.url).hostname.replace(/^www\./,''); } catch(e){}
     email.sendReportLeadNotification({
-      lead: { name: String(name).trim(), email: String(email).trim().toLowerCase(), company: company ? String(company).trim() : null },
+      lead: { name: String(name).trim(), email: String(email).trim().toLowerCase(), company: String(company).trim() },
       reportCompany,
       reportUrl: `${req.protocol}://${req.get('host')}/r/${token}`,
     }).catch(e => console.error('[share:lead] notify failed:', e.message));
@@ -1750,4 +1759,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-       
+         

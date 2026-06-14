@@ -379,18 +379,18 @@ app.post('/api/competitor-check', async (req, res) => {
       return res.status(422).json({ error: 'That site loaded but returned almost no readable content — usually a sign of a bot-challenge page (e.g. Cloudflare). Try again shortly.' });
     }
 
-    /* Verify images (reverse-image / stock detection) — same as a normal audit */
-    const allImages = pages.flatMap(p => p.images || []);
-    const imageVerification = await verifyImages(allImages);
-
+    /* Competitor scans only show a score + category bars — they don't display
+       photo analysis or reverse-image results. So we SKIP the slow steps
+       (SerpAPI reverse-image verification + individual-image vision fetching)
+       to keep the whole request well under Railway's proxy timeout. */
     const userContext = {
       businessType: req.user.business_type,
       region:       req.user.region,
       companyName:  req.user.company_name,
     };
 
-    /* Full Sonnet scoring — same quality as a normal audit */
-    const report = await scoreWebsite(pages, url, imageVerification, {}, userContext, 'builder');
+    /* Lite scoring — same scores, no heavy per-image vision pass */
+    const report = await scoreWebsite(pages, url, null, {}, userContext, 'builder', { lite: true });
 
     const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e){ return url; } })();
     res.json({
@@ -1487,4 +1487,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-       
+   

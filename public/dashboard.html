@@ -2466,6 +2466,25 @@ function HoVerdict({ report, domain }) {
   const verdict = score >= 75 ? 'This builder appears trustworthy' : score >= 55 ? 'Proceed carefully — some concerns' : 'Significant red flags — verify before signing';
   const tq = report?.trust_questions || [];
 
+  /* About-the-company summary — real business_snapshot fields only, blanks dropped */
+  const bs = report?.business_snapshot || {};
+  const clean = (v) => { if (v == null) return null; const s = String(v).trim(); return (!s || /^(not stated|not found|n\/?a|unknown|null|none)$/i.test(s)) ? null : s; };
+  const cleanArr = (a) => Array.isArray(a) ? a.map(clean).filter(Boolean) : [];
+  const companyName = clean(bs.company_name);
+  const oneLiner    = clean(bs.one_liner);
+  const aboutFacts = [
+    ['Location',       clean(bs.location)],
+    ['Service area',   clean(bs.service_area)],
+    ['Established',    clean(bs.established)],
+    ['Years trading',  clean(bs.years_trading)],
+    ['Team size',      clean(bs.team?.team_size)],
+    ['Project values', clean(bs.project_value_range)],
+  ].filter(([, v]) => v);
+  const workTypes      = cleanArr(bs.work_types);
+  const accreditations = cleanArr(bs.accreditations);
+  const usps           = cleanArr(bs.unique_selling_points);
+  const hasAbout = companyName || oneLiner || aboutFacts.length || workTypes.length || accreditations.length || usps.length;
+
   return (
     <div>
       {/* Hero verdict — BA3 */}
@@ -2487,6 +2506,59 @@ function HoVerdict({ report, domain }) {
           </div>
         </div>
       </div>
+
+      {/* About this builder — company summary */}
+      {hasAbout && (
+        <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:24 }}>
+          <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'12px 22px', display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:15 }}>🏢</span>
+            <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>About this builder</span>
+          </div>
+          <div style={{ padding:'20px 22px' }}>
+            {companyName && <div style={{ fontFamily:F.display, fontWeight:900, fontSize:22, color:P.ink, letterSpacing:'-0.02em', lineHeight:1.1, marginBottom:oneLiner?6:14 }}>{companyName}</div>}
+            {oneLiner && <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 16px', lineHeight:1.55 }}>{oneLiner}</p>}
+
+            {aboutFacts.length > 0 && (
+              <div className="ba-stack-sm" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:(workTypes.length||accreditations.length||usps.length)?16:0 }}>
+                {aboutFacts.map(([label, v], i) => (
+                  <div key={i} style={{ padding:'10px 12px', background:P.surface, borderRadius:6, border:`1.5px solid ${P.line}` }}>
+                    <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{label}</div>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {workTypes.length > 0 && (
+              <div style={{ marginBottom:(accreditations.length||usps.length)?14:0 }}>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>What they do</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {workTypes.map((w, i) => <span key={i} style={{ fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink, background:P.surface, border:`1.5px solid ${P.line}`, borderRadius:999, padding:'4px 11px' }}>{w}</span>)}
+                </div>
+              </div>
+            )}
+
+            {accreditations.length > 0 && (
+              <div style={{ marginBottom:usps.length?14:0 }}>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.green, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Accreditations they list</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {accreditations.map((a, i) => <span key={i} style={{ fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.green, background:'rgba(31,138,91,0.08)', border:`1.5px solid ${P.green}`, borderRadius:999, padding:'4px 11px' }}>✓ {a}</span>)}
+                </div>
+                <div style={{ fontFamily:F.body, fontSize:11.5, color:P.muted, marginTop:8, lineHeight:1.45, fontStyle:'italic' }}>Listed on their own site — worth verifying directly with the trade body before you rely on it.</div>
+              </div>
+            )}
+
+            {usps.length > 0 && (
+              <div>
+                <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>What they emphasise</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {usps.map((u, i) => <div key={i} style={{ display:'flex', gap:9, fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}><span style={{ color:P.accent, fontWeight:800, flex:'0 0 auto' }}>•</span>{u}</div>)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 6 trust question scores */}
       {tq.length > 0 && (

@@ -3839,6 +3839,41 @@ function ErrorState({ msg }) {
 /* Shared signup gate. Renders when `gate` is set. On success: creates the
    account (session cookie set server-side), refreshes app-wide user, then runs
    the pending action. */
+function VerifyBanner({ user }) {
+  const [state, setState] = React.useState('idle'); // idle|sending|sent|error
+  const justVerified = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('verified') === '1';
+  if (justVerified) {
+    return (
+      <div style={{ background:P.green, color:'#fff', fontFamily:F.body, fontSize:13.5, fontWeight:600, textAlign:'center', padding:'10px 16px' }}>
+        ✓ Email confirmed — your account is fully verified.
+      </div>
+    );
+  }
+  if (!user || user.emailVerified !== false) return null;
+  const resend = async () => {
+    setState('sending');
+    try {
+      const r = await fetch('/api/auth/resend-verification', { method:'POST', credentials:'include' });
+      if (!r.ok) throw new Error();
+      setState('sent');
+    } catch(e) { setState('error'); }
+  };
+  return (
+    <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'11px 18px', display:'flex', alignItems:'center', justifyContent:'center', gap:12, flexWrap:'wrap' }} className="ba-wrap-sm">
+      <span style={{ fontFamily:F.body, fontSize:13.5, fontWeight:600, color:P.ink }}>
+        ✉️ Please confirm your email — we sent a link to <b>{user.email}</b>.
+      </span>
+      {state === 'sent'
+        ? <span style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.green }}>Sent — check your inbox ✓</span>
+        : <button onClick={resend} disabled={state==='sending'}
+            style={{ fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.ink, background:'#fff', border:`2px solid ${P.line}`, borderRadius:7, padding:'6px 12px', cursor:'pointer', boxShadow:`2px 2px 0 ${P.line}` }}>
+            {state==='sending' ? 'Sending…' : state==='error' ? 'Try again' : 'Resend link'}
+          </button>
+      }
+    </div>
+  );
+}
+
 function AccountGateModal({ gate, onClose, onSignedUp }) {
   const [form, setForm] = useState({ name:'', email:'', phone:'', company:'' });
   const [err, setErr] = useState('');
@@ -4081,6 +4116,7 @@ function DashboardApp() {
     <div style={{ minHeight:'100vh', background:P.surface }}>
       <AccountGateModal gate={gate} onClose={()=>setGate(null)} onSignedUp={refreshUser}/>
       <Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/>
+      <VerifyBanner user={user}/>
       {pages[page] || pages['dashboard']}
     </div>
   );
@@ -4091,3 +4127,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<DashboardApp/>);
 <script src="/assets/feedback-widget.js" defer></script>
 </body>
 </html>
+ 

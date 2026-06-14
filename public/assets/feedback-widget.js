@@ -75,7 +75,9 @@
           '<div class="ba-fb-type" data-kind="idea">Idea</div>' +
           '<div class="ba-fb-type" data-kind="other">Other</div>' +
         '</div>' +
-        '<label class="ba-fb-l" for="ba-fb-msg">Your message</label>' +
+        '<label class="ba-fb-l" for="ba-fb-name">Your name</label>' +
+        '<input id="ba-fb-name" class="ba-fb-in" style="margin-top:0" type="text" autocomplete="name" placeholder="Jane Smith">' +
+        '<label class="ba-fb-l" for="ba-fb-msg" style="margin-top:12px">Your message</label>' +
         '<textarea id="ba-fb-msg" class="ba-fb-ta" placeholder="e.g. The audit says my video is broken but it works fine\u2026"></textarea>' +
         '<input id="ba-fb-email" class="ba-fb-in" type="email" placeholder="Email (optional \u2014 if you\u2019d like a reply)">' +
         '<button class="ba-fb-submit" id="ba-fb-send" type="button">Send feedback</button>' +
@@ -112,6 +114,7 @@
     function showErr(m){ errBox.textContent = m; errBox.style.display = 'block'; }
 
     sendBtn.addEventListener('click', function(){
+      var name = (overlay.querySelector('#ba-fb-name').value || '').trim();
       var msg = (overlay.querySelector('#ba-fb-msg').value || '').trim();
       var email = (overlay.querySelector('#ba-fb-email').value || '').trim();
       if (msg.length < 3) return showErr('Please add a little more detail.');
@@ -119,7 +122,7 @@
       sendBtn.disabled = true; sendBtn.textContent = 'Sending\u2026';
       fetch('/api/feedback', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ kind: kind, message: msg, email: email, pageUrl: location.href }),
+        body: JSON.stringify({ kind: kind, name: name, message: msg, email: email, pageUrl: location.href }),
       })
         .then(function(r){ return r.ok ? r.json() : r.json().then(function(e){ throw new Error(e.error || 'Something went wrong'); }); })
         .then(function(){

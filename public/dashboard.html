@@ -467,7 +467,73 @@ function Nav({ role, page, setPage, user }) {
 // ════════════════════════════════════════════════════════════════
 
 // ── Builder Dashboard (main) ────────────────────────────────────
-function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
+
+/* Gated shareable-report card. The button only works for signed-in owners;
+   the public link it produces (/r/<token>) needs no account to view. */
+function ShareReport({ user, latestAudit }) {
+  const isLoggedIn = !!user;
+  const [state, setState] = React.useState('idle');   // idle | loading | ready | error
+  const [url, setUrl]     = React.useState('');
+  const [err, setErr]     = React.useState('');
+  const [copied, setCopied] = React.useState(false);
+
+  const create = async () => {
+    if (!isLoggedIn) return;
+    setState('loading'); setErr('');
+    try {
+      const id = latestAudit?.id || 'latest';
+      const res = await fetch('/api/my/audit/' + id + '/share', { method:'POST', credentials:'include' });
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(()=>null) : null;
+      if (!res.ok || !data?.url) throw new Error(data?.error || 'Could not create a link.');
+      setUrl(data.url); setState('ready');
+    } catch(e) { setErr(e.message); setState('error'); }
+  };
+  const copy = () => {
+    try { navigator.clipboard.writeText(url); setCopied(true); setTimeout(()=>setCopied(false), 1800); } catch(e){}
+  };
+
+  return (
+    <Card style={{ marginBottom:24, background:'#fff' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+        <div>
+          <Kicker color={P.accent}>Share your report</Kicker>
+          <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:'10px 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Send a shareable summary</h3>
+          <p style={{ fontFamily:F.body, fontSize:14, color:P.muted, margin:0, maxWidth:540, lineHeight:1.5 }}>
+            Generate a public link to a clean, read-only summary — your score, the six trust checks, strengths, and priority fixes. Anyone with the link can view it; no account needed to open it.
+          </p>
+          {state === 'ready' && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, flexWrap:'wrap' }}>
+              <input readOnly value={url} onFocus={e=>e.target.select()}
+                style={{ flex:1, minWidth:220, fontFamily:F.body, fontSize:13.5, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 12px', background:P.surface }}/>
+              <Btn primary onClick={copy} style={{ padding:'10px 16px' }}>{copied ? '✓ Copied' : 'Copy link'}</Btn>
+              <a href={url} target="_blank" rel="noopener" style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.accent }}>Open ↗</a>
+            </div>
+          )}
+          {state === 'error' && <div style={{ marginTop:12, fontFamily:F.body, fontSize:13, color:P.red }}>{err}</div>}
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8 }}>
+          {isLoggedIn ? (
+            state !== 'ready' && (
+              <Btn primary onClick={create} disabled={state==='loading'} style={{ padding:'14px 22px', fontSize:15, whiteSpace:'nowrap' }}>
+                {state==='loading' ? 'Creating…' : '🔗 Create link'}
+              </Btn>
+            )
+          ) : (
+            <>
+              <div style={{ display:'flex', alignItems:'center', gap:8, fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.muted }}>
+                <span style={{ fontSize:15 }}>🔒</span> Account required
+              </div>
+              <a href="/signup" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'12px 20px', fontSize:14, whiteSpace:'nowrap' }}>Create free account</Btn></a>
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function BuilderDashboard({ auditData, latestAudit, user, excludedPhotoIds = new Set(), completedFixIds = new Set(), setCompletedFixIds = ()=>{}, adjustedScore = null, saveOverride = ()=>{} }) {
   const report = latestAudit?.report_json || null;
   const baseScore = report?.hero?.score ?? 64;
 
@@ -648,6 +714,9 @@ function BuilderDashboard({ auditData, latestAudit, excludedPhotoIds = new Set()
           ↑ Your projected score with these fixes applied: <b style={{ fontFamily:F.display, fontSize:16 }}>{score}</b> / 100. Re-scan to make it official.
         </div>}
       </Card>
+
+      {/* Share report (gated) */}
+      <ShareReport user={user} latestAudit={latestAudit}/>
 
       {/* New scan CTA */}
       <Card style={{ background:P.fill, borderColor:P.line }}>
@@ -3336,7 +3405,7 @@ function DashboardApp() {
   if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
 
   const pages = role==='builder' ? {
-    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
+    dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} user={user} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,
     about:       <BuilderAbout       latestAudit={latestAudit}/>,
     review:      <BuilderReview      latestAudit={latestAudit}/>,
     photos:      <BuilderPhotos      latestAudit={latestAudit} imageUrls={imageUrls} excludedPhotoIds={excludedPhotoIds} setExcludedPhotoIds={setExcludedPhotoIds} saveOverride={saveOverride}/>,

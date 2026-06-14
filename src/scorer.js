@@ -487,9 +487,9 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
      3) screenshots only, no project images (12000) — handles a bad/confusing
         image batch so the audit still succeeds, just with keyword pairing */
   const attempts = [
-    { blocks: imageBlocks,    budget: 8000,  label: 'full prompt @8000' },
-    { blocks: imageBlocks,    budget: 14000, label: 'full prompt @14000' },
-    { blocks: screenshotBlocks, budget: 12000, label: 'screenshots-only @12000 (no project images)' },
+    { blocks: imageBlocks,    budget: 12000, label: 'full prompt @12000' },
+    { blocks: imageBlocks,    budget: 16000, label: 'full prompt @16000' },
+    { blocks: screenshotBlocks, budget: 16000, label: 'screenshots-only @16000 (no project images)' },
   ];
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i];

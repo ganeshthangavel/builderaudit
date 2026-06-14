@@ -406,6 +406,7 @@ async function sendFeedbackNotification({ feedback, user }) {
       <div style="background:#FBF5E1;border:2px solid #1B1A17;border-radius:12px;padding:16px;margin-bottom:18px;white-space:pre-wrap;font-size:15px;line-height:1.5">${(feedback.message||'').replace(/</g,'&lt;')}</div>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
         ${row('Type', kindLabel)}
+        ${row('Name', feedback.name)}
         ${row('From', feedback.email ? `<a href="mailto:${feedback.email}" style="color:#2F6BFF">${feedback.email}</a>` : (user?.email || 'anonymous'))}
         ${row('Account', user ? (user.company_name || user.email) : 'not logged in')}
         ${row('Page', feedback.pageUrl)}

@@ -1883,36 +1883,83 @@ function BuilderCompetitors({ latestAudit, user }) {
           ? `When a homeowner compares you against ${rivals.length === 1 ? 'this rival' : 'these '+rivals.length+' rivals'}, your site makes the strongest first impression — you outscore ${beat === rivals.length ? 'all of them' : beat+' of '+rivals.length}. The risk now is complacency: hold the lead by clearing your remaining fixes before they catch up.`
           : `A homeowner getting quotes from you and ${topRival.name} will, on the evidence of the websites alone, trust ${topRival.name} more — they score ${topRival.score} to your ${you.score}. That's the difference between getting the call and getting ignored. Close the ${gapToTop}-point gap and you flip that decision.`;
 
+        const accentChip = winning ? P.green : P.red;
+
         return (
-          <Card style={{ background:P.ink, marginBottom:18 }}>
-            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>
-              Will you win the work? · based on you + {rivals.length} competitor{rivals.length>1?'s':''}
-            </div>
-            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>{headline}</h3>
-            <div style={{ fontFamily:F.body, fontSize:13.5, color:'rgba(255,255,255,0.6)', marginBottom:14 }}>
-              Ranked <b style={{color:'#fff'}}>#{youRank} of {ranked.length}</b> · your score {you.score} vs field average {avgRival}
-            </div>
-            <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.85)', margin:'0 0 16px', lineHeight:1.6 }}>{outcome}</p>
+          <div style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, overflow:'hidden', marginBottom:22 }}>
 
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              {strongest && strongest.diff > 0 && (
-                <div style={{ background:'rgba(31,138,91,0.18)', border:`1.5px solid ${P.green}`, borderRadius:8, padding:'12px 14px' }}>
-                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:'#7BE0AE', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Your edge — lean into it</div>
-                  <div style={{ fontFamily:F.body, fontSize:13.5, color:'#fff', lineHeight:1.45 }}>You beat the field on <b>{strongest.name}</b> ({strongest.mine} vs their {strongest.avgTheirs} avg). Make this obvious to homeowners — it's already winning you trust.</div>
+            {/* Yellow header strip with tilted verdict chip */}
+            <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'20px 24px', position:'relative' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                <span style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.ink, letterSpacing:'0.08em', textTransform:'uppercase' }}>⚔ Will you win the work?</span>
+                <span style={{ fontFamily:F.body, fontSize:11, fontWeight:600, color:P.ink, opacity:0.6 }}>· you + {rivals.length} rival{rivals.length>1?'s':''}</span>
+              </div>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+                <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:27, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.04, maxWidth:560 }}>{headline}</h3>
+                <div style={{ flexShrink:0, transform:'rotate(2deg)', background:accentChip, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:8, padding:'8px 14px', boxShadow:`3px 3px 0 ${P.line}`, textAlign:'center' }}>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:22, lineHeight:1 }}>#{youRank}<span style={{ fontSize:13, fontWeight:700, opacity:0.8 }}> of {ranked.length}</span></div>
+                  <div style={{ fontFamily:F.body, fontSize:9, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginTop:3, opacity:0.9 }}>Your rank</div>
                 </div>
-              )}
-              {weakest && weakest.diff < 0 && (
-                <div style={{ background:'rgba(217,83,79,0.18)', border:`1.5px solid ${P.red}`, borderRadius:8, padding:'12px 14px' }}>
-                  <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:'#FFB3B0', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Where you're losing — fix first</div>
-                  <div style={{ fontFamily:F.body, fontSize:13.5, color:'#fff', lineHeight:1.45 }}>You trail on <b>{weakest.name}</b> ({weakest.mine} vs their {weakest.avgTheirs} avg). This is the single biggest reason a homeowner picks them over you. Fixing it has the highest payoff.</div>
-                </div>
-              )}
+              </div>
             </div>
 
-            <div style={{ fontFamily:F.body, fontSize:12.5, color:'rgba(255,255,255,0.5)', marginTop:14, lineHeight:1.5 }}>
-              This updates automatically as you add or re-audit competitors. Add your closest rivals for the sharpest read.
+            {/* Body */}
+            <div style={{ padding:'22px 24px' }}>
+
+              {/* Head-to-head score bar: you vs top rival */}
+              {!winning && (
+                <div style={{ display:'flex', alignItems:'stretch', gap:0, border:`2px solid ${P.line}`, borderRadius:10, overflow:'hidden', marginBottom:18 }}>
+                  <div style={{ flex:1, background:P.surface, padding:'12px 16px', borderRight:`2px solid ${P.line}` }}>
+                    <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:3 }}>You</div>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                      <span style={{ fontFamily:F.display, fontWeight:900, fontSize:30, color:P.red, lineHeight:1 }}>{you.score}</span>
+                      <span style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted }}>/ 100</span>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'0 14px', background:P.ink }}>
+                    <span style={{ fontFamily:F.display, fontWeight:900, fontSize:13, color:'#fff', letterSpacing:'0.05em' }}>VS</span>
+                  </div>
+                  <div style={{ flex:1, background:'#fff', padding:'12px 16px', borderLeft:`2px solid ${P.line}` }}>
+                    <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{topRival.name}</div>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                      <span style={{ fontFamily:F.display, fontWeight:900, fontSize:30, color:P.good, lineHeight:1 }}>{topRival.score}</span>
+                      <span style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted }}>/ 100</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p style={{ fontFamily:F.body, fontSize:14.5, color:P.ink, margin:'0 0 18px', lineHeight:1.6 }}>{outcome}</p>
+
+              {/* Edge / weakness cards — chunky bordered BA3 style */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                {strongest && strongest.diff > 0 && (
+                  <div style={{ background:'rgba(31,138,91,0.08)', border:`2px solid ${P.good}`, borderRadius:10, padding:'14px 16px', boxShadow:`3px 3px 0 ${P.good}` }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:7 }}>
+                      <span style={{ fontSize:15 }}>💪</span>
+                      <span style={{ fontFamily:F.display, fontSize:12, fontWeight:800, color:P.good, letterSpacing:'0.04em', textTransform:'uppercase' }}>Your edge — lean in</span>
+                    </div>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>You win on <b>{strongest.name}</b> — <b>{strongest.mine}</b> vs their <b>{strongest.avgTheirs}</b> average. Make this front-and-centre; it's already earning you trust.</div>
+                  </div>
+                )}
+                {weakest && weakest.diff < 0 && (
+                  <div style={{ background:'rgba(217,83,79,0.08)', border:`2px solid ${P.red}`, borderRadius:10, padding:'14px 16px', boxShadow:`3px 3px 0 ${P.red}` }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:7 }}>
+                      <span style={{ fontSize:15 }}>🎯</span>
+                      <span style={{ fontFamily:F.display, fontSize:12, fontWeight:800, color:P.red, letterSpacing:'0.04em', textTransform:'uppercase' }}>Fix this first</span>
+                    </div>
+                    <div style={{ fontFamily:F.body, fontSize:13.5, color:P.ink, lineHeight:1.5 }}>You trail on <b>{weakest.name}</b> — <b>{weakest.mine}</b> vs their <b>{weakest.avgTheirs}</b> average. This is the biggest reason a homeowner picks them over you, so it has the highest payoff.</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footnote */}
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, paddingTop:14, borderTop:`1.5px dashed ${P.line}` }}>
+                <span style={{ fontSize:13 }}>🔄</span>
+                <span style={{ fontFamily:F.body, fontSize:12, color:P.muted, lineHeight:1.45 }}>This updates automatically as you add or re-audit competitors. Add your closest rivals for the sharpest read.</span>
+              </div>
             </div>
-          </Card>
+          </div>
         );
       })()}
     </main>

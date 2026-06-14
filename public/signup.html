@@ -686,7 +686,7 @@ function validateStep() {
     var phone = document.getElementById('phone').value.trim();
     var pwd = document.getElementById('password').value;
     if (!email || !email.includes('@')) { showErr('Please enter a valid email address'); return false; }
-    if (!phone || phone.replace(/\D/g, '').length < 10) { showErr('Please enter a valid UK phone number'); return false; }
+    if (!isValidUKPhone(phone)) { showErr("That doesn't look like a valid UK phone number. Use a mobile (07…) or landline (01/02/03…)."); return false; }
     if (!pwd || pwd.length < 8) { showErr('Password must be at least 8 characters'); return false; }
   } else if (step === 2) {
     var cn = document.getElementById('companyName').value.trim();
@@ -769,6 +769,17 @@ async function signup() {
     label.textContent = 'Create account →';
     showErr(e.message || 'Signup failed. Please try again.');
   }
+}
+
+/* UK phone validation — mirrors the server's normaliseUKPhone check */
+function isValidUKPhone(raw){
+  if(!raw) return false;
+  var s = String(raw).trim().replace(/[\s().\-]/g,'');
+  if(/[^\d+]/.test(s)) return false;
+  if(s.indexOf('+44')===0) s='0'+s.slice(3);
+  else if(s.indexOf('0044')===0) s='0'+s.slice(4);
+  else if(s.indexOf('44')===0 && s.length>=11) s='0'+s.slice(2);
+  return /^0(1\d{8,9}|2\d{9}|3\d{9}|5\d{9}|7[1-9]\d{8}|8\d{8,9})$/.test(s);
 }
 
 /* Enter advances the wizard */

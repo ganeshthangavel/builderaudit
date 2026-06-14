@@ -1558,7 +1558,8 @@ function BuilderCompetitors({ latestAudit, user }) {
 
   /* ── Paywall modal state ── */
   const [showModal,  setShowModal]  = useState(false);
-  const [unlocked,   setUnlocked]   = useState(isLoggedIn);
+  const [signedUpNow, setSignedUpNow] = useState(false);   // flipped true right after in-page signup
+  const unlocked = isLoggedIn || signedUpNow;              // reactive: updates the moment `user` arrives
   const [pendingSlot,setPendingSlot] = useState(null); /* slot index that triggered the modal */
 
   /* Form fields */
@@ -1602,7 +1603,7 @@ function BuilderCompetitors({ latestAudit, user }) {
       if (!res.ok) throw new Error(data.error || 'Sign-up failed');
 
       /* Unlock and run the pending slot straight away */
-      setUnlocked(true);
+      setSignedUpNow(true);
       setShowModal(false);
       if (pendingSlot !== null) runAudit(pendingSlot, true);
     } catch(err) {
@@ -2398,7 +2399,8 @@ function HoCompanyCheck({ report, latestAudit }) {
 // ── Homeowner: Compare Builders ─────────────────────────────────
 function HomeownerCompare({ user }) {
   const isLoggedIn = !!user;
-  const [unlocked,    setUnlocked]    = useState(isLoggedIn);
+  const [signedUpNow, setSignedUpNow] = useState(false);
+  const unlocked = isLoggedIn || signedUpNow;
   const [showModal,   setShowModal]   = useState(false);
   const [pendingSlot, setPendingSlot] = useState(null);
 
@@ -2428,7 +2430,7 @@ function HomeownerCompare({ user }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Sign-up failed');
-      setUnlocked(true); setShowModal(false);
+      setSignedUpNow(true); setShowModal(false);
       if (pendingSlot !== null) runAudit(pendingSlot, true);
     } catch(err) { setFormErr(err.message); }
     finally { setSubmitting(false); }
@@ -3152,6 +3154,7 @@ function DashboardApp() {
   const [role, setRole] = useState(params.get('role')==='homeowner'?'homeowner':'builder');
   const [page, setPage] = useState(params.get('page')||'dashboard');
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);  // true once /api/auth/me resolves
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
   const [latestAudit, setLatestAudit] = useState(null);
@@ -3193,7 +3196,8 @@ function DashboardApp() {
     fetch('/api/auth/me', { credentials:'include' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.user) setUser(d.user); })
-      .catch(()=>{});
+      .catch(()=>{})
+      .finally(() => setAuthChecked(true));
 
     async function loadData() {
       setLoading(true);
@@ -3263,7 +3267,7 @@ function DashboardApp() {
     loadData();
   }, []);
 
-  if (loading) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
+  if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user}/><Loading/></div>;
 
   const pages = role==='builder' ? {
     dashboard:   <BuilderDashboard   auditData={auditData} latestAudit={latestAudit} excludedPhotoIds={excludedPhotoIds} completedFixIds={completedFixIds} setCompletedFixIds={setCompletedFixIds} adjustedScore={adjustedScore} saveOverride={saveOverride}/>,

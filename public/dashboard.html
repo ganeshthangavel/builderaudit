@@ -20,6 +20,8 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: #FBF5E1; }
   ::-webkit-scrollbar-thumb { background: #1B1A17; border-radius: 3px; }
+  /* Global spinner animation — used by all loading spinners across the app */
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
@@ -149,7 +151,18 @@ const HOMEOWNER_PAGES = [
 
 function Nav({ role, page, setPage, user }) {
   const pages = role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES;
-  const initials = user?.name ? user.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase() : role==='builder'?'HB':'AT';
+  const initials = (() => {
+    const source = user?.companyName || user?.company_name || user?.name || '';
+    if (source.trim()) {
+      const words = source.trim().split(/\s+/).filter(Boolean);
+      const picked = words.length >= 2
+        ? (words[0][0] + words[1][0])           // first letters of first two words
+        : source.trim().slice(0, 2);            // or first two letters of one word
+      return picked.toUpperCase();
+    }
+    if (user?.email) return user.email.slice(0, 2).toUpperCase();
+    return role === 'builder' ? 'BA' : 'BA';
+  })();
 
   /* ── Account menu + gated preferences modal ── */
   const [menuOpen,    setMenuOpen]    = useState(false);
@@ -256,7 +269,8 @@ function Nav({ role, page, setPage, user }) {
               <div style={{ padding:'20px 24px', background:P.surface, borderBottom:`2px solid ${P.line}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <div>
                   <div style={{ fontFamily:F.body, fontSize:10.5, fontWeight:700, color:P.muted, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>Account & preferences</div>
-                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>{user.email}</div>
+                  <div style={{ fontFamily:F.display, fontWeight:900, fontSize:20, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.01em' }}>{user.companyName || user.company_name || user.email}</div>
+                  {(user.companyName || user.company_name) && <div style={{ fontFamily:F.body, fontSize:12.5, color:P.muted, marginTop:2 }}>{user.email}</div>}
                 </div>
                 <button onClick={()=>setPrefsModal(false)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:22, color:P.muted, lineHeight:1, padding:4 }}>×</button>
               </div>
@@ -1627,13 +1641,26 @@ function BuilderCompetitors({ latestAudit, user }) {
     );
   };
 
-  const LoadingSlot = () => (
-    <Card pad={28} style={{ minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
-      <div style={{ width:32, height:32, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-      <div style={{ fontFamily:F.body, fontSize:14, color:P.muted }}>Auditing competitor…</div>
-      <div style={{ fontFamily:F.body, fontSize:12, color:P.muted }}>Usually takes 60–90 seconds</div>
-    </Card>
-  );
+  const LoadingSlot = () => {
+    const [secs, setSecs] = React.useState(0);
+    React.useEffect(() => {
+      const t = setInterval(() => setSecs(s => s + 1), 1000);
+      return () => clearInterval(t);
+    }, []);
+    const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
+    const stage = secs < 20 ? 'Crawling their site…'
+                : secs < 60 ? 'Reading pages & photos…'
+                : secs < 150 ? 'Scoring trust signals…'
+                : 'Finishing the report…';
+    return (
+      <Card pad={28} style={{ minHeight:280, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14 }}>
+        <div style={{ width:36, height:36, border:`4px solid ${P.surface}`, borderTop:`4px solid ${P.accent}`, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+        <div style={{ fontFamily:F.display, fontWeight:800, fontSize:15, color:P.ink }}>{stage}</div>
+        <div style={{ fontFamily:F.body, fontSize:22, fontWeight:700, color:P.accent, fontVariantNumeric:'tabular-nums' }}>{mm}:{ss}</div>
+        <div style={{ fontFamily:F.body, fontSize:12, color:P.muted, textAlign:'center', maxWidth:220 }}>A full audit usually takes a few minutes. You can keep working — this'll update when it's done.</div>
+      </Card>
+    );
+  };
 
   /* ── Paywall modal ── */
   const Modal = () => (
@@ -2297,17 +2324,28 @@ function HomeownerCompare({ user }) {
   const topPick = ranked[0]?.data;
   const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
 
+  /* Loading tile with a live elapsed timer (called as a function, so it keeps
+     a stable identity and its timer isn't reset by parent re-renders) */
+  const CompareLoadingTile = () => {
+    const [secs, setSecs] = React.useState(0);
+    React.useEffect(() => { const t = setInterval(() => setSecs(s => s + 1), 1000); return () => clearInterval(t); }, []);
+    const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
+    const stage = secs < 20 ? 'Crawling the site…' : secs < 60 ? 'Reading pages & photos…' : secs < 150 ? 'Scoring trust signals…' : 'Finishing up…';
+    return (
+      <div style={{ border:`2px solid ${P.line}`, borderRadius:10, padding:18, background:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10, minHeight:230, boxShadow:`4px 4px 0 ${P.line}` }}>
+        <div style={{ width:30,height:30,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
+        <div style={{ fontFamily:F.body, fontSize:12.5, fontWeight:700, color:P.ink }}>{stage}</div>
+        <div style={{ fontFamily:F.body, fontSize:19, fontWeight:700, color:P.accent, fontVariantNumeric:'tabular-nums' }}>{mm}:{ss}</div>
+        <div style={{ fontFamily:F.body, fontSize:10.5, color:P.muted, textAlign:'center' }}>A full audit takes a few minutes</div>
+      </div>
+    );
+  };
+
   /* Tile */
   /* Plain render function (not a nested component) so inputs keep focus across re-renders */
   const renderTile = (slot, i) => {
     /* Loading */
-    if (slot.loading) return (
-      <div key={i} style={{ border:`2px solid ${P.line}`, borderRadius:10, padding:18, background:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, minHeight:230, boxShadow:`4px 4px 0 ${P.line}` }}>
-        <div style={{ width:30,height:30,border:`4px solid ${P.surface}`,borderTop:`4px solid ${P.accent}`,borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
-        <div style={{ fontFamily:F.body, fontSize:12.5, fontWeight:600, color:P.ink }}>Running full audit…</div>
-        <div style={{ fontFamily:F.body, fontSize:11, color:P.muted }}>60–90 seconds</div>
-      </div>
-    );
+    if (slot.loading) return <React.Fragment key={i}>{CompareLoadingTile()}</React.Fragment>;
 
     /* Empty + LOCKED — clean placeholder, whole tile opens the modal */
     if (!slot.audited && !unlocked) return (

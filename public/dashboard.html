@@ -265,6 +265,9 @@ function exportReport(title, innerHtml) {
   `;
   w.document.write(
     '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title>' +
+    '<link rel="icon" type="image/svg+xml" href="' + window.location.origin + '/assets/logo/builderaudit-mark.svg">' +
+    '<link rel="icon" type="image/png" sizes="32x32" href="' + window.location.origin + '/assets/logo/favicon-32.png">' +
+    '<link rel="apple-touch-icon" href="' + window.location.origin + '/assets/logo/apple-touch-180.png">' +
     '<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700;800;900&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">' +
     '<style>' + css + '</style></head><body>' +
     '<div class="actions"><button class="print" onclick="window.print()">⬇ Save as PDF / Print</button><button class="close" onclick="window.close()">Close</button></div>' +
@@ -3625,6 +3628,32 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
     exportReport(name + ' — trust report · BuilderAudit', inner);
   };
 
+  /* Shareable URL — same structure as the builder ShareReport: POST to the
+     share endpoint, get back a public /r/<token> link anyone can open. Gated. */
+  const [shareState, setShareState] = React.useState('idle'); // idle|loading|ready|error
+  const [shareUrl, setShareUrl] = React.useState('');
+  const [shareErr, setShareErr] = React.useState('');
+  const [shareCopied, setShareCopied] = React.useState(false);
+  const doCreateShareLink = async () => {
+    setShareState('loading'); setShareErr('');
+    try {
+      const id = latestAudit?.id || 'latest';
+      const res = await fetch('/api/my/audit/' + id + '/share', { method:'POST', credentials:'include' });
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(()=>null) : null;
+      if (!res.ok || !data?.url) throw new Error(data?.error || 'Could not create a link.');
+      setShareUrl(data.url); setShareState('ready');
+    } catch(e) { setShareErr(e.message); setShareState('error'); }
+  };
+  const createShareLink = () => {
+    if (!isLoggedIn) {
+      requireAccount({ title:'Share this report', benefit:'Create a free account to get a shareable link to this builder\u2019s report — handy for your partner, family, or anyone helping you decide.', cta:'Create free account', onSuccess: () => setTimeout(doCreateShareLink, 80) });
+      return;
+    }
+    doCreateShareLink();
+  };
+  const copyShare = () => { try { navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(()=>setShareCopied(false), 1800); } catch(e){} };
+
   /* Show the 5-tab report if we have real data */
   if (latestAudit && report) {
 
@@ -3637,8 +3666,25 @@ function HomeownerDashboard({ auditData, latestAudit, requireAccount = ()=>{}, i
             <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:36, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 4px' }}>{domain}</h1>
             <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
           </div>
-          <Btn onClick={exportHoReport} style={{ whiteSpace:'nowrap', flexShrink:0 }}>⬇ Export report</Btn>
+          <div style={{ display:'flex', gap:10, flexShrink:0 }}>
+            <Btn onClick={createShareLink} disabled={shareState==='loading'} style={{ whiteSpace:'nowrap' }}>{shareState==='loading' ? 'Creating…' : '🔗 Share link'}</Btn>
+            <Btn onClick={exportHoReport} style={{ whiteSpace:'nowrap' }}>⬇ Export report</Btn>
+          </div>
         </div>
+
+        {/* Generated share link */}
+        {shareState === 'ready' && (
+          <div style={{ marginBottom:24, padding:'14px 18px', background:P.surface, border:`2px solid ${P.line}`, borderRadius:10, boxShadow:`3px 3px 0 ${P.line}` }}>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:8 }}>🔗 Your shareable link — anyone can open it, no login needed</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <input readOnly value={shareUrl} onFocus={e=>e.target.select()}
+                style={{ flex:1, minWidth:220, fontFamily:F.body, fontSize:13.5, color:P.ink, border:`2px solid ${P.line}`, borderRadius:6, padding:'10px 12px', background:'#fff' }}/>
+              <Btn primary onClick={copyShare} style={{ padding:'10px 16px' }}>{shareCopied ? '✓ Copied' : 'Copy link'}</Btn>
+              <a href={shareUrl} target="_blank" rel="noopener" style={{ fontFamily:F.body, fontSize:13, fontWeight:700, color:P.accent }}>Open ↗</a>
+            </div>
+          </div>
+        )}
+        {shareState === 'error' && <div style={{ marginBottom:16, fontFamily:F.body, fontSize:13, color:P.red }}>{shareErr}</div>}
 
         {/* Tab bar — BA3 chunky segments */}
         <div style={{ display:'flex', gap:12, marginBottom:32, flexWrap:'wrap' }}>

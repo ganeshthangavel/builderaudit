@@ -1557,6 +1557,17 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
   const liveScore      = adjustedScore != null ? adjustedScore : projectScore(report, completedFixIds, 0);
   const diffColor = (d) => d==='Easy'?P.green:d==='Medium'?P.fill:P.red;
 
+  /* When every fix is ticked off, the projection has done all it can — that's
+     the moment to offer a personal consultation to close the gap to 100. */
+  const allDone = fixes.length > 0 && doneCount === fixes.length;
+  const [showConsult, setShowConsult] = useState(false);
+  const [consultDismissed, setConsultDismissed] = useState(false);
+  const prevAllDone = React.useRef(false);
+  React.useEffect(() => {
+    if (allDone && !prevAllDone.current && !consultDismissed) setShowConsult(true);
+    prevAllDone.current = allDone;
+  }, [allDone, consultDismissed]);
+
   return (
     <main style={{ padding:'40px 36px', maxWidth:1200, margin:'0 auto' }}>
       <div style={{ marginBottom:28 }}>
@@ -1670,16 +1681,56 @@ function BuilderFixes({ latestAudit, completedFixIds = new Set(), setCompletedFi
         </div>
       </Card>
 
+      {/* Persistent consultation prompt once everything's ticked */}
+      {allDone && (
+        <div style={{ background:P.accent, color:'#fff', border:`2.5px solid ${P.line}`, borderRadius:14, boxShadow:`6px 6px 0 ${P.line}`, padding:'22px 24px', marginBottom:24, display:'grid', gridTemplateColumns:'1fr auto', gap:24, alignItems:'center' }}>
+          <div>
+            <div style={{ fontFamily:F.body, fontSize:11, fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', opacity:0.8, marginBottom:8 }}>✓ You've done everything on the list</div>
+            <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Want to push from {liveScore} to 100?</h3>
+            <p style={{ fontFamily:F.body, fontSize:14.5, margin:0, opacity:0.85, lineHeight:1.5, maxWidth:560 }}>You've cleared every fix we found. The last stretch to a perfect score is specific to your site — book a personal consultation and we'll map out exactly what's left.</p>
+          </div>
+          <a href="/contact?topic=consultation" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'14px 22px', fontSize:15, whiteSpace:'nowrap' }}>Book a consultation →</Btn></a>
+        </div>
+      )}
+
       <Card style={{ background:P.ink, color:'#fff', borderColor:P.line }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:28, alignItems:'center' }}>
           <div>
-            <Kicker color={P.fill}>Want all 10 done by next month?</Kicker>
+            <Kicker color={P.fill}>Want all {fixes.length} done by next month?</Kicker>
             <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:26, color:'#fff', margin:'12px 0 8px', textTransform:'uppercase', letterSpacing:'-0.02em' }}>Hand the whole list to our team</h3>
             <p style={{ fontFamily:F.body, fontSize:14.5, color:'rgba(255,255,255,0.78)', margin:0, lineHeight:1.5 }}>One quote, one project. Typical turnaround: 2-4 weeks.</p>
           </div>
-          <Btn primary style={{ padding:'14px 22px', fontSize:15 }}>Get a quote for all 10 →</Btn>
+          <a href="/contact?topic=full-list" style={{ textDecoration:'none' }}><Btn primary style={{ padding:'14px 22px', fontSize:15 }}>Get a quote for all {fixes.length} →</Btn></a>
         </div>
       </Card>
+
+      {/* Consultation modal — pops once when the last fix is ticked */}
+      {showConsult && (
+        <div onClick={()=>{ setShowConsult(false); setConsultDismissed(true); }}
+          style={{ position:'fixed', inset:0, background:'rgba(27,26,23,0.6)', display:'grid', placeItems:'center', zIndex:1000, padding:20 }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:'#fff', border:`2.5px solid ${P.line}`, borderRadius:16, boxShadow:`8px 8px 0 ${P.line}`, maxWidth:460, width:'100%', overflow:'hidden' }}>
+            <div style={{ background:P.fill, borderBottom:`2.5px solid ${P.line}`, padding:'22px 24px', textAlign:'center' }}>
+              <div style={{ fontSize:34, lineHeight:1, marginBottom:8 }}>🎉</div>
+              <h3 style={{ fontFamily:F.display, fontWeight:900, fontSize:24, color:P.ink, margin:0, textTransform:'uppercase', letterSpacing:'-0.02em', lineHeight:1.1 }}>That's the whole list done</h3>
+            </div>
+            <div style={{ padding:'22px 24px' }}>
+              <p style={{ fontFamily:F.body, fontSize:15, color:P.ink, margin:'0 0 8px', lineHeight:1.55 }}>
+                Brilliant work — you've ticked off every fix we found. That takes your projected score to <b>{liveScore}</b>.
+              </p>
+              <p style={{ fontFamily:F.body, fontSize:14.5, color:P.muted, margin:'0 0 20px', lineHeight:1.55 }}>
+                The final climb to a perfect 100 isn't a checklist — it's specific to your site, your trade, and your market. Book a personal consultation and we'll walk through exactly what's needed to get you there.
+              </p>
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                <a href="/contact?topic=consultation" style={{ textDecoration:'none', flex:1, minWidth:170 }}>
+                  <Btn primary style={{ padding:'13px 18px', fontSize:14.5, width:'100%' }}>Get in touch for a consultation →</Btn>
+                </a>
+                <Btn onClick={()=>{ setShowConsult(false); setConsultDismissed(true); }} style={{ padding:'13px 18px', fontSize:14.5, boxShadow:'none' }}>Maybe later</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

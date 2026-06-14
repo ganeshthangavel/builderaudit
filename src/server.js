@@ -841,9 +841,9 @@ function normalizeUKPhone(raw) {
   else if (s.startsWith('0044')) s = '0' + s.slice(4);
   else if (s.startsWith('44') && s.length >= 11) s = '0' + s.slice(2);
   if (!/^0\d+$/.test(s)) return null;                // must reduce to a 0-number
-  // Valid UK ranges: 01/02/03 (geographic & non-geo), 05 (VoIP), 07 (mobile),
-  // 08 (freephone/special). Total length 10 or 11 digits incl. the leading 0.
-  if (!/^0(1\d{8,9}|2\d{9}|3\d{9}|5\d{9}|7[1-9]\d{8}|8\d{8,9})$/.test(s)) return null;
+  // Must be a full 11-digit UK number: 0 + valid prefix (1/2/3/5/7/8) + 9 digits.
+  // 07… = mobile; 01/02/03 = landline; 05 = VoIP; 08 = freephone/special.
+  if (!/^0[123578]\d{9}$/.test(s)) return null;
   return { national: s, e164: '+44' + s.slice(1) };
 }
 
@@ -865,7 +865,7 @@ app.post('/api/auth/signup', async (req, res) => {
   }
   const ukPhone = normalizeUKPhone(phone);
   if (!ukPhone) {
-    return res.status(400).json({ error: "That doesn't look like a valid UK phone number. Use a mobile (07…) or landline (01/02/03…)." });
+    return res.status(400).json({ error: 'Please enter a full 11-digit UK number (e.g. a mobile starting 07).' });
   }
   if (!companyName || companyName.trim().length < 2) {
     return res.status(400).json({ error: 'Please enter your company name' });
@@ -1867,4 +1867,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-                         
+   

@@ -193,6 +193,14 @@ body {
   padding: 12px 10px; min-width: 0;
 }
 .si-input select { padding-right: 6px; }
+.si-input .si-prefix {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 0 10px 0 6px; margin-right: 4px;
+  border-right: 2px solid var(--line);
+  font-family: var(--body); font-size: 15px; font-weight: 700; color: var(--ink);
+  align-self: stretch;
+}
+.si-input .si-prefix .flag { font-size: 17px; line-height: 1; }
 .si-input .show-toggle {
   background: transparent; border: none; cursor: pointer;
   color: var(--muted); padding: 8px 10px;
@@ -471,11 +479,12 @@ body {
         </div>
 
         <div class="si-field">
-          <label for="phone">Mobile number</label>
+          <label for="phone">UK mobile number</label>
           <div class="si-input">
-            <input type="tel" id="phone" autocomplete="tel" required placeholder="07xxx xxx xxx">
+            <span class="si-prefix"><span class="flag">🇬🇧</span>UK</span>
+            <input type="tel" id="phone" inputmode="numeric" autocomplete="tel" required maxlength="13" placeholder="07700 900000">
           </div>
-          <div class="hint">UK mobile or landline. Used only for support contact and important account updates.</div>
+          <div class="hint">Enter your full 11-digit UK mobile (starts 07). Used only for support and important account updates.</div>
         </div>
 
         <div class="si-field">
@@ -771,7 +780,7 @@ async function signup() {
   }
 }
 
-/* UK phone validation — mirrors the server's normaliseUKPhone check */
+/* UK phone validation — must be a full 11-digit UK number (07/01/02/03/05/08) */
 function isValidUKPhone(raw){
   if(!raw) return false;
   var s = String(raw).trim().replace(/[\s().\-]/g,'');
@@ -779,7 +788,7 @@ function isValidUKPhone(raw){
   if(s.indexOf('+44')===0) s='0'+s.slice(3);
   else if(s.indexOf('0044')===0) s='0'+s.slice(4);
   else if(s.indexOf('44')===0 && s.length>=11) s='0'+s.slice(2);
-  return /^0(1\d{8,9}|2\d{9}|3\d{9}|5\d{9}|7[1-9]\d{8}|8\d{8,9})$/.test(s);
+  return /^0[123578]\d{9}$/.test(s);   // exactly 11 digits, valid UK prefix
 }
 
 /* Enter advances the wizard */

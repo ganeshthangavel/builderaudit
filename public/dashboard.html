@@ -93,6 +93,7 @@ const CompetitorStore = (() => {
     homeowner: Array.from({ length: NUM.homeowner }, blank),
   };
   const loaded = { builder:false, homeowner:false };   // server load done once per role
+  const loadPromise = { builder:null, homeowner:null };
   const listeners = new Set();
   const emit = () => listeners.forEach(fn => { try { fn(); } catch(e){} });
 
@@ -115,9 +116,9 @@ const CompetitorStore = (() => {
 
   /* Load saved competitor audits from the server once per role */
   const loadFromServer = (role) => {
-    if (loaded[role]) return;
+    if (loaded[role]) return loadPromise[role] || Promise.resolve();
     loaded[role] = true;
-    fetch('/api/my/competitors?role=' + role, { credentials:'include' })
+    loadPromise[role] = fetch('/api/my/competitors?role=' + role, { credentials:'include' })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d?.competitors?.length) return;
@@ -129,6 +130,23 @@ const CompetitorStore = (() => {
         emit();
       })
       .catch(()=>{});
+    return loadPromise[role];
+  };
+
+  /* Seed an empty slot with a known audit (e.g. the homeowner's own first audit
+     from the homepage) once the server load has settled — and persist it so it's
+     remembered on return. No-op if the slot already has something. */
+  const ensureSeed = (role, i, data) => {
+    const run = () => {
+      const s = state[role] && state[role][i];
+      if (s && !s.audited && !s.loading && !(s.draft && s.draft.trim())) {
+        state[role][i] = { draft:'', audited:true, loading:false, data, error:null, startedAt:null };
+        persist(role, i, data);
+        emit();
+      }
+    };
+    const p = loadPromise[role];
+    if (p && typeof p.then === 'function') p.then(run); else run();
   };
 
   const setDraft = (role, i, v) => setSlot(role, i, { draft:v });
@@ -185,7 +203,7 @@ const CompetitorStore = (() => {
 
   const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 
-  return { get, setDraft, setSlot, clear, runAudit, loadFromServer, subscribe, NUM };
+  return { get, setDraft, setSlot, clear, runAudit, loadFromServer, ensureSeed, subscribe, NUM };
 })();
 
 /* React hook: subscribe a component to the store for a given role. Returns the
@@ -203,7 +221,60 @@ function useCompetitorStore(role) {
     runAudit: (i, url, opts) => CompetitorStore.runAudit(role, i, url, opts),
     clear:    (i) => CompetitorStore.clear(role, i),
     setSlot:  (i, patch) => CompetitorStore.setSlot(role, i, patch),
+    seedPrimary: (i, data) => CompetitorStore.ensureSeed(role, i, data),
   };
+}
+
+/* ── Exportable report helper ──────────────────────────────────────────────
+   Opens a clean, print-optimised BA3 document in a new window and triggers the
+   browser's print dialog (save as PDF). Purely client-side — reads whatever is
+   passed at click time, so it always reflects the latest data. */
+function exportReport(title, innerHtml) {
+  const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups to download your report.'); return; }
+  const css = `
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif;color:#1B1A17;background:#FBF5E1;padding:36px;line-height:1.5}
+    .doc{max-width:780px;margin:0 auto;background:#fff;border:2.5px solid #1B1A17;border-radius:14px;overflow:hidden}
+    .head{background:#FFD24D;border-bottom:2.5px solid #1B1A17;padding:22px 28px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+    .brand{font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:20px;letter-spacing:-0.01em}
+    .brand .a{color:#5247B8}
+    .eyebrow{font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#5C5851}
+    .body{padding:26px 28px}
+    h1{font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:26px;text-transform:uppercase;letter-spacing:-0.02em;margin:4px 0 6px;line-height:1.05}
+    h2{font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:0.02em;margin:24px 0 10px;color:#1B1A17}
+    .muted{color:#5C5851}
+    .pill{display:inline-block;border:1.5px solid #1B1A17;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 5px 5px 0}
+    .scorebox{display:inline-flex;flex-direction:column;align-items:center;border:2.5px solid #1B1A17;border-radius:12px;padding:10px 18px;box-shadow:3px 3px 0 #1B1A17}
+    .scorebox .n{font-family:'Hanken Grotesk',sans-serif;font-weight:900;font-size:40px;line-height:1}
+    .scorebox .l{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:#5C5851;font-weight:700;margin-top:2px}
+    .card{border:2px solid #1B1A17;border-radius:10px;padding:16px;margin-bottom:14px}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
+    .row:last-child{border-bottom:none}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:9px 10px;border-bottom:1.5px solid #1B1A17}
+    th{font-family:'Hanken Grotesk',sans-serif;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;background:#FBF5E1}
+    .badge{display:inline-block;font-weight:900;font-family:'Hanken Grotesk',sans-serif;border:2px solid #1B1A17;border-radius:6px;padding:2px 9px}
+    .foot{margin-top:24px;padding-top:14px;border-top:1.5px dashed #1B1A17;font-size:11.5px;color:#5C5851;line-height:1.5}
+    .actions{text-align:center;margin:0 auto 22px;max-width:780px}
+    .actions button{font-family:'IBM Plex Sans',sans-serif;font-weight:700;font-size:14px;border:2px solid #1B1A17;border-radius:8px;padding:10px 20px;cursor:pointer;box-shadow:3px 3px 0 #1B1A17;margin:0 6px}
+    .actions .print{background:#5247B8;color:#fff}
+    .actions .close{background:#fff;color:#1B1A17}
+    @media print{ body{background:#fff;padding:0} .doc{border:none;border-radius:0} .actions{display:none} .head{border-radius:0} }
+  `;
+  w.document.write(
+    '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700;800;900&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">' +
+    '<style>' + css + '</style></head><body>' +
+    '<div class="actions"><button class="print" onclick="window.print()">⬇ Save as PDF / Print</button><button class="close" onclick="window.close()">Close</button></div>' +
+    '<div class="doc">' +
+      '<div class="head"><div><div class="eyebrow">BuilderAudit · independent trust report</div><div class="brand">Builder<span class="a">Audit</span></div></div>' +
+      '<div class="muted" style="font-size:12px">' + esc(new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})) + '</div></div>' +
+      '<div class="body">' + innerHtml + '</div>' +
+    '</div></body></html>'
+  );
+  w.document.close();
 }
 
 // ── Primitives ───────────────────────────────────────────────────
@@ -2701,7 +2772,7 @@ function HoCompanyCheck({ report, latestAudit }) {
 }
 
 // ── Homeowner: Compare Builders ─────────────────────────────────
-function HomeownerCompare({ user }) {
+function HomeownerCompare({ user, latestAudit }) {
   const isLoggedIn = !!user;
   const [signedUpNow, setSignedUpNow] = useState(false);
   const unlocked = isLoggedIn || signedUpNow;
@@ -2747,6 +2818,28 @@ function HomeownerCompare({ user }) {
   const setDraft  = (i,v) => store.setDraft(i, v);
   const clearSlot = (i)   => store.clear(i);
 
+  /* Auto-fill the first slot with the builder the homeowner audited from the
+     homepage, and persist it so it's still there when they return. */
+  const ownReport = latestAudit?.report_json || null;
+  const ownDomain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){ return null; } })();
+  const seededRef = React.useRef(false);
+  React.useEffect(() => {
+    if (seededRef.current || !ownReport || !latestAudit) return;
+    seededRef.current = true;
+    const tq = ownReport.trust_questions || [];
+    const allTen = tq.length > 0 && tq.every(q => (q.score||0) <= 10);
+    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
+    const cats = tq.map((q,i) => ({ name: names[i] || (q.question||'').slice(0,20), s: allTen ? Math.round((q.score||0)*10) : (q.score||0) }));
+    const seed = {
+      name: ownReport.business_snapshot?.company_name || ownDomain || 'Your builder',
+      url: ownDomain || '',
+      score: ownReport.hero?.score || 0,
+      cats,
+      verdict: ownReport.hero?.headline || ownReport.hero?.subtext || 'Your first audit',
+    };
+    store.seedPrimary(0, seed);
+  }, [ownReport, latestAudit]);
+
   const runAudit = (i, skipGate=false) => {
     const raw = (slots[i]?.draft||'').trim();
     if (!raw) return;
@@ -2758,6 +2851,31 @@ function HomeownerCompare({ user }) {
   const ranked  = [...audited].sort((a,b)=>b.data.score-a.data.score);
   const topPick = ranked[0]?.data;
   const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
+
+  /* Export a comparison report of every builder summary — reads `ranked` at
+     click time, so it always reflects the builders added so far. */
+  const exportComparison = () => {
+    const list = ranked.map(r => r.data);
+    if (!list.length) return;
+    const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const badge = (n) => `<span class="badge" style="background:${sc(n)};color:#fff">${n}</span>`;
+    const rows = list.map((b,idx) => `<tr><td><b style="color:#5247B8">#${idx+1}</b> ${esc(b.name)}</td><td class="muted">${esc(b.url||'—')}</td><td>${badge(b.score)}</td></tr>`).join('');
+    const cards = list.map((b,idx) => {
+      const cats = (b.cats||[]).map(c => `<div class="row"><span>${esc(c.name)}</span><b>${c.s}/100</b></div>`).join('');
+      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">#${idx+1} ${esc(b.name)}</h2>${badge(b.score)}</div>`
+        + `<div class="muted" style="font-size:12px;margin-bottom:10px">${esc(b.url||'')}</div>`
+        + cats
+        + (b.verdict ? `<div style="margin-top:10px;font-size:13px;line-height:1.5">${esc(b.verdict)}</div>` : '')
+        + `</div>`;
+    }).join('');
+    const inner = `<h1>Builder comparison</h1>`
+      + `<p class="muted">${list.length} builder${list.length>1?'s':''} compared · ranked by website trust score</p>`
+      + `<div style="margin:14px 0"><span class="scorebox"><span class="n" style="color:${sc(list[0].score)}">${list[0].score}</span><span class="l">Top score — ${esc(list[0].name)}</span></span></div>`
+      + `<h2>Ranking</h2><table><tr><th>Builder</th><th>Website</th><th>Score</th></tr>${rows}</table>`
+      + `<h2>Detailed summaries</h2>${cards}`
+      + `<div class="foot">⚠ A website trust score reflects how well a builder presents online — a strong first filter, but not proof of build quality. Always verify Companies House registration, insurance and references before you commit. Generated free by BuilderAudit.</div>`;
+    exportReport('Builder comparison — BuilderAudit', inner);
+  };
 
   /* Loading tile with a live elapsed timer; reads startedAt so the clock is
      correct even after navigating away and back mid-scan. */
@@ -2917,8 +3035,15 @@ function HomeownerCompare({ user }) {
       {showModal && Modal()}
       <div style={{ marginBottom:28 }}>
         <Kicker color={P.accent}>Compare builders</Kicker>
-        <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Up to 5 builders, side by side</h1>
-        <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:680 }}>Paste up to 5 builder websites. We run the same full forensic audit on each and rank them so you know who looks most trustworthy before you pick up the phone.</p>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:16, flexWrap:'wrap' }}>
+          <div>
+            <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:40, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 6px' }}>Up to 5 builders, side by side</h1>
+            <p style={{ fontFamily:F.body, fontSize:15, color:P.muted, margin:0, maxWidth:680 }}>Paste up to 5 builder websites. We run the same full forensic audit on each and rank them so you know who looks most trustworthy before you pick up the phone.</p>
+          </div>
+          {audited.length >= 1 && (
+            <Btn onClick={exportComparison} style={{ whiteSpace:'nowrap', flexShrink:0 }}>⬇ Export comparison</Btn>
+          )}
+        </div>
         {!unlocked && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginTop:18, padding:'18px 22px', background:P.fill, border:`2.5px solid ${P.line}`, borderRadius:10, boxShadow:`5px 5px 0 ${P.line}` }}>
             <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
@@ -3331,16 +3456,41 @@ function HomeownerDashboard({ auditData, latestAudit }) {
   const domain = (() => { try { return new URL(latestAudit?.url||'').hostname.replace(/^www\./,''); } catch(e){return latestAudit?.url||null;} })();
   const [tab, setTab] = React.useState('verdict');
 
+  /* Export this builder's safety report as a clean, printable/PDF document. */
+  const exportHoReport = () => {
+    if (!report) return;
+    const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const sc = (s) => s>=75?P.green:s>=55?'#D97706':P.red;
+    const tq = report.trust_questions || [];
+    const allTen = tq.length > 0 && tq.every(q => (q.score||0) <= 10);
+    const names = ['Trust & verification','Real projects','Reviews','Credentials','Contactability','Trading status'];
+    const checks = tq.map((q,i) => { const s = allTen ? Math.round((q.score||0)*10) : (q.score||0); return `<div class="row"><span>${esc(names[i]||q.question||'')}</span><b style="color:${sc(s)}">${s}/100</b></div>`; }).join('');
+    const breaks = (report.trust_breakpoints||[]).slice(0,5).map(tb => `<div class="row"><span>${esc(tb.homeowner_reaction||tb.title||'')}</span></div>`).join('');
+    const score = report.hero?.score || 0;
+    const name = report.business_snapshot?.company_name || domain || 'This builder';
+    const inner = `<h1>${esc(name)}</h1>`
+      + `<p class="muted">${esc(domain||'')} · independent website trust audit</p>`
+      + `<div style="margin:14px 0"><span class="scorebox"><span class="n" style="color:${sc(score)}">${score}</span><span class="l">Trust score / 100</span></span></div>`
+      + (report.hero?.headline ? `<div class="card"><b>${esc(report.hero.headline)}</b>${report.hero.subtext?`<div class="muted" style="margin-top:6px;font-size:13px;line-height:1.5">${esc(report.hero.subtext)}</div>`:''}</div>` : '')
+      + `<h2>The 6 trust checks</h2><div class="card">${checks || '<div class="muted">No checks available</div>'}</div>`
+      + (breaks ? `<h2>What to watch before you commit</h2><div class="card">${breaks}</div>` : '')
+      + `<div class="foot">⚠ A website score reflects how well a builder presents online — a strong first filter, not proof of build quality. Always verify Companies House registration, insurance and references before you commit. Generated free by BuilderAudit.</div>`;
+    exportReport(name + ' — trust report · BuilderAudit', inner);
+  };
+
   /* Show the 5-tab report if we have real data */
   if (latestAudit && report) {
 
     return (
       <main style={{ padding:'32px 36px 80px', maxWidth:1100, margin:'0 auto' }}>
         {/* Header */}
-        <div style={{ marginBottom:24 }}>
-          <Kicker color={P.accent}>Homeowner safety check</Kicker>
-          <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:36, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 4px' }}>{domain}</h1>
-          <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
+        <div style={{ marginBottom:24, display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:16, flexWrap:'wrap' }}>
+          <div>
+            <Kicker color={P.accent}>Homeowner safety check</Kicker>
+            <h1 style={{ fontFamily:F.display, fontWeight:900, fontSize:36, lineHeight:1, color:P.ink, textTransform:'uppercase', letterSpacing:'-0.02em', margin:'10px 0 4px' }}>{domain}</h1>
+            <p style={{ fontFamily:F.body, fontSize:13.5, color:P.muted, margin:0 }}>Independent trust audit · {new Date().toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'})}</p>
+          </div>
+          <Btn onClick={exportHoReport} style={{ whiteSpace:'nowrap', flexShrink:0 }}>⬇ Export report</Btn>
         </div>
 
         {/* Tab bar — pill segments */}
@@ -3620,7 +3770,7 @@ function DashboardApp() {
     competitors: <BuilderCompetitors latestAudit={latestAudit} user={user} completedFixIds={completedFixIds} adjustedScore={adjustedScore} excludedPhotoIds={excludedPhotoIds}/>,
   } : {
     dashboard: <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,
-    compare:   <HomeownerCompare user={user}/>,
+    compare:   <HomeownerCompare user={user} latestAudit={latestAudit}/>,
     advice:    <HomeownerAdvice/>,
     match:     <HomeownerMatch user={user}/>,
     account:   <HomeownerDashboard auditData={auditData} latestAudit={latestAudit}/>,

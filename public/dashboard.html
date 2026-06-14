@@ -449,11 +449,29 @@ function Nav({ role, page, setPage, user, website }) {
         </span>
       </a>
 
-      <nav style={{ display:'flex', gap:22, fontFamily:F.body, fontSize:13.5, color:P.ink, fontWeight:600, overflowX:'auto' }}>
+      <nav style={{ display:'flex', gap:8, fontFamily:F.body, fontSize:13.5, color:P.ink, fontWeight:600, overflowX:'auto', alignItems:'center' }}>
         {pages.map(it => {
           const on = page === it.k;
-          return <a key={it.k} href="#" onClick={e=>{e.preventDefault();setPage(it.k);}}
-            style={{ color:on?P.ink:P.muted, textDecoration:'none', borderBottom:on?`2px solid ${P.ink}`:'2px solid transparent', paddingBottom:4, whiteSpace:'nowrap' }}>{it.label}</a>;
+          return (
+            <a key={it.k} href="#" onClick={e=>{e.preventDefault();setPage(it.k);}}
+              aria-current={on ? 'page' : undefined}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:6,
+                color: on ? P.ink : P.muted,
+                fontWeight: on ? 800 : 600,
+                textDecoration:'none', whiteSpace:'nowrap',
+                padding:'7px 13px', borderRadius:8,
+                background: on ? P.fill : 'transparent',
+                border: on ? `2px solid ${P.line}` : '2px solid transparent',
+                boxShadow: on ? `2px 2px 0 ${P.line}` : 'none',
+                transition:'background .12s, color .12s',
+              }}
+              onMouseEnter={e=>{ if(!on){ e.currentTarget.style.color = P.ink; e.currentTarget.style.background = P.surface; } }}
+              onMouseLeave={e=>{ if(!on){ e.currentTarget.style.color = P.muted; e.currentTarget.style.background = 'transparent'; } }}>
+              {on && <span style={{ width:6, height:6, borderRadius:'50%', background:P.ink, display:'inline-block' }}/>}
+              {it.label}
+            </a>
+          );
         })}
       </nav>
 
@@ -3822,10 +3840,10 @@ function DashboardApp() {
   // Keep URL in sync (preserve ?id= so refreshing re-loads the same audit)
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    p.set('role', role); p.set('page', activeSection);
+    p.set('role', role); p.set('page', page);
     if (auditIdFromUrl) p.set('id', auditIdFromUrl);
     window.history.replaceState({}, '', window.location.pathname+'?'+p.toString());
-  }, [role, activeSection]);
+  }, [role, page]);
 
   // Fetch data — priority: specific audit by ?id= > user's latest audit > demo mode
   useEffect(() => {
@@ -3905,31 +3923,6 @@ function DashboardApp() {
     loadData();
   }, []);
 
-  /* Both dashboards are one continuous scroll; the top tabs jump to sections
-     and the active tab tracks whichever section is in view. */
-  const SECTION_ORDER = (role === 'builder' ? BUILDER_PAGES : HOMEOWNER_PAGES).map(p => p.k);
-  const scrollToSection = (k) => {
-    setActiveSection(k);
-    const el = document.getElementById('sec-' + k);
-    if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
-  };
-  useEffect(() => {
-    if (loading || !authChecked) return;
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id.replace('sec-','')); });
-    }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
-    SECTION_ORDER.forEach(k => { const el = document.getElementById('sec-' + k); if (el) obs.observe(el); });
-    /* If deep-linked to a section (?page=fixes), jump there once on first paint. */
-    if (!didInitialScroll.current) {
-      didInitialScroll.current = true;
-      const initial = params.get('page');
-      if (initial && initial !== 'dashboard' && SECTION_ORDER.includes(initial)) {
-        setTimeout(() => { const el = document.getElementById('sec-' + initial); if (el) el.scrollIntoView({ block:'start' }); }, 60);
-      }
-    }
-    return () => obs.disconnect();
-  }, [role, loading, authChecked, latestAudit]);
-
   if (loading || !authChecked) return <div style={{ minHeight:'100vh', background:P.surface }}><Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/><Loading/></div>;
 
   const pages = role==='builder' ? {
@@ -3950,18 +3943,8 @@ function DashboardApp() {
   return (
     <div style={{ minHeight:'100vh', background:P.surface }}>
       <AccountGateModal gate={gate} onClose={()=>setGate(null)} onSignedUp={refreshUser}/>
-      <Nav role={role} page={activeSection} setPage={scrollToSection} user={user} website={latestAudit?.url}/>
-      {SECTION_ORDER.map((k, i) => (
-        <section key={k} id={'sec-' + k}
-          style={{
-            scrollMarginTop: 84,
-            marginTop: i>0 ? 24 : 0,
-            paddingTop: i>0 ? 32 : 0,
-            borderTop: i>0 ? `2px solid ${P.line}` : 'none',
-          }}>
-          {pages[k]}
-        </section>
-      ))}
+      <Nav role={role} page={page} setPage={setPage} user={user} website={latestAudit?.url}/>
+      {pages[page] || pages['dashboard']}
     </div>
   );
 }

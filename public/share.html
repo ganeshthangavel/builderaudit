@@ -80,6 +80,15 @@
   .state{text-align:center;padding:80px 20px;font-family:var(--body);color:var(--muted)}
   .spinner{width:34px;height:34px;border:4px solid #e4dfc9;border-top:4px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
   @keyframes spin{to{transform:rotate(360deg)}}
+  @media (max-width:560px){
+    .wrap{padding:22px 14px 56px}
+    h1{font-size:23px}
+    .cat{grid-template-columns:104px 1fr 28px;gap:9px}
+    .cat .nm{font-size:12px}
+    .body,.hero-strip{padding:18px 16px}
+    .voice{padding:16px 16px}
+    .topbar{margin-bottom:20px}
+  }
 </style>
 </head>
 <body>

@@ -239,6 +239,12 @@ async function scoreWebsite(pages, targetUrl, imageVerification, overrides, user
     hasCompaniesHouse: allMeta.some(m => m.hasCompaniesHouse),
     hasExternalReviewLinks: allMeta.some(m => m.hasExternalReviewLinks),
     professionalEmail: allMeta.some(m => m.professionalEmail),
+    /* Deterministic media facts — the page genuinely contains these elements.
+       Used to stop the AI calling a paused/poster video frame "broken". */
+    hasVideo: allMeta.some(m => m.hasVideo),
+    hasVideoEmbed: allMeta.some(m => m.hasVideoEmbed),
+    hasSliderOrCarousel: allMeta.some(m => m.hasSliderOrCarousel),
+    hasAnimation: allMeta.some(m => m.hasAnimation),
     imageSample: refImages,
     imageVerification: imgVerifySummary,
   };
@@ -422,7 +428,12 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
 7. ANIMATED COUNTER WARNING: Many builder sites use JavaScript count-up animations for stats ("5.0 Google Rating", "1,500+ Happy Clients", "56 Years Experience"). The scraped HTML often captures these counters at their PRE-ANIMATION value of "0" or "0.0". Therefore:
    - NEVER claim a review rating, client count, or years figure is "0", "0.0", or "broken" based on scraped text alone. A zero next to a stats label is almost always an animation artifact, not the real value.
    - If you see "0.0" or "0" beside labels like "Google Rating", "Reviews", "Happy Clients", "Years", treat the real value as UNVERIFIED — say "the rating shown on the site could not be captured by our scan; verify it directly on Google" rather than asserting it is zero or broken.
-   - Only treat a low review score as real if it comes from an external review link or explicit written text (e.g. "rated 2 stars"), never from a bare number that could be a counter.`;
+   - Only treat a low review score as real if it comes from an external review link or explicit written text (e.g. "rated 2 stars"), never from a bare number that could be a counter.
+8. VIDEO / ANIMATION / MOVING-MEDIA WARNING: You are given STATIC screenshots. A still image CANNOT show whether a video plays, whether a slider rotates, or whether an animation runs. In a screenshot, a working video almost always looks like a black box, a blank rectangle, a still "poster" frame, or a play-button overlay — this is NORMAL and does NOT mean it is broken.
+   - NEVER claim a video is "broken", "not loading", "missing", "won't play", or "appears as a black/blank box" based on a screenshot. You have no way to know that from a still image.
+   - The signals hasVideo, hasVideoEmbed, hasSliderOrCarousel and hasAnimation are DETERMINISTIC facts extracted from the page's HTML. If any is true, that media element genuinely EXISTS and is wired up on the page. Treat its presence as a positive (the builder invested in richer content), not a fault.
+   - If hasVideo or hasVideoEmbed is true, do NOT say the site lacks video, and do NOT flag the video as faulty. At most you may note you "couldn't verify playback in an automated scan" — but never assert it is broken.
+   - The same applies to carousels, sliders, hero animations and lazy-loaded sections: a blank or half-rendered area in a screenshot is a capture artifact, not a defect. Do not list it as a problem or a fix.`;
 
   const imageVerifSection = (imgVerifySummary && (imgVerifySummary.confirmedStockImages.length > 0 || imgVerifySummary.duplicatedElsewhere.length > 0))
     ? 'CRITICAL IMAGE VERIFICATION RESULTS — HARD EVIDENCE:\n' + JSON.stringify(imgVerifySummary, null, 2) + '\n\nThese are not guesses. These images have been confirmed by reverse image search. Reference them specifically in your findings.\n\n'

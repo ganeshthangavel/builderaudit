@@ -452,21 +452,42 @@ Do NOT advise the homeowner to fix the builder's website. Advise them on what to
     imageVerifSection +
     'Return this exact JSON structure:\n\n' + jsonSchema + homeownerAddendum;
 
-  const response = await client.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 6000,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: userPrompt }] }],
-  });
+  async function callModel(maxTokens) {
+    return client.messages.create({
+      model: 'claude-opus-4-5',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: userPrompt }] }],
+    });
+  }
 
-  const rawText = response.content.map(b => b.text || '').join('');
-  const clean = rawText.replace(/```json|```/g, '').trim();
+  let response = await callModel(8000);
+
+  function parseReport(resp) {
+    const rawText = resp.content.map(b => b.text || '').join('');
+    const clean = rawText.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  }
+
   let result;
   try {
-    result = JSON.parse(clean);
+    result = parseReport(response);
   } catch (e) {
-    console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', clean.slice(-300));
-    throw new Error('AI response was incomplete. Try again.');
+    /* If the model ran out of room (truncated JSON), try once more with a
+       bigger budget before giving up. */
+    if (response.stop_reason === 'max_tokens') {
+      console.warn('[scorer-ai] Report truncated at 8000 tokens — retrying once at 14000.');
+      try {
+        response = await callModel(14000);
+        result = parseReport(response);
+      } catch (e2) {
+        console.error('JSON parse failed after retry. Stop reason:', response.stop_reason, 'Last 300 chars:', response.content.map(b => b.text || '').join('').slice(-300));
+        throw new Error('AI response was incomplete. Try again.');
+      }
+    } else {
+      console.error('JSON parse failed. Stop reason:', response.stop_reason, 'Last 300 chars:', response.content.map(b => b.text || '').join('').slice(-300));
+      throw new Error('AI response was incomplete. Try again.');
+    }
   }
   result.imageVerification = imageVerification;
   return result;

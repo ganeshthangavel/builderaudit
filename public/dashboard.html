@@ -1993,6 +1993,8 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
         const lead      = you.score - topRival.score;            // +ve = ahead of best rival
         const gapToTop  = topRival.score - you.score;            // +ve = behind best rival
         const winning   = youRank === 1;
+        const behindCount = rivals.filter(r => r.score > you.score).length;   // how many rivals beat you
+        const fieldLabel  = rivals.length === 1 ? 'this competitor' : `these ${rivals.length} competitors`;
 
         /* Per-category: where do you beat / lose to the field on average? */
         const catNames = you.breakdown.map(c => c.name);
@@ -2012,9 +2014,15 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
           : gapToTop <= 15 ? 'You\'re losing winnable work right now'
           : 'Competitors are taking enquiries you should be getting';
 
-        const outcome = winning
-          ? `When a homeowner compares you against ${rivals.length === 1 ? 'this rival' : 'these '+rivals.length+' rivals'}, your site makes the strongest first impression — you outscore ${beat === rivals.length ? 'all of them' : beat+' of '+rivals.length}. The risk now is complacency: hold the lead by clearing your remaining fixes before they catch up.`
-          : `A homeowner getting quotes from you and ${topRival.name} will, on the evidence of the websites alone, trust ${topRival.name} more — they score ${topRival.score} to your ${you.score}. That's the difference between getting the call and getting ignored. Close the ${gapToTop}-point gap and you flip that decision.`;
+        /* Narrative — always reflects the FULL field so it updates as you add rivals */
+        let outcome;
+        if (winning) {
+          outcome = `Against ${fieldLabel}, your site makes the strongest first impression — you outscore ${beat === rivals.length ? (rivals.length === 1 ? 'them' : 'all '+rivals.length) : beat+' of '+rivals.length}. You sit top at ${you.score}, ahead of the field average of ${avgRival}. Hold the lead by clearing your remaining fixes before they catch up.`;
+        } else if (rivals.length === 1) {
+          outcome = `A homeowner choosing between you and ${topRival.name} will, on the websites alone, trust ${topRival.name} more — they score ${topRival.score} to your ${you.score}. That's the difference between getting the call and getting ignored. Close the ${gapToTop}-point gap and you flip that decision.`;
+        } else {
+          outcome = `Across ${fieldLabel}, you rank #${youRank} of ${ranked.length} — ${behindCount === 1 ? 'one competitor is' : behindCount+' competitors are'} ahead of you, and the field averages ${avgRival} to your ${you.score}. ${topRival.name} leads at ${topRival.score}, so they're the one to catch: close that ${gapToTop}-point gap and you move up the list a homeowner is comparing.`;
+        }
 
         const accentChip = winning ? P.green : P.red;
 
@@ -2053,10 +2061,11 @@ function BuilderCompetitors({ latestAudit, user, completedFixIds = new Set(), ad
                     <span style={{ fontFamily:F.display, fontWeight:900, fontSize:13, color:'#fff', letterSpacing:'0.05em' }}>VS</span>
                   </div>
                   <div style={{ flex:1, background:'#fff', padding:'12px 16px', borderLeft:`2px solid ${P.line}` }}>
-                    <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{topRival.name}</div>
+                    <div style={{ fontFamily:F.body, fontSize:10, fontWeight:700, color:P.muted, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{rivals.length === 1 ? topRival.name : `${topRival.name} · field leader of ${rivals.length}`}</div>
                     <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
                       <span style={{ fontFamily:F.display, fontWeight:900, fontSize:30, color:P.good, lineHeight:1 }}>{topRival.score}</span>
                       <span style={{ fontFamily:F.body, fontSize:12, fontWeight:600, color:P.muted }}>/ 100</span>
+                      {rivals.length > 1 && <span style={{ fontFamily:F.body, fontSize:11, fontWeight:600, color:P.muted }}>· avg {avgRival}</span>}
                     </div>
                   </div>
                 </div>

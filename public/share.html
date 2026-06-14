@@ -71,6 +71,11 @@
   .comp .sc{font-family:var(--display);font-weight:900;font-size:24px;border:2px solid var(--line);border-radius:7px;padding:6px 12px;min-width:54px;text-align:center;box-shadow:2px 2px 0 var(--line)}
   .rankline{font-family:var(--body);font-size:14px;line-height:1.55;margin:0 0 16px;padding:13px 15px;background:var(--surface);border:1.5px dashed var(--line);border-radius:9px}
   .footer{text-align:center;margin-top:36px;font-family:var(--body);font-size:13px;color:var(--muted)}
+  .gl{display:block;font-family:var(--body);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.05em;text-transform:uppercase;margin:0 0 6px}
+  .gi{width:100%;font-family:var(--body);font-size:15px;color:var(--ink);border:2px solid var(--line);border-radius:8px;padding:11px 13px;margin-bottom:14px;background:#fff;outline:none}
+  .gi:focus{border-color:var(--accent)}
+  .gbtn{width:100%;font-family:var(--body);font-weight:700;font-size:15px;color:#fff;background:var(--accent);border:2px solid var(--line);border-radius:9px;padding:13px 18px;box-shadow:3px 3px 0 var(--line);cursor:pointer}
+  .gbtn:disabled{opacity:0.6;cursor:default}
   .cta{display:inline-block;margin-top:10px;background:var(--accent);color:#fff;text-decoration:none;font-family:var(--body);font-weight:700;font-size:14px;border:2px solid var(--line);border-radius:8px;padding:12px 20px;box-shadow:3px 3px 0 var(--line)}
   .state{text-align:center;padding:80px 20px;font-family:var(--body);color:var(--muted)}
   .spinner{width:34px;height:34px;border:4px solid #e4dfc9;border-top:4px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
@@ -100,12 +105,61 @@
   function scoreColor(s){ return s>=75 ? 'var(--green)' : s>=55 ? 'var(--amber)' : 'var(--red)'; }
   function fmtDate(d){ try { return new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); } catch(e){ return ''; } }
 
-  fetch('/api/share/' + encodeURIComponent(token))
-    .then(function(r){ return r.ok ? r.json() : r.json().then(function(e){ throw new Error(e.error || 'Not found'); }); })
-    .then(render)
-    .catch(function(err){
-      root.innerHTML = '<div class="state"><div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);margin-bottom:8px">Report unavailable</div>' + esc(err.message) + '</div>';
+  function loadReport(){
+    fetch('/api/share/' + encodeURIComponent(token), { credentials:'include' })
+      .then(function(r){ return r.ok ? r.json() : r.json().then(function(e){ throw new Error(e.error || 'Not found'); }); })
+      .then(function(d){
+        if (d && d.gated) { renderGate(d); footer.style.display = 'none'; }
+        else { render(d); }
+      })
+      .catch(function(err){
+        root.innerHTML = '<div class="state"><div style="font-family:var(--display);font-weight:800;font-size:20px;color:var(--ink);margin-bottom:8px">Report unavailable</div>' + esc(err.message) + '</div>';
+      });
+  }
+  loadReport();
+
+  /* ── Lead-capture gate ── */
+  function renderGate(d){
+    var name = d.company || d.domain || 'this builder';
+    root.innerHTML =
+      '<div class="card" style="max-width:480px;margin:8px auto 0">'
+      + '<div class="hero-strip" style="text-align:center">'
+      +   '<div class="eyebrow">BuilderAudit · trust report</div>'
+      +   '<h1 style="font-size:23px">See ' + esc(name) + '\u2019s website trust audit</h1>'
+      + '</div>'
+      + '<div class="body">'
+      +   '<p class="sub" style="color:var(--muted);margin:0 0 18px">Enter your details to view the full report — score, trust checks, strengths, the fixes that matter, and competitor comparison.</p>'
+      +   '<div id="gateErr" style="display:none;font-family:var(--body);font-size:13px;color:var(--red);margin-bottom:12px"></div>'
+      +   '<label class="gl">Your name</label><input id="gName" class="gi" type="text" autocomplete="name" placeholder="Jane Smith">'
+      +   '<label class="gl">Email</label><input id="gEmail" class="gi" type="email" autocomplete="email" placeholder="jane@company.co.uk">'
+      +   '<label class="gl">Company <span style="font-weight:500;color:var(--muted)">(optional)</span></label><input id="gCompany" class="gi" type="text" autocomplete="organization" placeholder="Smith & Co Builders">'
+      +   '<button id="gSubmit" class="gbtn" type="button">View the report \u2192</button>'
+      +   '<div style="font-family:var(--body);font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.45">Your details are shared with ' + esc(name) + ' (whose report this is) and BuilderAudit. We won\u2019t spam you.</div>'
+      + '</div></div>';
+
+    var btn = document.getElementById('gSubmit');
+    var errBox = document.getElementById('gateErr');
+    function showErr(m){ errBox.textContent = m; errBox.style.display = 'block'; }
+    function submit(){
+      var nm = (document.getElementById('gName').value||'').trim();
+      var em = (document.getElementById('gEmail').value||'').trim();
+      var co = (document.getElementById('gCompany').value||'').trim();
+      if (!nm) return showErr('Please enter your name.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return showErr('Please enter a valid email address.');
+      btn.disabled = true; btn.textContent = 'Loading\u2026';
+      fetch('/api/share/' + encodeURIComponent(token) + '/lead', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({ name:nm, email:em, company:co }),
+      })
+        .then(function(r){ return r.ok ? r.json() : r.json().then(function(e){ throw new Error(e.error||'Something went wrong'); }); })
+        .then(function(){ loadReport(); })
+        .catch(function(e){ btn.disabled = false; btn.textContent = 'View the report \u2192'; showErr(e.message); });
+    }
+    btn.addEventListener('click', submit);
+    ['gName','gEmail','gCompany'].forEach(function(id){
+      document.getElementById(id).addEventListener('keydown', function(e){ if (e.key==='Enter') submit(); });
     });
+  }
 
   function render(d){
     document.title = (d.company || d.domain) + ' — Trust Audit · BuilderAudit';

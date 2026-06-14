@@ -239,6 +239,7 @@ async function initSchema() {
       id TEXT PRIMARY KEY,
       user_id TEXT,
       kind TEXT NOT NULL DEFAULT 'feedback',
+      name TEXT,
       message TEXT NOT NULL,
       email TEXT,
       page_url TEXT,
@@ -247,6 +248,7 @@ async function initSchema() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await step('feedback.name', `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS name TEXT`);
   await step('index feedback.created', `CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC)`);
 
   console.log('✓ Database schema ready');
@@ -321,13 +323,13 @@ async function listReportLeadsForUser(ownerUserId, limit = 200) {
 // FEEDBACK — in-app feedback / error flags from the widget on every page
 // ═════════════════════════════════════════════════════════════════════════════
 
-async function saveFeedback({ userId, kind, message, email, pageUrl, ip, userAgent }) {
+async function saveFeedback({ userId, kind, name, message, email, pageUrl, ip, userAgent }) {
   if (!getPool()) throw new Error('Database not configured');
   const id = 'fb_' + Math.random().toString(36).slice(2, 12);
   await getPool().query(
-    `INSERT INTO feedback (id, user_id, kind, message, email, page_url, ip, user_agent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [id, userId || null, kind || 'feedback', message, email || null, pageUrl || null, ip || null, userAgent || null]
+    `INSERT INTO feedback (id, user_id, kind, name, message, email, page_url, ip, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, userId || null, kind || 'feedback', name || null, message, email || null, pageUrl || null, ip || null, userAgent || null]
   );
   return { id };
 }

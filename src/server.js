@@ -367,11 +367,21 @@ app.post('/api/competitor-check', async (req, res) => {
 
   try {
     console.log('[competitor-check] Full crawl for', url, 'by user', req.user.id);
-    const { pages, imageVerification } = await crawlWebsiteScrapFly(url);
+    const pages = await crawlWebsiteScrapFly(url);
 
+    /* Same blocked-site detection as the main audit, with specific reasons so
+       the user knows whether it was a hard block vs an empty render. */
+    const totalTextLength = (pages || []).reduce((sum, p) => sum + (p.textContent || '').length, 0);
     if (!pages || pages.length === 0) {
-      return res.status(422).json({ error: 'Could not crawl that site — it may be blocking automated requests.' });
+      return res.status(422).json({ error: 'Could not reach that site — it blocked our crawler or is offline. Some sites with heavy bot protection can\'t be audited. Try again in a minute, or check the URL.' });
     }
+    if ((pages.length === 1 && totalTextLength < 500) || totalTextLength < 200) {
+      return res.status(422).json({ error: 'That site loaded but returned almost no readable content — usually a sign of a bot-challenge page (e.g. Cloudflare). Try again shortly.' });
+    }
+
+    /* Verify images (reverse-image / stock detection) — same as a normal audit */
+    const allImages = pages.flatMap(p => p.images || []);
+    const imageVerification = await verifyImages(allImages);
 
     const userContext = {
       businessType: req.user.business_type,
@@ -1477,4 +1487,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-                        
+       

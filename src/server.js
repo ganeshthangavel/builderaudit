@@ -393,6 +393,14 @@ app.post('/api/competitor-check', async (req, res) => {
     const report = await scoreWebsite(pages, url, null, {}, userContext, 'builder', { lite: true });
 
     const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e){ return url; } })();
+
+    /* Safety net: trust_questions should be 0-100, but the model occasionally
+       returns them on a 0-10 scale. If EVERY question is <= 10 (yet the overall
+       score is clearly 0-100), scale them up so the bars render correctly. */
+    const rawQs = report.trust_questions || [];
+    const allLooksLikeTen = rawQs.length > 0 && rawQs.every(q => (q.score || 0) <= 10);
+    const normScore = (s) => allLooksLikeTen ? Math.round((s || 0) * 10) : (s || 50);
+
     res.json({
       url,
       domain,
@@ -400,9 +408,9 @@ app.post('/api/competitor-check', async (req, res) => {
       company_name: report.business_snapshot?.company_name || domain,
       verdict:     report.hero?.headline || '',
       subtext:     report.hero?.subtext || '',
-      categories:  (report.trust_questions || []).map(q => ({
+      categories:  rawQs.map(q => ({
         name:  q.question.replace('?','').replace('Can I verify this is a legitimate registered business','Legitimacy').replace('Do I believe these are real projects by this company','Real projects').replace('Do other homeowners trust and recommend this company','Reviews').replace('Do they have credentials to handle my project safely','Credentials').replace('Will they be easy to contact and communicate with','Contactability').replace('Is this business actively trading right now','Trading'),
-        score: q.score || 50,
+        score: normScore(q.score),
         note:  q.explanation || '',
       })),
       top_actions: (report.top_actions || []).slice(0, 3).map(a => typeof a === 'string' ? a : a.title),
@@ -1487,4 +1495,4 @@ app.get('/api/_diag/schema', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
-   
+         

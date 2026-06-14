@@ -233,6 +233,22 @@ async function initSchema() {
   await step('index report_leads.token', `CREATE INDEX IF NOT EXISTS idx_report_leads_token ON report_leads(share_token, created_at DESC)`);
   await step('index report_leads.owner', `CREATE INDEX IF NOT EXISTS idx_report_leads_owner ON report_leads(owner_user_id, created_at DESC)`);
 
+  /* Feedback / error flags from the in-app widget on every page. */
+  await step('table feedback', `
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      kind TEXT NOT NULL DEFAULT 'feedback',
+      message TEXT NOT NULL,
+      email TEXT,
+      page_url TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await step('index feedback.created', `CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC)`);
+
   console.log('✓ Database schema ready');
 }
 
@@ -299,6 +315,21 @@ async function listReportLeadsForUser(ownerUserId, limit = 200) {
     [ownerUserId, limit]
   );
   return rows;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FEEDBACK — in-app feedback / error flags from the widget on every page
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function saveFeedback({ userId, kind, message, email, pageUrl, ip, userAgent }) {
+  if (!getPool()) throw new Error('Database not configured');
+  const id = 'fb_' + Math.random().toString(36).slice(2, 12);
+  await getPool().query(
+    `INSERT INTO feedback (id, user_id, kind, message, email, page_url, ip, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, userId || null, kind || 'feedback', message, email || null, pageUrl || null, ip || null, userAgent || null]
+  );
+  return { id };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -772,6 +803,7 @@ module.exports = {
   saveCompetitor,
   saveReportLead,
   listReportLeadsForUser,
+  saveFeedback,
   deleteCompetitor,
   // snapshots (score history)
   createSnapshot,
